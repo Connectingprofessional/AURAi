@@ -299,32 +299,62 @@
 })();
 </script><script id="trackmenow-mini-globe">
 (function(){
- const host=document.getElementById('mm-globe'); if(!host||document.getElementById('tm-mini-globe'))return;
- const canvas=document.createElement('canvas');canvas.id='tm-mini-globe';host.replaceChildren(canvas);
- const gl=canvas.getContext('webgl',{alpha:true,antialias:true}); if(!gl){return;}
- const vs=`attribute vec3 p;attribute vec2 uv;uniform mat4 mvp;varying vec2 vuv;varying vec3 vn;void main(){vuv=uv;vn=p;gl_Position=mvp*vec4(p,1.0);}`;
- const fs=`precision mediump float;uniform sampler2D tex;uniform float rot;varying vec2 vuv;varying vec3 vn;void main(){vec2 u=vec2(fract(vuv.x+rot),vuv.y);vec3 col=texture2D(tex,u).rgb;vec3 n=normalize(vn);vec3 light=normalize(vec3(-.45,.35,1.0));float d=max(dot(n,light),0.0);float rim=pow(1.0-max(dot(n,vec3(0.,0.,1.)),0.),2.2);col*=.42+.7*d;col+=vec3(.03,.13,.15)*rim;gl_FragColor=vec4(col,1.0);}`;
- function sh(type,src){const s=gl.createShader(type);gl.shaderSource(s,src);gl.compileShader(s);return s}
- const prog=gl.createProgram();gl.attachShader(prog,sh(gl.VERTEX_SHADER,vs));gl.attachShader(prog,sh(gl.FRAGMENT_SHADER,fs));gl.linkProgram(prog);
- if(!gl.getProgramParameter(prog,gl.LINK_STATUS))return;
- const verts=[],idx=[],latN=24,lonN=48;
- for(let y=0;y<=latN;y++){const lat=Math.PI/2-y*Math.PI/latN,cl=Math.cos(lat),sl=Math.sin(lat);for(let x=0;x<=lonN;x++){const lo=x*2*Math.PI/lonN;verts.push(cl*Math.cos(lo),sl,cl*Math.sin(lo),x/lonN,y/latN)}}
- for(let y=0;y<latN;y++)for(let x=0;x<lonN;x++){const a=y*(lonN+1)+x,b=a+1,c=a+lonN+1,d=c+1;idx.push(a,c,b,b,c,d)}
- const vb=gl.createBuffer();gl.bindBuffer(gl.ARRAY_BUFFER,vb);gl.bufferData(gl.ARRAY_BUFFER,new Float32Array(verts),gl.STATIC_DRAW);
- const ib=gl.createBuffer();gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER,ib);gl.bufferData(gl.ELEMENT_ARRAY_BUFFER,new Uint16Array(idx),gl.STATIC_DRAW);
- const ap=gl.getAttribLocation(prog,'p'),au=gl.getAttribLocation(prog,'uv');gl.enableVertexAttribArray(ap);gl.vertexAttribPointer(ap,3,gl.FLOAT,false,20,0);gl.enableVertexAttribArray(au);gl.vertexAttribPointer(au,2,gl.FLOAT,false,20,12);
- const tex=gl.createTexture();gl.bindTexture(gl.TEXTURE_2D,tex);gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MIN_FILTER,gl.LINEAR);gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MAG_FILTER,gl.LINEAR);gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_WRAP_S,gl.REPEAT);gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_WRAP_T,gl.CLAMP_TO_EDGE);
- function mat(t){const c=Math.cos(t),s=Math.sin(t),z=3.2,f=1/Math.tan(.55/2);return new Float32Array([f*z/host.clientWidth,0,0,0,0,f*z/host.clientHeight,0,0,0,0,-1,-1,0,0,.2,1])}
- function uploadLand(geo){const c=document.createElement('canvas');c.width=720;c.height=360;const x=c.getContext('2d');x.fillStyle='#0b2630';x.fillRect(0,0,c.width,c.height);x.fillStyle='#438f70';x.strokeStyle='#72c9ad';x.lineWidth=.45;
-  function ring(r){x.beginPath();r.forEach((q,i)=>{const X=(q[0]+180)/360*c.width,Y=(90-q[1])/180*c.height;i?x.lineTo(X,Y):x.moveTo(X,Y)});x.closePath();x.fill();x.stroke();}
-  for(const f of geo.features||[]){const g=f.geometry;if(g.type==='Polygon')g.coordinates.forEach(ring);else if(g.type==='MultiPolygon')g.coordinates.forEach(p=>p.forEach(ring));}
-  gl.bindTexture(gl.TEXTURE_2D,tex);gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA,gl.RGBA,gl.UNSIGNED_BYTE,c);
- }
- fetch('https://raw.githubusercontent.com/datasets/geo-countries/master/data/countries.geojson',{cache:'force-cache'}).then(r=>r.json()).then(uploadLand).catch(()=>{const c=document.createElement('canvas');c.width=2;c.height=2;const x=c.getContext('2d');x.fillStyle='#124050';x.fillRect(0,0,2,2);gl.bindTexture(gl.TEXTURE_2D,tex);gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA,gl.RGBA,gl.UNSIGNED_BYTE,c)});
- let rot=0,last=performance.now();
- function resize(){const d=devicePixelRatio||1,w=Math.max(1,host.clientWidth*d),h=Math.max(1,host.clientHeight*d);if(canvas.width!==w||canvas.height!==h){canvas.width=w;canvas.height=h;gl.viewport(0,0,w,h)}}
- function frame(now){resize();rot=(rot+(now-last)*.00018)%1;last=now;gl.clearColor(0,0,0,0);gl.clear(gl.COLOR_BUFFER_BIT|gl.DEPTH_BUFFER_BIT);gl.enable(gl.DEPTH_TEST);gl.useProgram(prog);gl.uniform1f(gl.getUniformLocation(prog,'rot'),rot);gl.uniformMatrix4fv(gl.getUniformLocation(prog,'mvp'),false,mat(now));gl.drawElements(gl.TRIANGLES,idx.length,gl.UNSIGNED_SHORT,0);requestAnimationFrame(frame)}
- requestAnimationFrame(frame);
+  const host=document.getElementById('mm-globe'); if(!host)return;
+  host.innerHTML='';
+  const canvas=document.createElement('canvas'); canvas.id='tm-mini-globe';
+  canvas.setAttribute('aria-label','Rotating Earth'); host.appendChild(canvas);
+  const ctx=canvas.getContext('2d',{alpha:true});
+  if(!ctx)return;
+  let land=[], rot=0, last=performance.now(), raf=0;
+  const fallback=[
+    [[-168,72],[-140,70],[-125,55],[-105,50],[-95,30],[-82,25],[-80,10],[-100,15],[-120,30],[-135,50],[-168,55]],
+    [[-82,12],[-70,0],[-60,-15],[-55,-35],[-65,-55],[-78,-40],[-80,-15]],
+    [[-10,35],[10,45],[35,35],[55,25],[70,10],[55,0],[35,5],[20,20],[5,30]],
+    [[70,25],[90,30],[110,45],[140,50],[155,35],[145,15],[120,5],[100,10],[80,5],[70,25]],
+    [[20,-5],[35,-20],[45,-35],[30,-35],[15,-15]],
+    [[115,-25],[140,-20],[150,-35],[135,-45],[115,-40]]
+  ];
+  land=fallback;
+  fetch('https://raw.githubusercontent.com/datasets/geo-countries/master/data/countries.geojson',{cache:'force-cache'})
+    .then(r=>r.ok?r.json():null).then(g=>{
+      if(!g)return;
+      const out=[];
+      for(const f of (g.features||[])){
+        const z=f.geometry;
+        if(z?.type==='Polygon') out.push(...z.coordinates);
+        if(z?.type==='MultiPolygon') for(const p of z.coordinates) out.push(...p);
+      }
+      if(out.length)land=out;
+    }).catch(()=>{});
+  function resize(){
+    const w=Math.max(1,host.clientWidth||96),h=Math.max(1,host.clientHeight||96),d=Math.min(2,devicePixelRatio||1);
+    if(canvas.width!==Math.round(w*d)||canvas.height!==Math.round(h*d)){canvas.width=Math.round(w*d);canvas.height=Math.round(h*d);}
+    ctx.setTransform(d,0,0,d,0,0);
+  }
+  function project(lon,lat,cx,cy,r){
+    const p=(lon-rot)*Math.PI/180, q=lat*Math.PI/180;
+    const x=Math.cos(q)*Math.sin(p), y=Math.sin(q), z=Math.cos(q)*Math.cos(p);
+    if(z<=0)return null;
+    return [cx+x*r,cy-y*r,z];
+  }
+  function frame(now){
+    resize();
+    const w=host.clientWidth||96,h=host.clientHeight||96,cx=w/2,cy=h/2,r=Math.min(w,h)*.46;
+    rot=(rot+(now-last)*.012)%360; last=now;
+    ctx.clearRect(0,0,w,h);
+    const glow=ctx.createRadialGradient(cx-r*.35,cy-r*.4,2,cx,cy,r*1.25);
+    glow.addColorStop(0,'rgba(40,105,120,.98)');glow.addColorStop(.55,'rgba(5,35,45,.99)');glow.addColorStop(1,'rgba(1,7,11,1)');
+    ctx.fillStyle=glow;ctx.beginPath();ctx.arc(cx,cy,r,0,Math.PI*2);ctx.fill();
+    ctx.save();ctx.beginPath();ctx.arc(cx,cy,r,0,Math.PI*2);ctx.clip();
+    ctx.strokeStyle='rgba(100,215,205,.12)';ctx.lineWidth=.45;
+    for(let la=-60;la<=60;la+=30){ctx.beginPath();for(let lo=-180;lo<=180;lo+=4){const p=project(lo,la,cx,cy,r);if(p){if(lo===-180)ctx.moveTo(p[0],p[1]);else ctx.lineTo(p[0],p[1]);}}ctx.stroke();}
+    for(const ring of land){ctx.beginPath();let on=false;for(const q of ring){const p=project(q[0],q[1],cx,cy,r);if(!p){on=false;continue;}if(!on){ctx.moveTo(p[0],p[1]);on=true;}else ctx.lineTo(p[0],p[1]);}ctx.closePath();ctx.fillStyle='rgba(55,132,105,.92)';ctx.fill();ctx.strokeStyle='rgba(112,215,175,.45)';ctx.lineWidth=.45;ctx.stroke();}
+    ctx.restore();
+    ctx.strokeStyle='rgba(105,225,218,.38)';ctx.lineWidth=1;ctx.beginPath();ctx.arc(cx,cy,r,0,Math.PI*2);ctx.stroke();
+    raf=requestAnimationFrame(frame);
+  }
+  cancelAnimationFrame(raf);requestAnimationFrame(t=>{last=t;frame(t);});
+  window.addEventListener('resize',resize);
 })();
 </script></body>
 </html>
