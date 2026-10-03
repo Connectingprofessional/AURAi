@@ -20,12 +20,31 @@ function cached(k,ms){var x=cache.get(k);return x && Date.now()-x.t<ms?x.v:null}
 function put(k,v){cache.set(k,{t:Date.now(),v:v});return v}
 
 async function flights(b){
-  var u='https://opensky-network.org/api/states/all?lamin='+b.minLat+'&lomin='+b.minLon+'&lamax='+b.maxLat+'&lomax='+b.maxLon;
-  var r=await fetch(u,{headers:{'User-Agent':'TrackMeNow/1.0'}});
-  if(!r.ok) throw Error('OpenSky HTTP '+r.status);
-  var j=await r.json();
-  return (j.states||[]).filter(function(s){return Number.isFinite(s[5])&&Number.isFinite(s[6])}).map(function(s){
-    return {type:'Feature',geometry:{type:'Point',coordinates:[s[5],s[6]]},properties:{category:'flight',source:'OpenSky ADS-B',id:s[0],callsign:(s[1]||'').trim(),country:s[2],altitude_m:s[7],on_ground:s[8],speed_mps:s[9],heading:s[10],last_contact:s[4]}};
+  // ADSB.lol is a public, open ADS-B source. Its point endpoint is limited to
+  // 250 nautical miles, so TrackMeNow queries the current viewport center
+  // instead of pretending that one request represents the whole planet.
+  const centerLat=(b.minLat+b.maxLat)/2;
+  const centerLon=(b.minLon+b.maxLon)/2;
+  const latSpan=Math.abs(b.maxLat-b.minLat);
+  const lonSpan=Math.abs(b.maxLon-b.minLon)*Math.cos(centerLat*Math.PI/180);
+  const radiusNm=Math.max(10,Math.min(250,Math.ceil(Math.sqrt(latSpan*latSpan+lonSpan*lonSpan)*60/2)));
+  const u='https://api.adsb.lol/v2/point/'+encodeURIComponent(centerLat)+'/'+encodeURIComponent(centerLon)+'/'+radiusNm;
+  const r=await fetch(u,{headers:{'User-Agent':'TrackMeNow/1.0 (https://connectingprofessional.github.io/TrackMenow/)','Accept':'application/json'}});
+  if(!r.ok) throw Error('ADSB.lol HTTP '+r.status);
+  const j=await r.json();
+  const now=Date.now()/1000;
+  return (j.ac||[]).filter(function(a){
+    return Number.isFinite(Number(a.lat))&&Number.isFinite(Number(a.lon)) &&
+      Math.abs(Number(a.lat))<=90&&Math.abs(Number(a.lon))<=180;
+  }).map(function(a){
+    return {type:'Feature',geometry:{type:'Point',coordinates:[Number(a.lon),Number(a.lat)]},properties:{
+      category:'flight',source:'ADSB.lol ADS-B',status:Number(a.seen_pos||a.seen||999)<30?'LIVE':'RECENT',
+      icao24:a.hex,callsign:(a.flight||'').trim(),registration:a.r||'',aircraft_type:a.t||'',
+      country:a.own_op||'',altitude_m:Number.isFinite(Number(a.alt_baro))?Number(a.alt_baro)*0.3048:null,
+      on_ground:a.alt_baro==='ground',speed_mps:Number.isFinite(Number(a.gs))?Number(a.gs)*0.514444:null,
+      heading:Number.isFinite(Number(a.track))?Number(a.track):null,last_contact:Number.isFinite(Number(a.seen))?now-Number(a.seen):now,
+      seen_pos_s:a.seen_pos,query_radius_nm:radiusNm
+    }};
   });
 }
 function transitMode(v){
@@ -125,7 +144,7 @@ router.get('/movement',async function(req,res){
   var b=bbox(req.query.bbox);if(!b)return res.status(400).json({error:'invalid bbox'});
   var layers=String(req.query.layers||'flights,ships,public-transport,cameras,cells,infrastructure').split(',').map(function(x){return x.trim()});
   var features=[],sources=[];
-  if(layers.includes('flights'))try{var f=await flights(b);features.push.apply(features,f);sources.push({layer:'flights',status:'live',source:'OpenSky ADS-B',count:f.length})}catch(e){sources.push({layer:'flights',status:'error',source:'OpenSky ADS-B',error:e.message})}
+  if(layers.includes('flights'))try{var f=await flights(b);features.push.apply(features,f);sources.push({layer:'flights',status:'live',source:'ADSB.lol ADS-B',count:f.length})}catch(e){sources.push({layer:'flights',status:'error',source:'ADSB.lol ADS-B',error:e.message})}
   if(layers.includes('ships'))try{var s=await ships(b);features.push.apply(features,s);sources.push({layer:'ships',status:aisUrl?'live':'api-key-or-feed-required',source:'AIS',count:s.length})}catch(e){sources.push({layer:'ships',status:'error',source:'AIS',error:e.message})}
   if(layers.includes('public-transport')){var t=await transit();features.push.apply(features,t);sources.push({layer:'public-transport',status:gtfsUrls.length&&t.length?'live':gtfsUrls.length?'no-current-vehicles':'feed-required',source:'GTFS-Realtime',count:t.length})}
   if(layers.includes('cameras')||layers.includes('infrastructure'))try{var a=await osmAssets(b);var aa=layers.includes('cameras')&&!layers.includes('infrastructure')?a.filter(function(x){return x.properties.category==='camera'}):a;features.push.apply(features,aa);sources.push({layer:'public-assets',status:'live',source:'OpenStreetMap/Overpass',count:aa.length})}catch(e){sources.push({layer:'public-assets',status:'error',source:'OpenStreetMap/Overpass',error:e.message})}
@@ -134,6 +153,6 @@ router.get('/movement',async function(req,res){
 });
 router.get('/cells',async function(req,res){var b=bbox(req.query.bbox);if(!b)return res.status(400).json({error:'invalid bbox'});try{res.json(await cells(b))}catch(e){res.status(502).json({error:e.message})}});
 router.get('/assets',async function(req,res){var b=bbox(req.query.bbox);if(!b)return res.status(400).json({error:'invalid bbox'});try{res.json({source:'OpenStreetMap/Overpass',features:await osmAssets(b)})}catch(e){res.status(502).json({error:e.message})}});
-router.get('/status',function(_,res){res.json({flights:'live',ships:aisUrl?'configured':'feed-required',publicTransport:gtfsUrls.length?'configured':'no-live-feed-configured',publicTransportFeeds:gtfsUrls.map(function(u){var c=gtfsCache.get(u);return {url:u,status:c&&c.status||'not-polled',vehicles:c?c.features.length:0,error:c&&c.error||null,lastPoll:c&&new Date(c.fetchedAt).toISOString()||null}}),publicAssets:'live',publicCells:cellKey?'configured':'api-key-required'})});
+router.get('/status',function(_,res){res.json({flights:'ADSB.lol-live',ships:aisUrl?'configured':'feed-required',publicTransport:gtfsUrls.length?'configured':'no-live-feed-configured',publicTransportFeeds:gtfsUrls.map(function(u){var c=gtfsCache.get(u);return {url:u,status:c&&c.status||'not-polled',vehicles:c?c.features.length:0,error:c&&c.error||null,lastPoll:c&&new Date(c.fetchedAt).toISOString()||null}}),publicAssets:'live',publicCells:cellKey?'configured':'api-key-required'})});
 
 export default router;
