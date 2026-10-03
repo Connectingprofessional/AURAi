@@ -267,7 +267,7 @@ router.get('/search',async function(req,res){
   const q=String(req.query.q||'').trim();
   if(!q)return res.status(400).json({error:'q is required'});
   const out=[];
-  const coord=q.match(/^\\s*(-?\\d+(?:\\.\\d+)?)\\s*,\\s*(-?\\d+(?:\\.\\d+)?)\\s*$/);
+  const coord=q.match(/^\s*(-?\d+(?:\.\d+)?)\s*,\s*(-?\d+(?:\.\d+)?)\s*$/);
   if(coord) out.push({type:'coordinate',lat:Number(coord[1]),lon:Number(coord[2]),label:q});
   try{
     const nr=await fetch('https://nominatim.openstreetmap.org/search?format=jsonv2&limit=5&q='+encodeURIComponent(q),{headers:{'User-Agent':'TrackMeNow/1.0'}});

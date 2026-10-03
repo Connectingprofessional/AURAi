@@ -17,7 +17,8 @@ const wss = new WebSocketServer({ server, path: '/ws' });
 app.use(cors());
 app.use(express.json({ limit: '2mb' }));
 app.use(express.static(path.join(__dirname, '..', 'frontend')));
-app.use('/api/global', globalSourcesRouter);\napp.get('/api/ads', (req,res)=>{
+app.use('/api/global', globalSourcesRouter);
+app.get('/api/ads', (req,res)=>{
   const apiKey=process.env.APPLIXIR_API_KEY||null;
   if(!apiKey)return res.status(404).json({error:'rewarded ads not configured'});
   res.json({api_key:apiKey});
