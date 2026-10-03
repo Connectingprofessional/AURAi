@@ -60,8 +60,8 @@ function showReport(){const f=lastData?.features||[], c={};for(const x of f){con
 loadMovement();
 const leftNav=$('leftNav'),collapseNav=$('collapseNav');
 collapseNav.onclick=()=>{leftNav.classList.toggle('expanded');collapseNav.textContent=leftNav.classList.contains('expanded')?'‹':'›';};
-$('historyBtn').onclick=async()=>{if(!sessionId)return alert('Start GPS first to create authorized location history.');try{const r=await fetch(API+'/api/sessions/'+sessionId+'/history');const d=await r.json();alert('Authorized GPS history points: '+((d.points||d.history||[]).length));}catch(e){alert('History is unavailable for this session.')}};
-$('geoBtn').onclick=()=>alert('Geofences are available for authorized GPS sessions; backend geofence configuration is required before alerts can be evaluated.');
+
+
 
 async function createGeofence(){if(!sessionId)return alert('Start authorized GPS first.');const center=map.getCenter();const raw=prompt('Geofence radius in metres','500');const radius=Number(raw);if(!Number.isFinite(radius)||radius<=0)return;try{const r=await fetch(API+'/api/geofences',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({sessionId,lat:center.lat,lon:center.lng,radius_m:radius,name:'TrackMeNow geofence'})});if(!r.ok)throw Error('Geofence service unavailable');const g=await r.json();const circle=L.circle([g.lat,g.lon],{radius:g.radius_m,color:'#38a5ff',fillOpacity:.08}).addTo(map);circle.bindPopup('<b>AUTHORIZED GEOFENCE</b><br>'+Math.round(g.radius_m)+' m').openPopup()}catch(e){alert(e.message)}}
 $('geoBtn').onclick=createGeofence;
@@ -84,3 +84,12 @@ const originalLoadMovement=loadMovement;
 loadMovement=async function(){await originalLoadMovement();const src=lastData?.sources||[];const errors=src.filter(s=>s.status==='error').length;const badge=$('alertBadge');if(errors){badge.textContent=errors>9?'9+':errors;badge.classList.add('show')}else{badge.classList.remove('show')}};
 window.addEventListener('beforeunload',()=>{if(watchId!==null)navigator.geolocation.clearWatch(watchId)});
 \nconst itkBack=$('itkBack');function closeItk(){itkBack?.classList.remove('on');itkBack?.setAttribute('aria-hidden','true')}$('itkClose')?.addEventListener('click',closeItk);itkBack?.addEventListener('click',e=>{if(e.target===itkBack)closeItk()});document.addEventListener('keydown',e=>{if(e.key==='Escape')closeItk()});$('itkGo')?.addEventListener('click',()=>{const q=$('itkQuery').value.trim();if(q){search.value=q;closeItk();searchPlace()}});
+// TrackMeNow AI bar: uses the same universal search pipeline, never fabricates live intelligence.
+(function(){
+  const ai=$('trackmenowAi'), input=$('tmAiInput'), go=$('tmAiGo');
+  function run(){const q=(input?.value||'').trim();if(!q)return;if(search){search.value=q;searchPlace();}ai?.classList.remove('on');}
+  go?.addEventListener('click',run);
+  input?.addEventListener('keydown',e=>{if(e.key==='Enter')run();});
+  setTimeout(()=>ai?.classList.add('on'),700);
+  document.addEventListener('keydown',e=>{if(e.key==='Escape')ai?.classList.remove('on');});
+})();
