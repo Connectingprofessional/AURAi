@@ -3,7 +3,7 @@ import GtfsRealtimeBindings from 'gtfs-realtime-bindings';
 
 const router = express.Router();
 const cache = new Map();
-const gtfsUrls = (process.env.GTFS_REALTIME_URLS || '').split(',').map(function(s){return s.trim()}).filter(Boolean);
+const gtfsUrls=(process.env.GTFS_REALTIME_URLS||'').split(',').map(function(s){return s.trim()}).filter(Boolean); if(process.env.DELHI_OTD_API_KEY) gtfsUrls.push('https://otd.delhi.gov.in/api/realtime/VehiclePositions.pb?key='+encodeURIComponent(process.env.DELHI_OTD_API_KEY)); const gtfsIntervalMs=Math.max(10000,Number(process.env.GTFS_POLL_INTERVAL_MS||15000)); const gtfsCache=new Map();
 const aisUrl = process.env.AIS_API_URL || '';
 const overpassUrl = process.env.OVERPASS_URL || 'https://overpass-api.de/api/interpreter';
 const cellKey = process.env.OPENCELLID_API_KEY || '';
@@ -39,23 +39,23 @@ function transitMode(v){
   return 'bus';
 }
 async function transit(){
-  var out=[];
+  var out=[],nowMs=Date.now();
   for(var i=0;i<gtfsUrls.length;i++){
-    var u=gtfsUrls[i];
+    var u=gtfsUrls[i],c=gtfsCache.get(u);
+    if(c&&nowMs-c.fetchedAt<gtfsIntervalMs){out.push.apply(out,c.features);continue}
     try{
-      var r=await fetch(u,{headers:{'User-Agent':'TrackMeNow/1.0'}});
-      if(!r.ok) continue;
-      var bytes=new Uint8Array(await r.arrayBuffer());
-      var feed=GtfsRealtimeBindings.transit_realtime.FeedMessage.decode(bytes);
-      var now=Date.now()/1000;
-      for(var e of (feed.entity||[])){
-        var v=e.vehicle,p=v&&v.position;
-        if(!p||!Number.isFinite(p.latitude)||!Number.isFinite(p.longitude)) continue;
-        var ts=Number(v.timestamp||feed.header&&feed.header.timestamp||0);
-        if(ts&&now-ts>180) continue;
-        out.push({type:'Feature',geometry:{type:'Point',coordinates:[p.longitude,p.latitude]},properties:{category:'public-transport',mode:transitMode(v),source:'GTFS-Realtime',feed:u,vehicle_id:v.vehicle&&v.vehicle.id||e.id,label:v.vehicle&&v.vehicle.label||'',trip_id:v.trip&&v.trip.tripId||'',route_id:v.trip&&v.trip.routeId||'',speed_mps:p.speed,bearing:p.bearing,timestamp:ts}});
+      var r=await fetch(u,{headers:{'User-Agent':'TrackMeNow/1.0','Accept':'application/x-protobuf,application/octet-stream'}});
+      if(!r.ok)throw Error('HTTP '+r.status);
+      var feed=GtfsRealtimeBindings.transit_realtime.FeedMessage.decode(new Uint8Array(await r.arrayBuffer()));
+      var now=Math.floor(Date.now()/1000),features=[];
+      for(var e of(feed.entity||[])){
+        var v=e.vehicle,p=v&&v.position;if(!p||!Number.isFinite(p.latitude)||!Number.isFinite(p.longitude))continue;
+        var ts=Number(v.timestamp||feed.header&&feed.header.timestamp||0);if(ts&&now-ts>180)continue;
+        var mode=transitMode(v);
+        features.push({type:'Feature',geometry:{type:'Point',coordinates:[p.longitude,p.latitude]},properties:{category:'public-transport',mode:mode,source:'GTFS-Realtime',feed:u,vehicle_id:v.vehicle&&v.vehicle.id||e.id,label:v.vehicle&&v.vehicle.label||'',trip_id:v.trip&&v.trip.tripId||'',route_id:v.trip&&v.trip.routeId||'',headsign:v.trip&&v.trip.tripHeadsign||'',speed_mps:p.speed,bearing:p.bearing,timestamp:ts||now}});
       }
-    }catch(e){}
+      gtfsCache.set(u,{fetchedAt:nowMs,features:features,status:'live',error:null});out.push.apply(out,features);
+    }catch(err){gtfsCache.set(u,{fetchedAt:nowMs,features:[],status:'error',error:err.message})}
   }
   return out;
 }
@@ -122,6 +122,6 @@ router.get('/movement',async function(req,res){
 });
 router.get('/cells',async function(req,res){var b=bbox(req.query.bbox);if(!b)return res.status(400).json({error:'invalid bbox'});try{res.json(await cells(b))}catch(e){res.status(502).json({error:e.message})}});
 router.get('/assets',async function(req,res){var b=bbox(req.query.bbox);if(!b)return res.status(400).json({error:'invalid bbox'});try{res.json({source:'OpenStreetMap/Overpass',features:await osmAssets(b)})}catch(e){res.status(502).json({error:e.message})}});
-router.get('/status',function(_,res){res.json({flights:'live',ships:aisUrl?'configured':'feed-required',publicTransport:gtfsUrls.length?'configured':'feed-required',publicAssets:'live',publicCells:cellKey?'configured':'api-key-required'})});
+router.get('/status',function(_,res){res.json({flights:'live',ships:aisUrl?'configured':'feed-required',publicTransport:gtfsUrls.length?'configured':'no-live-feed-configured',publicTransportFeeds:gtfsUrls.map(function(u){var c=gtfsCache.get(u);return {url:u,status:c&&c.status||'not-polled',vehicles:c?c.features.length:0,error:c&&c.error||null,lastPoll:c&&new Date(c.fetchedAt).toISOString()||null}}),publicAssets:'live',publicCells:cellKey?'configured':'api-key-required'})});
 
 export default router;
