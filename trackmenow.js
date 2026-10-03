@@ -6,7 +6,7 @@ const streets=L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZ
 const terrain=L.tileLayer('https://{s}.tile.opentopomap.org/{z}/{y}/{x}.png',{maxZoom:17,attribution:'© OpenTopoMap'});
 L.control.zoom({position:'bottomright'}).addTo(map);
 L.control.layers({Satellite:satellite,Street:streets,Terrain:terrain},{Labels:labels},{collapsed:true,position:'bottomright'}).addTo(map);
-const $=id=>document.getElementById(id), search=$('search'), status=$('status'), coords=$('coords'), rightPanel=$('rightPanel');
+const $=id=>document.getElementById(id), search=$('search'), status=$('status'), coords=$('coords'), rightPanel=$('rightPanel');\nconst transportControls=document.getElementById('transportControls');\nif(transportControls){transportControls.querySelectorAll('button[data-layer]').forEach(function(btn){btn.addEventListener('click',function(){const layer=btn.dataset.layer;if(selected.has(layer)){selected.delete(layer);btn.classList.remove('active')}else{selected.add(layer);btn.classList.add('active')}loadMovement()})})}
 let historyLine=null; let lastGpsPoint=null;
 // Persistent live-object state: only source observations are stored. Intermediate animation is visual interpolation between real observations.
 const liveObjects=new Map(); const liveTrails=new Map(); const LIVE_ANIM_MS=4300; const TRAIL_POINTS=6;
