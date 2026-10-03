@@ -5,7 +5,7 @@ const streets=L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZ
 const terrain=L.tileLayer('https://{s}.tile.opentopomap.org/{z}/{y}/{x}.png',{maxZoom:17,attribution:'© OpenTopoMap contributors'});
 L.control.layers({Map:streets,Satellite:satellite,Terrain:terrain},{'Satellite labels':labels},{collapsed:true,position:'bottomright'}).addTo(map);
 const status=document.getElementById('status'),search=document.getElementById('search');
-const selected=new Set(['flights']); const layerGroups=new Map(); let marker,accuracy,trail,sessionId,watchId; const trailPoints=[];
+const selected=new Set(['flights','ships','public-transport','cameras','cells']); const layerGroups=new Map(); let marker,accuracy,trail,sessionId,watchId; const trailPoints=[];
 const icons={flight:'✈',transit:'●',camera:'📷'};
 function clearLayer(name){const g=layerGroups.get(name);if(g){g.clearLayers();map.removeLayer(g);layerGroups.delete(name)}}
 function drawFeatures(fc){
@@ -13,12 +13,12 @@ function drawFeatures(fc){
   for(const f of fc.features||[]){
     const p=f.properties||{}, name=p.category==='flight'?'flights':p.category==='camera'?'cameras':(p.mode==='transit'?'transit':'other');
     if(name==='other') continue;
-    const logical=name==='transit'?(selected.has('bus')||selected.has('rail')?'transit':null):name;
+    const logical=name;
     if(!logical) continue;
     const coords=f.geometry?.coordinates; if(!coords) continue;
     let g=layerGroups.get(logical); if(!g) {g=L.layerGroup().addTo(map);layerGroups.set(logical,g)}
     const label=p.callsign||p.label||p.vehicle_id||p.name||p.source||logical;
-    const html='<b>'+icons[p.category]+'</b> '+String(label).replace(/[<>]/g,'')+'<br><small>'+String(p.source||'public feed').replace(/[<>]/g,'')+'</small>';
+    const html='<b>'+(icons[p.category]||icons[p.mode]||'•')+'</b> '+String(label).replace(/[<>]/g,'')+'<br><small>'+String(p.source||'public feed').replace(/[<>]/g,'')+'</small>';
     L.circleMarker([coords[1],coords[0]],{radius:p.category==='flight'?5:4,weight:1,fillOpacity:.85}).bindPopup(html).addTo(g);
   }
 }
@@ -27,7 +27,7 @@ async function loadMovement(){
   if(!selected.size)return;
   status.textContent='MAP · LOADING LIVE SOURCES…';
   try{
-    const r=await fetch('/api/movement?bbox='+encodeURIComponent(bbox)+'&layers='+encodeURIComponent([...selected].join(',')));
+    const r=await fetch(API+'/api/global/movement?bbox='+encodeURIComponent(bbox)+'&layers='+encodeURIComponent([...selected].join(',')));
     const data=await r.json(); drawFeatures(data);
     const live=(data.sources||[]).filter(s=>s.status==='live').length;
     status.textContent='MAP · '+live+' LIVE SOURCES · '+new Date().toLocaleTimeString();
