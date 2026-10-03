@@ -192,6 +192,32 @@ router.get('/movement',async function(req,res){
   if(layers.includes('cells'))try{var c=await cells(b);features.push.apply(features,c.features);sources.push({layer:'cells',status:c.status,source:c.source,count:c.features.length})}catch(e){sources.push({layer:'cells',status:'error',source:'OpenCelliD',error:e.message})}
   res.json({type:'FeatureCollection',features:features,sources:sources,generatedAt:new Date().toISOString()});
 });
+router.get('/search',async function(req,res){
+  const q=String(req.query.q||'').trim();
+  if(!q)return res.status(400).json({error:'q is required'});
+  const out=[];
+  const coord=q.match(/^\\s*(-?\\d+(?:\\.\\d+)?)\\s*,\\s*(-?\\d+(?:\\.\\d+)?)\\s*$/);
+  if(coord) out.push({type:'coordinate',lat:Number(coord[1]),lon:Number(coord[2]),label:q});
+  try{
+    const nr=await fetch('https://nominatim.openstreetmap.org/search?format=jsonv2&limit=5&q='+encodeURIComponent(q),{headers:{'User-Agent':'TrackMeNow/1.0'}});
+    if(nr.ok){const places=await nr.json();for(const p of places)out.push({type:'place',lat:Number(p.lat),lon:Number(p.lon),label:p.display_name,osm_type:p.osm_type,osm_id:p.osm_id});}
+  }catch(e){}
+  const safeQ=encodeURIComponent(q.toUpperCase());
+  const aircraftUrls=[
+    'https://api.adsb.lol/v2/callsign/'+safeQ,
+    'https://api.adsb.lol/v2/icao/'+safeQ,
+    'https://api.adsb.lol/v2/reg/'+safeQ
+  ];
+  for(const u of aircraftUrls){try{
+    const r=await fetch(u,{headers:{'User-Agent':'TrackMeNow/1.0'}});if(!r.ok)continue;
+    const j=await r.json();for(const a of (j.ac||[])){
+      if(Number.isFinite(Number(a.lat))&&Number.isFinite(Number(a.lon)))out.push({type:'aircraft',lat:Number(a.lat),lon:Number(a.lon),label:(a.flight||a.hex||q).trim(),icao24:a.hex,callsign:(a.flight||'').trim(),registration:a.r,altitude_m:a.alt_baro,speed_mps:Number.isFinite(Number(a.gs))?Number(a.gs)*0.514444:null,heading:a.track,source:'ADSB.lol'});
+    }
+  }catch(e){}}
+  const unique=[];const seen=new Set();for(const x of out){const k=[x.type,x.lat,x.lon,x.label].join('|');if(!seen.has(k)){seen.add(k);unique.push(x)}}
+  res.json({query:q,results:unique.slice(0,20)});
+});
+
 router.get('/cells',async function(req,res){var b=bbox(req.query.bbox);if(!b)return res.status(400).json({error:'invalid bbox'});try{res.json(await cells(b))}catch(e){res.status(502).json({error:e.message})}});
 router.get('/assets',async function(req,res){var b=bbox(req.query.bbox);if(!b)return res.status(400).json({error:'invalid bbox'});try{res.json({source:'OpenStreetMap/Overpass',features:await osmAssets(b)})}catch(e){res.status(502).json({error:e.message})}});
 router.get('/status',function(_,res){res.json({flights:'ADSB.lol-live',ships:aisUrl?'configured':'feed-required',publicTransport:gtfsUrls.length?'configured':'no-live-feed-configured',publicTransportFeeds:gtfsUrls.map(function(u){var c=gtfsCache.get(u);return {url:u,status:c&&c.status||'not-polled',vehicles:c?c.features.length:0,error:c&&c.error||null,lastPoll:c&&new Date(c.fetchedAt).toISOString()||null}}),publicAssets:'live',publicCells:cellKey?'configured':'api-key-required',aisStream:aisStreamKey?'configured':'api-key-required',taxiFeed:taxiUrl?'configured':'feed-required'})});
