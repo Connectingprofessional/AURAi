@@ -68,8 +68,17 @@
 .itk-trk{border:1px solid rgba(43,240,200,.18);background:rgba(43,240,200,.035);border-radius:8px;padding:9px;margin-top:9px}.itk-trk-h{display:flex;justify-content:space-between;font-size:10px;text-transform:uppercase;letter-spacing:.08em;color:#6f8a90}.itk-trk svg{width:100%;height:54px;display:block;margin-top:5px}.itk-trk-r.viva{color:#2bf0c8}
 .itk-tl{margin-top:9px}.itk-tl-h{display:flex;justify-content:space-between;font-size:10px;color:#6f8a90}.itk-tl-bar{height:8px;border-radius:4px;background:rgba(255,255,255,.08);margin:7px 0;position:relative;cursor:pointer}.itk-tl-bar i{position:absolute;left:0;top:0;height:100%;width:42%;border-radius:4px;background:linear-gradient(90deg,#4ca8ff,#8c7bff)}.itk-tl-bar:after{content:"";position:absolute;left:42%;top:50%;width:12px;height:12px;border-radius:50%;background:#dceeff;transform:translate(-50%,-50%);box-shadow:0 0 0 3px rgba(76,168,255,.22)}
 @media(max-width:640px){.itk-ai{width:calc(100vw - 16px);bottom:12px;padding-left:11px}.itk-sub-p b{font-size:27px}.itk-sub-p s{font-size:18px}.itk-sx>b{font-size:26px}.itk-sx{margin-bottom:9px;padding:8px 10px}.itk-cmp{font-size:11.8px}.itk-cmp td{padding:6px 3px}.itk-trk{padding:8px}}
+</style><style>
+.transport-controls{position:fixed;left:72px;top:78px;z-index:1200;display:flex;gap:6px;padding:6px;background:rgba(7,12,18,.88);border:1px solid rgba(255,255,255,.12);border-radius:8px;backdrop-filter:blur(8px)}
+.transport-controls button{border:1px solid #33404d;background:#111a23;color:#dce7ee;padding:7px 10px;border-radius:5px;font:600 11px Arial;cursor:pointer}
+.transport-controls button.active{border-color:#56b7ff;background:#17354b;color:#fff}
 </style></head>
-<body><div id="map-bg-scan"></div>
+<body><div class="transport-controls" id="transportControls">
+<button data-layer="flights" class="active">✈ AIR</button>
+<button data-layer="ships" class="active">⚓ SHIPS</button>
+<button data-layer="public-transport" class="active">🚌 TRANSIT</button>
+<button data-layer="road" class="active">🚕 ROAD</button>
+</div><div id="map-bg-scan"></div>
 <div id="splash" aria-label="TrackMeNow loading">
 <div class="splash-mark"><div class="splash-ring"></div><div class="splash-ring2"></div><div class="splash-logo">◎</div></div>
 <div class="splash-title">TRACKMENOW</div><div class="splash-sub">GLOBAL INTELLIGENCE</div>
