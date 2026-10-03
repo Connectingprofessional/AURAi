@@ -1,23 +1,62 @@
 <!doctype html>
 <html lang="en">
 <head>
-<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>TrackMeNow — Map Intelligence</title>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>TrackMeNow — Global Intelligence</title>
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
 <style>
-html,body,#map{height:100%;margin:0}body{overflow:hidden;background:#081018;font-family:system-ui,-apple-system,Segoe UI,sans-serif}
-.top{position:fixed;z-index:1000;top:12px;left:50%;transform:translateX(-50%);display:flex;gap:7px;width:min(850px,calc(100% - 24px));padding:7px;border-radius:13px;background:rgba(8,15,23,.84);backdrop-filter:blur(12px);box-shadow:0 8px 28px rgba(0,0,0,.3)}
-input{flex:1;min-width:0;border:0;outline:0;border-radius:8px;padding:11px 12px;background:#14202b;color:#fff;font-size:14px}.btn{border:0;border-radius:8px;padding:0 13px;background:#1976ff;color:#fff;font-weight:700;cursor:pointer}.btn.stop{background:#a52c38}
-.legend{position:fixed;z-index:999;right:12px;top:76px;display:flex;flex-direction:column;gap:5px;align-items:flex-end}.layer{border:1px solid rgba(255,255,255,.12);background:rgba(8,15,23,.8);color:#dce8f4;border-radius:8px;padding:7px 9px;font-size:11px;cursor:pointer;backdrop-filter:blur(10px)}.layer.on{background:rgba(25,118,255,.9)}
-.status{position:fixed;z-index:999;left:12px;bottom:12px;padding:8px 10px;border-radius:9px;background:rgba(8,15,23,.8);color:#dce8f4;font-size:11px;backdrop-filter:blur(10px)}
-.leaflet-control-attribution{font-size:9px}
-#cameraPanel{position:fixed;z-index:1200;right:14px;bottom:14px;width:min(360px,calc(100% - 28px));padding:10px;border-radius:12px;background:rgba(8,15,23,.94);color:#e7f1fb;box-shadow:0 12px 40px rgba(0,0,0,.45);backdrop-filter:blur(14px)}#cameraPanel[hidden]{display:none}.cameraHead{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px}.cameraHead button{background:none;border:0;color:#fff;font-size:22px;cursor:pointer}#cameraDevice{width:100%;margin-bottom:8px;padding:8px;border-radius:7px;background:#14202b;color:#fff;border:1px solid #263746}#cameraVideo{display:block;width:100%;aspect-ratio:16/9;object-fit:cover;border-radius:8px;background:#020609}.cameraActions{display:flex;gap:6px;margin-top:8px}.cameraActions .btn{padding:8px 9px}.cameraInfo{font-size:10px;color:#9db1c4;margin-top:7px;line-height:1.35}</style></head>
+:root{--bg:#071018;--panel:rgba(7,14,21,.93);--panel2:rgba(12,23,33,.9);--line:rgba(165,195,220,.15);--text:#e8f2f8;--muted:#91a7b8;--accent:#38a5ff;--good:#35d49a;--warn:#f4bb55}
+*{box-sizing:border-box}html,body,#map{height:100%;margin:0}body{overflow:hidden;background:var(--bg);color:var(--text);font-family:Inter,ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif}
+#map{position:fixed;inset:0}.leaflet-control-attribution{font-size:9px;background:rgba(0,0,0,.45)!important;color:#b9c8d4!important}.leaflet-control-attribution a{color:#cfe7ff}
+.topbar{position:fixed;z-index:1200;top:10px;left:12px;right:12px;height:54px;display:flex;align-items:center;gap:10px;padding:7px 10px;border:1px solid var(--line);border-radius:14px;background:rgba(6,14,21,.88);backdrop-filter:blur(16px);box-shadow:0 10px 35px rgba(0,0,0,.32)}
+.brand{font-weight:900;letter-spacing:1.5px;font-size:14px;white-space:nowrap}.brand span{color:var(--accent)}.search{display:flex;flex:1;min-width:180px;max-width:720px;margin:auto;gap:6px}.search input{width:100%;height:38px;border:1px solid var(--line);outline:0;border-radius:9px;padding:0 13px;background:#101d27;color:#fff}.btn{height:38px;border:1px solid var(--line);border-radius:9px;padding:0 12px;background:#122331;color:#eaf5fb;font-weight:750;cursor:pointer}.btn.primary{background:#1689ed;border-color:#1689ed}.btn:hover{filter:brightness(1.1)}
+.collapse{position:absolute;right:7px;top:7px;width:26px;height:26px;border:1px solid var(--line);border-radius:7px;background:#122331;color:#fff;cursor:pointer}.left{position:fixed;z-index:1100;top:76px;left:12px;bottom:12px;width:218px;padding:10px;border:1px solid var(--line);border-radius:14px;background:var(--panel);backdrop-filter:blur(15px);box-shadow:0 12px 38px rgba(0,0,0,.3);overflow:auto}.section{margin:7px 4px 6px;color:#6f8799;font-size:9px;font-weight:900;letter-spacing:1.2px;text-transform:uppercase}.nav{display:flex;align-items:center;gap:9px;width:100%;padding:9px 10px;margin:2px 0;border:0;border-radius:8px;background:transparent;color:#c9d8e3;text-align:left;cursor:pointer;font-size:12px}.nav:hover,.nav.active{background:rgba(48,159,238,.14);color:#fff}.nav b{font-size:13px;width:18px;text-align:center}.layerRow{display:flex;align-items:center;justify-content:space-between;padding:7px 8px;font-size:11px;color:#b9cad6}.switch{width:28px;height:15px;border-radius:20px;background:#334957;position:relative;cursor:pointer}.switch:after{content:"";position:absolute;width:11px;height:11px;top:2px;left:2px;border-radius:50%;background:#9db0bd;transition:.15s}.switch.on{background:#1689ed}.switch.on:after{left:15px;background:#fff}
+.right{position:fixed;z-index:1100;top:76px;right:12px;bottom:12px;width:300px;display:flex;flex-direction:column;gap:9px;pointer-events:none}.card{pointer-events:auto;border:1px solid var(--line);border-radius:14px;background:var(--panel);backdrop-filter:blur(15px);box-shadow:0 12px 38px rgba(0,0,0,.32);padding:12px}.card h3{font-size:12px;margin:0 0 9px}.metrics{display:grid;grid-template-columns:1fr 1fr;gap:7px}.metric{padding:9px;border:1px solid var(--line);border-radius:9px;background:rgba(255,255,255,.025)}.metric strong{display:block;font-size:18px}.metric small{color:var(--muted);font-size:9px}.feed{max-height:240px;overflow:auto}.feedItem{padding:8px 0;border-bottom:1px solid var(--line);font-size:10px}.feedItem:last-child{border:0}.dot{display:inline-block;width:6px;height:6px;border-radius:50%;background:var(--good);margin-right:6px}.source{color:var(--muted);font-size:9px}.objectCard{max-height:42vh;overflow:auto}.objectTitle{display:flex;justify-content:space-between;gap:8px}.pill{font-size:8px;padding:3px 6px;border-radius:20px;background:rgba(53,212,154,.12);color:var(--good);border:1px solid rgba(53,212,154,.2)}.kv{display:grid;grid-template-columns:1fr 1fr;gap:5px;margin-top:9px}.kv div{background:rgba(255,255,255,.025);border-radius:7px;padding:6px}.kv small{display:block;color:var(--muted);font-size:8px}.kv span{font-size:10px}
+.bottom{position:fixed;z-index:1150;left:242px;right:324px;bottom:12px;display:flex;justify-content:space-between;gap:10px;pointer-events:none}.status,.coords{pointer-events:auto;padding:8px 10px;border:1px solid var(--line);border-radius:9px;background:var(--panel);backdrop-filter:blur(12px);font-size:10px;color:#c7d6e1}.status .live{color:var(--good);font-weight:800}
+#cameraPanel{display:none!important}
+.report{display:none}.report.show{display:block;position:fixed;inset:80px 325px 20px 242px;z-index:1300;overflow:auto}.reportGrid{display:grid;grid-template-columns:repeat(3,1fr);gap:9px}.reportBlock{border:1px solid var(--line);border-radius:11px;padding:11px;background:rgba(255,255,255,.025)}.reportBlock b{font-size:10px}.reportBlock strong{display:block;font-size:22px;margin-top:4px}.reportClose{float:right}
+@media(max-width:950px){.left{width:185px}.right{width:250px}.bottom{left:207px;right:274px}.report{left:207px;right:274px}.brand{display:none}}
+@media(max-width:700px){.left.collapsed{width:58px;padding:34px 5px 5px}.left.collapsed .label,.left.collapsed .section{display:none}.left.collapsed .nav{justify-content:center}.left.collapsed .collapse{right:16px;top:7px}.left{width:48px;padding:5px}.left .label,.left .section{display:none}.nav{justify-content:center}.right{display:none}.bottom{left:66px;right:10px}.report{left:10px;right:10px}.search{max-width:none}.search input{min-width:0}}
+#map{z-index:1}.leaflet-control-zoom{margin-bottom:8px!important}.leaflet-control-layers{margin-bottom:8px!important}.left,.right,.topbar,.bottom,.report{transition:width .18s ease,left .18s ease,right .18s ease,opacity .18s ease}\n</style>
+</head>
 <body>
 <div id="map"></div>
-<div class="top"><input id="search" placeholder="Search city, place, coordinates, device ID, Cell ID, NCI…"><button class="btn" id="searchBtn">Search</button><button class="btn" id="gpsBtn">Locate Me</button><button class="btn" id="cameraBtn">📷 Camera</button></div>
-<div class="legend" id="layers">
-<button class="layer on" data-layer="flights">✈ Flights</button><button class="layer on" data-layer="ships">⚓ Ships</button><button class="layer on" data-layer="public-transport">🚌 Public Transport</button><button class="layer" data-layer="rail">🚆 Rail & Metro</button><button class="layer" data-layer="cameras">📷 Public Cameras</button><button class="layer" data-layer="cells">📡 Public Cells / Towers</button><button class="layer" data-layer="infrastructure">🏗 Global Assets</button><button class="layer" data-layer="road">🚗 Road Traffic</button>
-</div>
-<div class="status" id="status">MAP · LIVE FEEDS READY</div><div id="cameraPanel" hidden><div class="cameraHead"><b>MY CAMERA</b><button id="cameraClose">×</button></div><select id="cameraDevice"><option value="">Default camera</option></select><video id="cameraVideo" autoplay playsinline muted></video><div class="cameraActions"><button class="btn" id="cameraStart">Start</button><button class="btn" id="cameraShare">Broadcast</button><button class="btn stop" id="cameraStop">Stop</button></div><div class="cameraInfo" id="cameraInfo">Only cameras you explicitly authorize are accessible.</div></div>
-<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script><script src="./trackmenow.js"></script>
-</body></html>
+<header class="topbar">
+  <div class="brand">TRACK<span>ME</span>NOW</div>
+  <div class="search"><input id="search" placeholder="Search aircraft, ship, airport, city, camera, cell, device, coordinates…"><button class="btn primary" id="searchBtn">Search</button></div>
+  <button class="btn" id="gpsBtn">◎ GPS</button>
+</header>
+<aside class="left" id="leftNav">
+  <button class="collapse" id="collapseNav" title="Collapse navigation">‹</button>
+  <div class="section">Navigate</div>
+  <button class="nav active" data-view="map"><b>◉</b><span class="label">Global Live Map</span></button>
+  <button class="nav" data-view="air"><b>✈</b><span class="label">Air · Flights</span></button>
+  <button class="nav" data-view="sea"><b>⚓</b><span class="label">Maritime · Ships</span></button>
+  <button class="nav" data-view="transport"><b>▣</b><span class="label">Transport</span></button>
+  <button class="nav" data-view="cameras"><b>▤</b><span class="label">Public Cameras</span></button>
+  <button class="nav" data-view="infra"><b>⌁</b><span class="label">Infrastructure</span></button>
+  <button class="nav" data-view="events"><b>⚠</b><span class="label">Events & Weather</span></button>
+  <button class="nav" data-view="space"><b>◌</b><span class="label">Space</span></button>
+  <div class="section">Authorized device</div>
+  <button class="nav" id="historyBtn"><b>⌁</b><span class="label">GPS History</span></button>
+  <button class="nav" id="geoBtn"><b>⌖</b><span class="label">Geofences</span></button>
+  <button class="nav" id="reportBtn"><b>▤</b><span class="label">Intelligence Report</span></button>
+  <div class="section">Layers</div>
+  <div id="layerList"></div>
+</aside>
+<aside class="right">
+  <div class="card"><h3>GLOBAL ACTIVITY <span class="pill" id="livePill">LIVE</span></h3><div class="metrics">
+    <div class="metric"><strong id="flightCount">—</strong><small>Aircraft</small></div>
+    <div class="metric"><strong id="shipCount">—</strong><small>Ships</small></div>
+    <div class="metric"><strong id="transportCount">—</strong><small>Transport</small></div>
+    <div class="metric"><strong id="cameraCount">—</strong><small>Cameras</small></div>
+  </div></div>
+  <div class="card"><h3>FEED HEALTH</h3><div class="feed" id="feedHealth"><div class="feedItem">Waiting for live sources…</div></div></div>
+  <div class="card objectCard" id="objectCard"><h3>INTELLIGENCE</h3><div class="source">Select a map object to inspect its source, timestamp and attributes.</div></div>
+</aside>
+<div class="bottom"><div class="status" id="status"><span class="live">●</span> CONNECTING TO GLOBAL SOURCES…</div><div class="coords" id="coords">ZOOM 3 · GLOBAL</div></div>
+<section class="report card" id="report"><button class="btn reportClose" id="reportClose">Close</button><h2 style="margin:0 0 5px;font-size:20px">TrackMeNow Intelligence Report</h2><div class="source" id="reportSubtitle">Current viewport analysis · live sources only</div><hr style="border:0;border-top:1px solid var(--line);margin:12px 0"><div class="reportGrid" id="reportGrid"></div><h3 style="margin-top:18px">Source verification</h3><div class="feed" id="reportSources"></div></section>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script><script src="./app.js"></script>
+</body>
+</html>
