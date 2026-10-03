@@ -206,10 +206,10 @@ async function intelligenceAssets(b){
     if(t.power==='plant'||t.power==='generator'){category='power';sub=t['plant:source']||t['generator:source']||'other'}
     else if(t.telecom==='data_center'||t.building==='data_center'||t.industrial==='data_centre'){category='datacenter';sub=t.operator||'other'}
     else if(t.waterway==='dam'||t.waterway==='weir'){category='dam';sub=t.waterway}
-    else if(t.harbour==='yes'||t.amenity==='ferry_terminal'||t.man_made==='pier'){category='port';sub=t.harbour||'other'}
-    else if(t.railway){category='railway';sub=t.railway}
+    else if(t.harbour==='yes'||t.amenity==='ferry_terminal'||t.man_made==='pier'){category='network';sub='ports'}
+    else if(t.railway){category='network';sub='railway'}
     else if(t.power){category='network';sub=t.power}
-    else if(t.man_made==='communication_line'){category='cable';sub='communication'}
+    else if(t.man_made==='communication_line'){category='network';sub='cables'}
     else if(t.man_made==='mine'||t.man_made==='mineshaft'||t.landuse==='quarry'){category='resource';sub=t.resource||t.landuse||'mining'}
     else if(t.office==='company'&&t.headquarters==='yes'){category='hq';sub=t.office}
     else if(t.amenity==='hospital'){category='poi';sub='hospital'}
