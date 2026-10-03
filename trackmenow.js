@@ -66,3 +66,21 @@ $('geoBtn').onclick=()=>alert('Geofences are available for authorized GPS sessio
 
 async function createGeofence(){if(!sessionId)return alert('Start authorized GPS first.');const center=map.getCenter();const raw=prompt('Geofence radius in metres','500');const radius=Number(raw);if(!Number.isFinite(radius)||radius<=0)return;try{const r=await fetch(API+'/api/geofences',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({sessionId,lat:center.lat,lon:center.lng,radius_m:radius,name:'TrackMeNow geofence'})});if(!r.ok)throw Error('Geofence service unavailable');const g=await r.json();const circle=L.circle([g.lat,g.lon],{radius:g.radius_m,color:'#38a5ff',fillOpacity:.08}).addTo(map);circle.bindPopup('<b>AUTHORIZED GEOFENCE</b><br>'+Math.round(g.radius_m)+' m').openPopup()}catch(e){alert(e.message)}}
 $('geoBtn').onclick=createGeofence;
+
+/* TrackMeNow HUD controls: recording, alerts, toast, dock */
+let tmToastTimer=null;
+function tmToast(message,type='ok'){const el=$('tm-toast');if(!el)return;el.textContent=message;el.className='tm-toast-on '+(type==='warn'?'tm-toast-warn':'tm-toast-ok');clearTimeout(tmToastTimer);tmToastTimer=setTimeout(()=>el.className='',3200)}
+function tmSetRecording(on){document.body.classList.toggle('tm-recording',on);$('dockRec')?.classList.toggle('on',on);$('recBadge')?.classList.toggle('show',on)}
+const oldGpsHandler=$('gpsBtn').onclick;
+$('gpsBtn').onclick=async()=>{await oldGpsHandler();const active=watchId!==null;tmSetRecording(active);tmToast(active?'AUTHORIZED GPS RECORDING STARTED · LOCATION HISTORY ACTIVE':'GPS RECORDING STOPPED',active?'ok':'warn')};
+$('dockRec').onclick=()=>$('gpsBtn').click();
+$('dockGeo').onclick=()=>$('geoBtn').click();
+$('dockHistory').onclick=()=>$('historyBtn').click();
+$('dockReport').onclick=()=>$('reportBtn').click();
+$('dockMap').onclick=()=>{map.setView([20,0],3,{animate:true});tmToast('GLOBAL LIVE MAP');};
+$('dockAlerts').onclick=()=>{const b=$('alertBadge');b.textContent='0';b.classList.remove('show');tmToast('NO ACTIVE TRACKMENOW ALERTS')};
+const originalCreateGeofence=createGeofence;
+createGeofence=async function(){const before=groups.size;await originalCreateGeofence();tmToast('GEOFENCE TOOL READY · AUTHORIZED SESSION REQUIRED')};
+const originalLoadMovement=loadMovement;
+loadMovement=async function(){await originalLoadMovement();const src=lastData?.sources||[];const errors=src.filter(s=>s.status==='error').length;const badge=$('alertBadge');if(errors){badge.textContent=errors>9?'9+':errors;badge.classList.add('show')}else{badge.classList.remove('show')}};
+window.addEventListener('beforeunload',()=>{if(watchId!==null)navigator.geolocation.clearWatch(watchId)});
