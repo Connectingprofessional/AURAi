@@ -191,6 +191,9 @@ async function intelligenceAssets(b){
     'nwr["landuse"="quarry"]('+b.minLat+','+b.minLon+','+b.maxLat+','+b.maxLon+');'+
     'nwr["industrial"="data_centre"]('+b.minLat+','+b.minLon+','+b.maxLat+','+b.maxLon+');'+
     'nwr["office"="company"]["headquarters"="yes"]('+b.minLat+','+b.minLon+','+b.maxLat+','+b.maxLon+');'+
+    'nwr["office"="government"]('+b.minLat+','+b.minLon+','+b.maxLat+','+b.maxLon+');'+
+    'nwr["government"]('+b.minLat+','+b.minLon+','+b.maxLat+','+b.maxLon+');'+
+    'nwr["government"="administrative"]('+b.minLat+','+b.minLon+','+b.maxLat+','+b.maxLon+');'+
     'nwr["amenity"="hospital"]('+b.minLat+','+b.minLon+','+b.maxLat+','+b.maxLon+');'+
     'nwr["office"="diplomatic"]('+b.minLat+','+b.minLon+','+b.maxLat+','+b.maxLon+');'+
     'nwr["amenity"="embassy"]('+b.minLat+','+b.minLon+','+b.maxLat+','+b.maxLon+');'+
@@ -212,6 +215,7 @@ async function intelligenceAssets(b){
     else if(t.man_made==='communication_line'){category='network';sub='cables'}
     else if(t.man_made==='mine'||t.man_made==='mineshaft'||t.landuse==='quarry'){category='resource';sub=t.resource||t.landuse||'mining'}
     else if(t.office==='company'&&t.headquarters==='yes'){category='hq';sub=t.office}
+    else if(t.office==='government'||t.government){category='government';sub=t.government||'government'}
     else if(t.amenity==='hospital'){category='poi';sub='hospital'}
     else if(t.office==='diplomatic'||t.amenity==='embassy'){category='poi';sub='embassy'}
     else if(t.military){category='poi';sub='military'}
@@ -230,6 +234,23 @@ async function cells(b){
   return {status:'live',source:'OpenCelliD',features:(j.cells||[]).map(function(c){return {type:'Feature',geometry:{type:'Point',coordinates:[Number(c.lon),Number(c.lat)]},properties:{category:'cell',source:'OpenCelliD',mcc:c.mcc,mnc:c.mnc,lac:c.lac,tac:c.tac,cellid:c.cellid,radio:c.radio,range_m:c.range,samples:c.samples,signal:c.averageSignalStrength}}})};
 }
 
+async function liveEvents(){
+  const out=[],sources=[];
+  try{
+    const r=await fetch('https://earthquake.usgs.gov/earthquakes/feed/v1.0/summary/all_day.geojson',{headers:{'User-Agent':'TrackMeNow/1.0'}});
+    if(!r.ok)throw Error('USGS HTTP '+r.status);
+    const j=await r.json();
+    for(const f of (j.features||[])){
+      const c=f.geometry&&f.geometry.coordinates||[];
+      if(!Number.isFinite(Number(c[0]))||!Number.isFinite(Number(c[1])))continue;
+      const p=f.properties||{};
+      out.push({type:'Feature',geometry:{type:'Point',coordinates:[Number(c[0]),Number(c[1])]},properties:{category:'event',eventType:'quake',source:'USGS Earthquake Hazards Program',status:'LIVE FEED',name:p.place||'Earthquake',magnitude:p.mag,time:p.time,url:p.url,ts:p.time}});
+    }
+    sources.push({type:'quake',source:'USGS',status:'live',count:out.length});
+  }catch(e){sources.push({type:'quake',source:'USGS',status:'error',error:e.message})}
+  return {features:out,sources};
+}
+router.get('/events',async function(req,res){try{res.json(await liveEvents())}catch(e){res.status(502).json({error:e.message})}});
 router.get('/movement',async function(req,res){
   var b=bbox(req.query.bbox);if(!b)return res.status(400).json({error:'invalid bbox'});
   var layers=String(req.query.layers||'flights,ships,public-transport,cameras,cells,infrastructure').split(',').map(function(x){return x.trim()});
