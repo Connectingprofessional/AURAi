@@ -18,8 +18,17 @@
 .leaflet-control-zoom{margin-right:14px!important;margin-bottom:58px!important}.leaflet-control-layers{margin-right:14px!important;margin-bottom:8px!important}.leaflet-popup-content-wrapper,.leaflet-popup-tip{background:#0a1219;color:#eaf4f8;border:1px solid #ffffff18}.leaflet-popup-content{font-size:10px}
 @media(max-width:700px){.brand{display:none}.left{left:8px;top:62px;bottom:48px}.right{display:none}.bottom{left:70px;right:8px}.search{max-width:none}.search input{font-size:10px}.gps{padding:0 8px}}
 </style>
+<style id="trackmenow-splash-css">
+#map-bg-scan{position:fixed;inset:0;z-index:0;pointer-events:none;background:#050810;background-image:linear-gradient(rgba(11,211,211,.055) 1px,transparent 1px),linear-gradient(90deg,rgba(11,211,211,.055) 1px,transparent 1px);background-size:48px 48px}
+#splash{position:fixed;inset:0;z-index:9999;display:flex;flex-direction:column;align-items:center;justify-content:center;background:#05080c;transition:opacity .55s ease}.splash-mark{position:relative;width:92px;height:92px;display:flex;align-items:center;justify-content:center}.splash-logo{font-size:54px;color:#fff;text-shadow:0 0 12px rgba(11,211,211,.9);animation:splash-pulse 1.6s ease-in-out infinite}.splash-ring,.splash-ring2{position:absolute;border-radius:50%;border:2px solid transparent}.splash-ring{inset:0;border-color:rgba(11,211,211,.14);border-top-color:#0bd3d3;animation:splash-spin 1s linear infinite}.splash-ring2{inset:11px;border-width:1px;border-color:rgba(11,211,211,.08);border-bottom-color:rgba(11,211,211,.55);animation:splash-spin 1.7s linear infinite reverse}.splash-title{margin-top:24px;font-family:ui-monospace,monospace;letter-spacing:5px;font-size:15px;color:#eafeff;text-shadow:0 0 12px rgba(11,211,211,.45)}.splash-sub{margin-top:8px;font-family:ui-monospace,monospace;letter-spacing:3px;font-size:9px;color:#0bd3d3;opacity:.75}.splash-loader{margin-top:30px;width:min(360px,70vw);display:flex;flex-direction:column;align-items:center;gap:11px}.splash-bar{width:100%;height:4px;background:rgba(11,211,211,.1);border-radius:3px;overflow:hidden}.splash-bar-fill{display:block;height:100%;width:0;background:linear-gradient(90deg,#0bd3d3,#5bfffd,#0bd3d3);box-shadow:0 0 10px rgba(11,211,211,.85);transition:width .25s ease}.splash-meta{display:flex;gap:12px;width:100%}.splash-status{font-family:ui-monospace,monospace;letter-spacing:1.2px;font-size:7px;color:#0bd3d3;opacity:.75;flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.splash-pct{font-family:ui-monospace,monospace;font-size:9px;color:#0bd3d3;min-width:40px;text-align:right}@keyframes splash-spin{to{transform:rotate(360deg)}}@keyframes splash-pulse{0%,100%{opacity:.82;transform:scale(.94)}50%{opacity:1;transform:scale(1.05)}}#splash.open{opacity:0;pointer-events:none}
+</style>
 </head>
-<body>
+<body><div id="map-bg-scan"></div>
+<div id="splash" aria-label="TrackMeNow loading">
+<div class="splash-mark"><div class="splash-ring"></div><div class="splash-ring2"></div><div class="splash-logo">◎</div></div>
+<div class="splash-title">TRACKMENOW</div><div class="splash-sub">GLOBAL INTELLIGENCE</div>
+<div class="splash-loader"><div class="splash-bar"><span class="splash-bar-fill" id="splashFill"></span></div>
+<div class="splash-meta"><div class="splash-status" id="splashStatus">INITIALIZING MAP ENGINE</div><div class="splash-pct" id="splashPct">0%</div></div></div></div>
 <div id="map"></div>
 <header class="topbar">
   <div class="brand">TRACK<span>ME</span>NOW</div>
@@ -57,5 +66,5 @@
 <div class="bottom"><div class="status" id="status"><span class="live">●</span> CONNECTING TO GLOBAL SOURCES…</div><div class="coords" id="coords">ZOOM 3 · GLOBAL</div></div>
 <section class="report card" id="report"><button class="btn reportClose" id="reportClose">Close</button><h2 style="margin:0 0 5px;font-size:20px">TrackMeNow Intelligence Report</h2><div class="source" id="reportSubtitle">Current viewport analysis · live sources only</div><hr style="border:0;border-top:1px solid var(--line);margin:12px 0"><div class="reportGrid" id="reportGrid"></div><h3 style="margin-top:18px">Source verification</h3><div class="feed" id="reportSources"></div></section>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script><script src="./trackmenow.js"></script>
-</body>
+<script>(function(){const s=document.getElementById('splash'),f=document.getElementById('splashFill'),p=document.getElementById('splashPct'),t=document.getElementById('splashStatus');const a=[['INITIALIZING MAP ENGINE',18],['LOADING SATELLITE BASEMAP',38],['CONNECTING LIVE SOURCES',62],['LOADING GLOBAL TRANSPORT',82],['TRACKMENOW READY',100]];function go(i){if(i>=a.length){setTimeout(()=>s.classList.add('open'),450);return}f.style.width=a[i][1]+'%';p.textContent=a[i][1]+'%';t.textContent=a[i][0];setTimeout(()=>go(i+1),i?420:300)}window.addEventListener('load',()=>go(0));setTimeout(()=>{if(!s.classList.contains('open')){f.style.width='100%';p.textContent='100%';t.textContent='MAP READY';setTimeout(()=>s.classList.add('open'),350)}},5000)})()</script></body>
 </html>
