@@ -125,9 +125,49 @@ async function geo(url,b,source){
   var j=await r.json();
   return (j.features||[]).map(function(f){return Object.assign({},f,{properties:Object.assign({},f.properties||{},{source:(f.properties&&f.properties.source)||source})})});
 }
+function ensureShipStream(b){
+  if(!aisStreamKey)return;
+  const key=[b.minLat.toFixed(2),b.minLon.toFixed(2),b.maxLat.toFixed(2),b.maxLon.toFixed(2)].join(',');
+  if(shipStream.socket&&shipStream.connected&&shipStream.bboxKey===key)return;
+  if(shipStream.socket){try{shipStream.socket.close()}catch(e){}}
+  shipStream.bboxKey=key;shipStream.connected=false;
+  const ws=new WebSocket('wss://stream.aisstream.io/v0/stream',{perMessageDeflate:true});
+  shipStream.socket=ws;
+  ws.on('open',function(){
+    shipStream.connected=true;shipStream.retryMs=1000;
+    ws.send(JSON.stringify({APIKey:aisStreamKey,BoundingBoxes:[[[b.minLat,b.minLon],[b.maxLat,b.maxLon]]],FilterMessageTypes:['PositionReport']}));
+  });
+  ws.on('message',function(raw){
+    try{
+      const e=JSON.parse(Buffer.from(raw).toString('utf8')); if(e.MessageType!=='PositionReport')return;
+      const m=e.Message&&e.Message.PositionReport||{},md=e.MetaData||{};
+      const lat=Number(m.Latitude!=null?m.Latitude:md.Latitude),lon=Number(m.Longitude!=null?m.Longitude:md.Longitude),mmsi=String(m.UserID!=null?m.UserID:(md.MMSI||''));
+      if(!mmsi||!Number.isFinite(lat)||!Number.isFinite(lon))return;
+      shipStream.positions.set(mmsi,{lat,lon,mmsi,name:md.ShipName||'',sog:Number(m.Sog),cog:Number(m.Cog),timestamp:Number(m.Timestamp)||Math.floor(Date.now()/1000),seenAt:Date.now()});
+    }catch(e){}
+  });
+  ws.on('close',function(){
+    shipStream.connected=false;
+    if(shipStream.socket!==ws)return;
+    const wait=shipStream.retryMs;shipStream.retryMs=Math.min(15000,shipStream.retryMs*2);
+    setTimeout(function(){if(aisStreamKey&&shipStream.bboxKey===key){shipStream.socket=null;ensureShipStream(b)}},wait);
+  });
+  ws.on('error',function(){});
+}
 async function ships(b){
-  if(!aisUrl) return [];
-  return (await geo(aisUrl,b,'AIS')).map(function(f){f.properties.category='ship';return f});
+  if(aisUrl)return (await geo(aisUrl,b,'AIS')).map(function(f){f.properties.category='ship';return f});
+  if(!aisStreamKey)return [];
+  ensureShipStream(b);
+  const now=Date.now(),out=[];
+  for(const p of shipStream.positions.values()){
+    if(now-p.seenAt>180000||p.lon<b.minLon||p.lon>b.maxLon||p.lat<b.minLat||p.lat>b.maxLat)continue;
+    out.push({type:'Feature',geometry:{type:'Point',coordinates:[p.lon,p.lat]},properties:{category:'ship',source:'AIS Stream',status:now-p.seenAt<90000?'LIVE':'RECENT',mmsi:p.mmsi,name:p.name,speed_mps:Number.isFinite(p.sog)?p.sog*0.514444:null,heading:Number.isFinite(p.cog)?p.cog:null,timestamp:p.timestamp}});
+  }
+  return out;
+}
+async function taxis(b){
+  if(!taxiUrl)return [];
+  return (await geo(taxiUrl,b,'Taxi live feed')).map(function(f){f.properties.category='public-transport';f.properties.mode='taxi';f.properties.status=f.properties.status||'LIVE';return f});
 }
 async function osmAssets(b){
   var k='osm:'+b.minLon.toFixed(3)+','+b.minLat.toFixed(3)+','+b.maxLon.toFixed(3)+','+b.maxLat.toFixed(3);
