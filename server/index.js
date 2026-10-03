@@ -109,6 +109,6 @@ app.post('/api/sessions/:id/location',async(req,res)=>{const item=sessions.get(r
 app.get('/api/sessions/:id/history',async(req,res)=>{if(pool){const r=await db('SELECT id,session_id,recorded_at,ST_Y(position::geometry) lat,ST_X(position::geometry) lon,accuracy_m accuracy,altitude_m altitude,heading_deg heading,speed_mps speed,source FROM location_points WHERE session_id=$1 ORDER BY recorded_at',[req.params.id]); return res.json(r.rows);} res.json(sessions.get(req.params.id)?.points||[]);});
 app.post('/api/sessions/:id/stop',async(req,res)=>{const item=sessions.get(req.params.id); if(!item) return res.status(404).json({error:'session not found'}); item.status='stopped'; item.stoppedAt=new Date().toISOString(); if(pool) await db('UPDATE tracking_sessions SET status=$1,stopped_at=$2 WHERE id=$3',['stopped',item.stoppedAt,item.id]); broadcast({type:'session-stopped',sessionId:item.id}); res.json(item);});
 wss.on('connection',socket=>socket.send(JSON.stringify({type:'ready',service:'trackmenow'})));
-app.get('/*splat',(_,res)=>res.sendFile(path.join(__dirname,'..','frontend','index.html')));
+app.use((_,res)=>res.sendFile(path.join(__dirname,'..','frontend','index.html')));
 const port=process.env.PORT||8787;
 initDb().then(()=>server.listen(port,()=>console.log(`TrackMeNow listening on ${port}`))).catch(err=>{console.error(err);process.exit(1);});
