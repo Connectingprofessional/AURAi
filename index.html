@@ -91,6 +91,14 @@
 #panel[hidden],#dossier[hidden]{display:none!important}.panel-head{height:48px;display:flex;align-items:center;gap:8px;padding:0 10px;border-bottom:1px solid #ffffff12}.panel-head button,#dossier>button{width:30px;height:30px;border:1px solid #ffffff12;border-radius:7px;background:#ffffff05;color:#cfe0e5;cursor:pointer}.panel-head #panel-title{flex:1;font-size:11px;font-weight:850;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.panel-pager{display:flex;align-items:center;justify-content:center;gap:18px;padding:7px;border-bottom:1px solid #ffffff0d;font:9px ui-monospace,monospace}.panel-pager button{background:none;border:0;color:#9ed7dc;cursor:pointer}.panel-why,.panel-report,.pro-exp,#panel-tl,#panel-obs,.corridor,#panel-meta{margin:9px 10px}.panel-why{padding:8px;border:1px solid #ffc65a44;background:#ffc65a0b;color:#e6d5a7;border-radius:7px;font-size:9px}.panel-imgwrap{margin:10px;border:1px solid #ffffff12;border-radius:8px;overflow:hidden;background:#020609;min-height:180px;position:relative}.panel-imgwrap img{display:block;width:100%;min-height:180px;object-fit:cover}.panel-updated{position:absolute;left:7px;bottom:7px;padding:4px 6px;border-radius:5px;background:#000b;color:#d9ecef;font:8px ui-monospace,monospace}.panel-report{font-size:9px;color:#8ecbd0;cursor:pointer}.pro-exp{font-size:8px;color:#697d87}.corridor{display:flex;gap:5px;overflow:auto}.corridor button{min-width:70px;height:45px;background:#0b151b;border:1px solid #ffffff12;border-radius:5px;color:#9cb0b8;font-size:8px}.panel-meta{font-size:9px}.panel-meta .pm-row{display:flex;justify-content:space-between;gap:8px;padding:7px 0;border-bottom:1px solid #ffffff0c}.panel-meta small{color:#6f818b}.panel-meta b{font-weight:600;text-align:right}.dossier-link{position:absolute;right:46px;top:10px}.dossier-fav{position:absolute;right:82px;top:10px}.dossier-close{position:absolute}.dossier-body{padding:14px}.dossier-title{font-size:17px;font-weight:850}.dossier-sub{margin-top:5px;color:#79909a;font-size:9px}.dossier-grid{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-top:12px}.dossier-grid div{padding:8px;border:1px solid #ffffff0d;border-radius:7px;background:#ffffff03}.dossier-grid small{display:block;color:#637781;font-size:7px}.dossier-grid b{display:block;margin-top:3px;font-size:9px}
 #minimap{position:fixed;z-index:1050;right:14px;bottom:105px;width:188px;padding:5px;border:1px solid #ffffff18;border-radius:10px;background:#071016dd;box-shadow:0 12px 35px #0008;backdrop-filter:blur(10px)}.mm-globe{height:130px;border-radius:7px;background:radial-gradient(circle at 48% 44%,#16434b 0 4%,#0d2228 22%,#071117 58%,#020508 72%);position:relative;overflow:hidden}.mm-globe:after{content:"";position:absolute;inset:14px;border:1px solid #4fd0a033;border-radius:50%;box-shadow:0 0 35px #4fd0a01c}.mm-info{padding:6px 4px 2px;font:8px ui-monospace,monospace;color:#9ab0b9}.mm-clock{font-size:12px;color:#eaf8fa}.mm-wxline{display:flex;gap:7px;margin-top:3px}.mm-tz{color:#4fd0a0}.mm-compass{margin-top:4px;color:#71858e}
 @media(max-width:700px){#argos-dock{left:8px;right:8px;transform:none;justify-content:center;overflow:auto}.argos-bub span:not(.argos-ico){display:none}.argos-util{padding:0 7px}#panel,#dossier{top:62px;right:8px;bottom:54px;width:min(360px,calc(100vw - 16px))}#minimap{display:none}}
+</style><style id="trackmenow-applixir-css">
+#trackmenow-ad-overlay{display:none;position:fixed;inset:0;z-index:5000;background:rgba(0,0,0,.72);align-items:center;justify-content:center}
+#trackmenow-ad-overlay.on{display:flex}
+#trackmenow-ad-card{width:min(520px,92vw);min-height:120px;padding:18px;border:1px solid rgba(79,208,160,.35);border-radius:12px;background:rgba(5,10,14,.97);box-shadow:0 20px 70px #000;color:#e8f4f7;font:11px ui-monospace,SFMono-Regular,Consolas,monospace}
+#trackmenow-ad-title{font-size:13px;font-weight:800;margin-bottom:6px}
+#trackmenow-ad-status{color:#8da3ad;margin-bottom:12px}
+#applixir-hueco{min-height:1px}
+#trackmenow-ad-close{float:right;border:1px solid #ffffff18;border-radius:6px;background:#ffffff08;color:#b9cbd0;padding:5px 9px;cursor:pointer}
 </style></head>
 <body><div id="map-bg-scan"></div>
 <div id="splash" aria-label="TrackMeNow loading">
@@ -253,6 +261,37 @@
  setInterval(()=>{const d=new Date();$('mm-clock').textContent=d.toLocaleTimeString();$('mm-tz').textContent='UTC'+(d.getTimezoneOffset()<=0?'+':'-')+String(Math.abs(d.getTimezoneOffset()/60)).padStart(2,'0');const m=window.__trackMeNowFallbackMap||window.map;if(m){const c=m.getCenter();$('mm-coords').textContent=Math.abs(c.lat).toFixed(1)+'°'+(c.lat>=0?'N':'S')+' · '+Math.abs(c.lng).toFixed(1)+'°'+(c.lng>=0?'E':'W')}},1000);
  window.tmOpenDossier=openDossier;
  window.addEventListener('tm-object-selected',e=>{if(e.detail?.p&&e.detail?.c)openDossier(e.detail.p,e.detail.c)});
+})();
+</script><div id="trackmenow-ad-overlay" aria-hidden="true"><div id="trackmenow-ad-card"><button id="trackmenow-ad-close" type="button">CLOSE</button><div id="trackmenow-ad-title">TRACKMENOW REWARDED ACCESS</div><div id="trackmenow-ad-status">Preparing rewarded video…</div><div id="applixir-hueco"></div></div></div><script id="trackmenow-applixir">
+(function(){
+ const SDK="https://cdn.applixir.com/applixir.app.v6.1.0.js";
+ let sdkPromise=null, apiPromise=null;
+ const loadSdk=()=>sdkPromise||(sdkPromise=new Promise(r=>{
+   if(window.App&&typeof window.App.initializeAndOpenPlayer==="function"){r(true);return}
+   const s=document.createElement("script");s.src=SDK;s.async=true;s.onload=()=>r(true);s.onerror=()=>r(false);document.head.appendChild(s);
+ }));
+ async function getKey(){if(apiPromise)return apiPromise;apiPromise=fetch("/api/ads",{cache:"no-store"}).then(r=>r.ok?r.json():null).then(x=>x&&x.api_key||null).catch(()=>null);return apiPromise}
+ window.TrackMeNowRewardedAd=async function(userId){
+   const overlay=document.getElementById("trackmenow-ad-overlay"),status=document.getElementById("trackmenow-ad-status"),close=document.getElementById("trackmenow-ad-close"),box=document.getElementById("applixir-hueco");
+   overlay.classList.add("on");overlay.setAttribute("aria-hidden","false");status.textContent="Loading rewarded video…";close.onclick=()=>{overlay.classList.remove("on");overlay.setAttribute("aria-hidden","true")};
+   const [ready,key]=await Promise.all([loadSdk(),getKey()]);
+   if(!ready||!key){status.textContent=!ready?"Rewarded video SDK unavailable.":"Rewarded video is not configured.";return false}
+   if(!window.App||typeof window.App.initializeAndOpenPlayer!=="function"){status.textContent="Rewarded video API unavailable.";return false}
+   box.innerHTML="";
+   return await new Promise(resolve=>{
+     let done=false; const finish=(v,msg)=>{if(done)return;done=true;status.textContent=msg||"";if(v)setTimeout(()=>{overlay.classList.remove("on");overlay.setAttribute("aria-hidden","true")},500);resolve(v)};
+     try{window.App.initializeAndOpenPlayer({apiKey:key,injectionElementId:"applixir-hueco",userId:String(userId||"anonymous"),adStatusCallbackFn:o=>{
+       const type=o&&o.type;
+       if(type==="start")status.textContent="Rewarded video playing…";
+       else if(type==="complete"||type==="ad-watched")finish(true,"Rewarded access granted.");
+       else if(type==="skipped"||type==="ad-skipped")finish(false,"Video skipped — no reward.");
+       else if(type==="no-ad")finish(false,"No rewarded video is available right now.");
+       else if(type==="manuallyEnded"||type==="consentDeclined")finish(false,"Rewarded video ended without completion.");
+     },adErrorCallbackFn:()=>finish(false,"Rewarded video failed to load.")})}catch(e){finish(false,"Rewarded video error.")}
+     setTimeout(()=>finish(false,"Rewarded video timed out."),90000);
+   });
+ };
+ window.addEventListener("keydown",e=>{if(e.key==="Escape")document.getElementById("trackmenow-ad-close")?.click()});
 })();
 </script></body>
 </html>
