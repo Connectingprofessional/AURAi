@@ -20,30 +20,54 @@ function cached(k,ms){var x=cache.get(k);return x && Date.now()-x.t<ms?x.v:null}
 function put(k,v){cache.set(k,{t:Date.now(),v:v});return v}
 
 async function flights(b){
-  // ADSB.lol is a public, open ADS-B source. Its point endpoint is limited to
-  // 250 nautical miles, so TrackMeNow queries the current viewport center
-  // instead of pretending that one request represents the whole planet.
+  // Use a single global OpenSky state-vector request at world/zoomed-out
+  // views; use ADSB.lol's local 250nm feed when the viewport is smaller.
+  const span=Math.max(Math.abs(b.maxLat-b.minLat),Math.abs(b.maxLon-b.minLon));
+  const useGlobal=span>35;
+  if(useGlobal){
+    try{
+      const u='https://opensky-network.org/api/states/all';
+      const r=await fetch(u,{headers:{'User-Agent':'TrackMeNow/1.0'}});
+      if(!r.ok) throw Error('OpenSky HTTP '+r.status);
+      const j=await r.json(), now=Date.now()/1000;
+      return (j.states||[]).filter(function(s){
+        return Number.isFinite(Number(s[5]))&&Number.isFinite(Number(s[6])) &&
+          Number(s[5])>=b.minLon&&Number(s[5])<=b.maxLon&&Number(s[6])>=b.minLat&&Number(s[6])<=b.maxLat;
+      }).map(function(s){
+        return {type:'Feature',geometry:{type:'Point',coordinates:[Number(s[5]),Number(s[6])]},properties:{
+          category:'flight',source:'OpenSky ADS-B',status:Number(s[4])&&now-Number(s[4])<45?'LIVE':'RECENT',
+          icao24:s[0],callsign:(s[1]||'').trim(),country:s[2],
+          altitude_m:Number.isFinite(Number(s[7]))?Number(s[7]):null,on_ground:!!s[8],
+          speed_mps:Number.isFinite(Number(s[9]))?Number(s[9]):null,
+          heading:Number.isFinite(Number(s[10]))?Number(s[10]):null,
+          vertical_rate_mps:Number.isFinite(Number(s[11]))?Number(s[11]):null,
+          last_contact:s[4]||now
+        }};
+      });
+    }catch(e){
+      // Fall through to ADSB.lol so a global OpenSky failure does not blank the map.
+    }
+  }
   const centerLat=(b.minLat+b.maxLat)/2;
   const centerLon=(b.minLon+b.maxLon)/2;
   const latSpan=Math.abs(b.maxLat-b.minLat);
   const lonSpan=Math.abs(b.maxLon-b.minLon)*Math.cos(centerLat*Math.PI/180);
   const radiusNm=Math.max(10,Math.min(250,Math.ceil(Math.sqrt(latSpan*latSpan+lonSpan*lonSpan)*60/2)));
   const u='https://api.adsb.lol/v2/point/'+encodeURIComponent(centerLat)+'/'+encodeURIComponent(centerLon)+'/'+radiusNm;
-  const r=await fetch(u,{headers:{'User-Agent':'TrackMeNow/1.0 (https://connectingprofessional.github.io/TrackMenow/)','Accept':'application/json'}});
+  const r=await fetch(u,{headers:{'User-Agent':'TrackMeNow/1.0','Accept':'application/json'}});
   if(!r.ok) throw Error('ADSB.lol HTTP '+r.status);
-  const j=await r.json();
-  const now=Date.now()/1000;
+  const j=await r.json(), now=Date.now()/1000;
   return (j.ac||[]).filter(function(a){
     return Number.isFinite(Number(a.lat))&&Number.isFinite(Number(a.lon)) &&
-      Math.abs(Number(a.lat))<=90&&Math.abs(Number(a.lon))<=180;
+      Number(a.lat)>=b.minLat&&Number(a.lat)<=b.maxLat&&Number(a.lon)>=b.minLon&&Number(a.lon)<=b.maxLon;
   }).map(function(a){
     return {type:'Feature',geometry:{type:'Point',coordinates:[Number(a.lon),Number(a.lat)]},properties:{
       category:'flight',source:'ADSB.lol ADS-B',status:Number(a.seen_pos||a.seen||999)<30?'LIVE':'RECENT',
       icao24:a.hex,callsign:(a.flight||'').trim(),registration:a.r||'',aircraft_type:a.t||'',
       country:a.own_op||'',altitude_m:Number.isFinite(Number(a.alt_baro))?Number(a.alt_baro)*0.3048:null,
       on_ground:a.alt_baro==='ground',speed_mps:Number.isFinite(Number(a.gs))?Number(a.gs)*0.514444:null,
-      heading:Number.isFinite(Number(a.track))?Number(a.track):null,last_contact:Number.isFinite(Number(a.seen))?now-Number(a.seen):now,
-      seen_pos_s:a.seen_pos,query_radius_nm:radiusNm
+      heading:Number.isFinite(Number(a.track))?Number(a.track):null,
+      last_contact:Number.isFinite(Number(a.seen))?now-Number(a.seen):now
     }};
   });
 }
