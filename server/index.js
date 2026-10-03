@@ -1,79 +1,114 @@
 import express from 'express';
 import cors from 'cors';
-import { WebSocketServer } from 'ws';
+import { WebSocketServer, WebSocket } from 'ws';
 import http from 'http';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import crypto from 'crypto';
+import pg from 'pg';
+import GtfsRealtimeBindings from 'gtfs-realtime-bindings';
 
+const { Pool } = pg;
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
 const server = http.createServer(app);
 const wss = new WebSocketServer({ server, path: '/ws' });
-
 app.use(cors());
-app.use(express.json({ limit: '1mb' }));
+app.use(express.json({ limit: '2mb' }));
 app.use(express.static(path.join(__dirname, '..', 'frontend')));
 
+const pool = process.env.DATABASE_URL ? new Pool({ connectionString: process.env.DATABASE_URL, ssl: { rejectUnauthorized: false } }) : null;
 const sessions = new Map();
+const feedCache = new Map();
+const gtfsUrls = (process.env.GTFS_REALTIME_URLS || '').split(',').map(s=>s.trim()).filter(Boolean);
+const cameraUrls = (process.env.CAMERA_GEOJSON_URLS || '').split(',').map(s=>s.trim()).filter(Boolean);
 
-function session(id) {
-  if (!sessions.has(id)) sessions.set(id, { id, status: 'active', createdAt: new Date().toISOString(), points: [] });
-  return sessions.get(id);
+async function db(sql, params=[]) { if (!pool) return null; return pool.query(sql, params); }
+async function initDb() {
+  if (!pool) return;
+  await db(`CREATE EXTENSION IF NOT EXISTS postgis`);
+  await db(`CREATE TABLE IF NOT EXISTS tracking_sessions (id uuid PRIMARY KEY,status text NOT NULL DEFAULT 'active',created_at timestamptz NOT NULL DEFAULT now(),stopped_at timestamptz)`);
+  await db(`CREATE TABLE IF NOT EXISTS location_points (id uuid PRIMARY KEY,session_id uuid NOT NULL REFERENCES tracking_sessions(id) ON DELETE CASCADE,recorded_at timestamptz NOT NULL,position geography(Point,4326) NOT NULL,accuracy_m double precision,altitude_m double precision,heading_deg double precision,speed_mps double precision,source text NOT NULL DEFAULT 'browser-gps')`);
+  await db(`CREATE INDEX IF NOT EXISTS location_points_session_time_idx ON location_points(session_id,recorded_at DESC)`);
 }
-
 function broadcast(message) {
-  const payload = JSON.stringify(message);
-  for (const client of wss.clients) if (client.readyState === 1) client.send(payload);
+  const payload=JSON.stringify(message);
+  for(const client of wss.clients) if(client.readyState===WebSocket.OPEN) client.send(payload);
+}
+function bboxParams(q) {
+  const [minLon,minLat,maxLon,maxLat]=String(q||'').split(',').map(Number);
+  if (![minLon,minLat,maxLon,maxLat].every(Number.isFinite)) return null;
+  return {minLon:Math.max(-180,Math.min(180,minLon)),minLat:Math.max(-90,Math.min(90,minLat)),maxLon:Math.max(-180,Math.min(180,maxLon)),maxLat:Math.max(-90,Math.min(90,maxLat))};
+}
+async function getFlights(b) {
+  const url=`https://opensky-network.org/api/states/all?lamin=${b.minLat}&lomin=${b.minLon}&lamax=${b.maxLat}&lomax=${b.maxLon}`;
+  const r=await fetch(url,{headers:{'User-Agent':'TrackMeNow/0.2'}});
+  if(!r.ok) throw new Error(`OpenSky HTTP ${r.status}`);
+  const j=await r.json();
+  return {type:'FeatureCollection',features:(j.states||[]).filter(s=>Number.isFinite(s[5])&&Number.isFinite(s[6])).map(s=>({type:'Feature',geometry:{type:'Point',coordinates:[s[5],s[6]]},properties:{category:'flight',source:'OpenSky ADS-B',icao24:s[0],callsign:(s[1]||'').trim(),country:s[2],altitude_m:s[7],on_ground:s[8],velocity_mps:s[9],heading:s[10],vertical_rate_mps:s[11],last_contact:s[4]}}))};
+}
+async function getGtfs() {
+  const features=[];
+  for(const url of gtfsUrls) {
+    const cached=feedCache.get(url);
+    try {
+      const r=await fetch(url,{headers:{'User-Agent':'TrackMeNow/0.2'}});
+      if(!r.ok) throw new Error(`HTTP ${r.status}`);
+      const bytes=new Uint8Array(await r.arrayBuffer());
+      const feed=GtfsRealtimeBindings.transit_realtime.FeedMessage.decode(bytes);
+      const now=Date.now()/1000;
+      for(const e of feed.entity||[]) {
+        const v=e.vehicle;
+        const p=v?.position;
+        if(p && Number.isFinite(p.latitude) && Number.isFinite(p.longitude)) {
+          const ts=Number(v.timestamp||feed.header?.timestamp||0);
+          if(!ts || now-ts<=90) features.push({type:'Feature',geometry:{type:'Point',coordinates:[p.longitude,p.latitude]},properties:{category:'transit',mode:'transit',source:url,vehicle_id:v.vehicle?.id||e.id,label:v.vehicle?.label||'',trip_id:v.trip?.tripId||'',speed_mps:p.speed,bearing:p.bearing,timestamp:ts}});
+        }
+      }
+      feedCache.set(url,{ok:true,updatedAt:new Date().toISOString()});
+    } catch(e) {
+      feedCache.set(url,{ok:false,error:e.message,updatedAt:new Date().toISOString(),previous:cached?.updatedAt||null});
+    }
+  }
+  return {type:'FeatureCollection',features};
+}
+async function getCameras(b) {
+  const features=[];
+  for(const url of cameraUrls) {
+    try {
+      const r=await fetch(url,{headers:{'User-Agent':'TrackMeNow/0.2'}});
+      if(!r.ok) continue;
+      const gj=await r.json();
+      for(const f of (gj.features||[])) {
+        const c=f.geometry?.coordinates;
+        if(f.geometry?.type==='Point' && Array.isArray(c) && c.length>=2 && c[0]>=b.minLon&&c[0]<=b.maxLon&&c[1]>=b.minLat&&c[1]<=b.maxLat)
+          features.push({...f,properties:{...(f.properties||{}),category:'camera',source:url}});
+      }
+    } catch {}
+  }
+  return {type:'FeatureCollection',features};
+}
+async function movementData(b, layers) {
+  const out={type:'FeatureCollection',features:[],sources:[],generatedAt:new Date().toISOString()};
+  if(layers.includes('flights')) { try { const x=await getFlights(b); out.features.push(...x.features); out.sources.push({layer:'flights',source:'OpenSky ADS-B',status:'live'}); } catch(e) { out.sources.push({layer:'flights',source:'OpenSky ADS-B',status:'error',error:e.message}); } }
+  if(layers.some(x=>['bus','rail'].includes(x)) && gtfsUrls.length) {
+    const x=await getGtfs(); out.features.push(...x.features.filter(f=>layers.includes(f.properties.mode==='transit'?'bus':'transit'))); out.sources.push({layer:'transit',source:'GTFS-Realtime',status: x.features.length?'live':'no-current-vehicles'});
+  }
+  if(layers.includes('cameras') && cameraUrls.length) { const x=await getCameras(b); out.features.push(...x.features); out.sources.push({layer:'cameras',source:'configured public GeoJSON feeds',status:'live'}); }
+  if(layers.includes('ships')) out.sources.push({layer:'ships',source:'AIS',status:process.env.AIS_API_URL?'adapter-configured':'not-configured'});
+  if(layers.includes('road')) out.sources.push({layer:'road',source:'authorized/public traffic feed',status:process.env.TRAFFIC_GEOJSON_URL?'adapter-configured':'not-configured'});
+  if(layers.includes('cells')) out.sources.push({layer:'cells',source:'public cell database',status:process.env.CELL_FEED_URL?'adapter-configured':'not-configured'});
+  return out;
 }
 
-app.get('/health', (_, res) => res.json({ ok: true, service: 'trackmenow-api' }));
-
-app.post('/api/sessions', (_, res) => {
-  const id = crypto.randomUUID();
-  const item = session(id);
-  res.status(201).json(item);
-});
-
-app.post('/api/sessions/:id/location', (req, res) => {
-  const item = session(req.params.id);
-  if (item.status !== 'active') return res.status(409).json({ error: 'session is stopped' });
-  const point = {
-    id: crypto.randomUUID(),
-    lat: Number(req.body.lat),
-    lon: Number(req.body.lon),
-    accuracy: req.body.accuracy == null ? null : Number(req.body.accuracy),
-    altitude: req.body.altitude == null ? null : Number(req.body.altitude),
-    heading: req.body.heading == null ? null : Number(req.body.heading),
-    speed: req.body.speed == null ? null : Number(req.body.speed),
-    source: req.body.source || 'browser-gps',
-    timestamp: req.body.timestamp || new Date().toISOString()
-  };
-  if (!Number.isFinite(point.lat) || !Number.isFinite(point.lon)) return res.status(400).json({ error: 'invalid coordinates' });
-  item.points.push(point);
-  broadcast({ type: 'location', sessionId: item.id, point });
-  res.status(201).json(point);
-});
-
-app.get('/api/sessions/:id/history', (req, res) => {
-  const item = sessions.get(req.params.id);
-  res.json(item?.points || []);
-});
-
-app.post('/api/sessions/:id/stop', (req, res) => {
-  const item = sessions.get(req.params.id);
-  if (!item) return res.status(404).json({ error: 'session not found' });
-  item.status = 'stopped';
-  item.stoppedAt = new Date().toISOString();
-  broadcast({ type: 'session-stopped', sessionId: item.id });
-  res.json(item);
-});
-
-wss.on('connection', socket => {
-  socket.send(JSON.stringify({ type: 'ready', service: 'trackmenow' }));
-});
-
-app.get('*', (_, res) => res.sendFile(path.join(__dirname, '..', 'frontend', 'index.html')));
-
-const port = process.env.PORT || 8787;
-server.listen(port, () => console.log(`TrackMeNow listening on ${port}`));
+app.get('/health',async(_,res)=>res.json({ok:true,service:'trackmenow-api',database:!!pool,feeds:{gtfs:gtfsUrls.length,cameras:cameraUrls.length,ais:!!process.env.AIS_API_URL,traffic:!!process.env.TRAFFIC_GEOJSON_URL}}));
+app.get('/api/movement',async(req,res)=>{ const b=bboxParams(req.query.bbox); if(!b) return res.status(400).json({error:'bbox must be minLon,minLat,maxLon,maxLat'}); const layers=String(req.query.layers||'flights,ships,rail,bus,road,cameras').split(',').map(s=>s.trim()).filter(Boolean); res.json(await movementData(b,layers)); });
+app.get('/api/sources',(_,res)=>res.json({gtfs:gtfsUrls.map(url=>({url})),cameras:cameraUrls.map(url=>({url})),ais:!!process.env.AIS_API_URL,traffic:!!process.env.TRAFFIC_GEOJSON_URL,cell:!!process.env.CELL_FEED_URL}));
+app.post('/api/sessions',async(_,res)=>{const id=crypto.randomUUID(); sessions.set(id,{id,status:'active',createdAt:new Date().toISOString(),points:[]}); if(pool) await db('INSERT INTO tracking_sessions(id) VALUES($1)',[id]); res.status(201).json(sessions.get(id));});
+app.post('/api/sessions/:id/location',async(req,res)=>{const item=sessions.get(req.params.id)||{id:req.params.id,status:'active',points:[]}; sessions.set(item.id,item); if(item.status!=='active') return res.status(409).json({error:'session is stopped'}); const p={id:crypto.randomUUID(),lat:Number(req.body.lat),lon:Number(req.body.lon),accuracy:req.body.accuracy==null?null:Number(req.body.accuracy),altitude:req.body.altitude==null?null:Number(req.body.altitude),heading:req.body.heading==null?null:Number(req.body.heading),speed:req.body.speed==null?null:Number(req.body.speed),source:req.body.source||'browser-gps',timestamp:req.body.timestamp||new Date().toISOString()}; if(!Number.isFinite(p.lat)||!Number.isFinite(p.lon)) return res.status(400).json({error:'invalid coordinates'}); item.points.push(p); if(pool) await db('INSERT INTO location_points(id,session_id,recorded_at,position,accuracy_m,altitude_m,heading_deg,speed_mps,source) VALUES($1,$2,$3,ST_SetSRID(ST_MakePoint($4,$5),4326)::geography,$6,$7,$8,$9,$10)',[p.id,item.id,p.timestamp,p.lon,p.lat,p.accuracy,p.altitude,p.heading,p.speed,p.source]); broadcast({type:'location',sessionId:item.id,point:p}); res.status(201).json(p);});
+app.get('/api/sessions/:id/history',async(req,res)=>{if(pool){const r=await db('SELECT id,session_id,recorded_at,ST_Y(position::geometry) lat,ST_X(position::geometry) lon,accuracy_m accuracy,altitude_m altitude,heading_deg heading,speed_mps speed,source FROM location_points WHERE session_id=$1 ORDER BY recorded_at',[req.params.id]); return res.json(r.rows);} res.json(sessions.get(req.params.id)?.points||[]);});
+app.post('/api/sessions/:id/stop',async(req,res)=>{const item=sessions.get(req.params.id); if(!item) return res.status(404).json({error:'session not found'}); item.status='stopped'; item.stoppedAt=new Date().toISOString(); if(pool) await db('UPDATE tracking_sessions SET status=$1,stopped_at=$2 WHERE id=$3',['stopped',item.stoppedAt,item.id]); broadcast({type:'session-stopped',sessionId:item.id}); res.json(item);});
+wss.on('connection',socket=>socket.send(JSON.stringify({type:'ready',service:'trackmenow'})));
+app.get('/*splat',(_,res)=>res.sendFile(path.join(__dirname,'..','frontend','index.html')));
+const port=process.env.PORT||8787;
+initDb().then(()=>server.listen(port,()=>console.log(`TrackMeNow listening on ${port}`))).catch(err=>{console.error(err);process.exit(1);});
