@@ -30,8 +30,8 @@ async function loadMovement(){
   try{
     const r=await fetch(API+'/api/global/movement?bbox='+encodeURIComponent(bbox)+'&layers='+encodeURIComponent([...selected].join(',')));
     const data=await r.json(); drawFeatures(data);
-    const live=(data.sources||[]).filter(s=>s.status==='live').length;
-    status.textContent='MAP · '+live+' LIVE SOURCES · '+new Date().toLocaleTimeString();
+    const live=(data.sources||[]).filter(s=>s.status==='live').length; const pt=(data.features||[]).filter(f=>f.properties&&f.properties.category==='public-transport'); const counts=pt.reduce((a,f)=>{a[f.properties.mode]=(a[f.properties.mode]||0)+1;return a},{});
+    status.textContent='MAP · '+live+' LIVE SOURCES · PT '+pt.length+' ('+Object.entries(counts).map(([k,v])=>k+':'+v).join(' ')+') · '+new Date().toLocaleTimeString();
   }catch(e){status.textContent='MAP · FEED ERROR'}
 }
 let moveTimer; map.on('moveend',()=>{clearTimeout(moveTimer);moveTimer=setTimeout(loadMovement,250)}); setInterval(loadMovement,30000);
