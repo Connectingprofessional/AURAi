@@ -171,6 +171,55 @@ async function osmAssets(b){
   }).filter(function(f){return Number.isFinite(f.geometry.coordinates[0])&&Number.isFinite(f.geometry.coordinates[1])});
   return put(k,out);
 }
+async function intelligenceAssets(b){
+  var k='intel:'+b.minLon.toFixed(3)+','+b.minLat.toFixed(3)+','+b.maxLon.toFixed(3)+','+b.maxLat.toFixed(3);
+  var c=cached(k,300000);if(c)return c;
+  var q='[out:json][timeout:35];('+
+    'nwr["power"="plant"]('+b.minLat+','+b.minLon+','+b.maxLat+','+b.maxLon+');'+
+    'nwr["power"="generator"]['+'generator:source'+']('+b.minLat+','+b.minLon+','+b.maxLat+','+b.maxLon+');'+
+    'nwr["telecom"="data_center"]('+b.minLat+','+b.minLon+','+b.maxLat+','+b.maxLon+');'+
+    'nwr["building"="data_center"]('+b.minLat+','+b.minLon+','+b.maxLat+','+b.maxLon+');'+
+    'nwr["waterway"="dam"]('+b.minLat+','+b.minLon+','+b.maxLat+','+b.maxLon+');'+
+    'nwr["waterway"="weir"]('+b.minLat+','+b.minLon+','+b.maxLat+','+b.maxLon+');'+
+    'nwr["harbour"="yes"]('+b.minLat+','+b.minLon+','+b.maxLat+','+b.maxLon+');'+
+    'nwr["man_made"="pier"]('+b.minLat+','+b.minLon+','+b.maxLat+','+b.maxLon+');'+
+    'nwr["railway"~"station|halt|yard|junction|subway_entrance|tram_stop"]('+b.minLat+','+b.minLon+','+b.maxLat+','+b.maxLon+');'+
+    'nwr["power"~"substation|line|cable|tower|pole"]('+b.minLat+','+b.minLon+','+b.maxLat+','+b.maxLon+');'+
+    'nwr["man_made"="communication_line"]('+b.minLat+','+b.minLon+','+b.maxLat+','+b.maxLon+');'+
+    'nwr["man_made"="mine"]('+b.minLat+','+b.minLon+','+b.maxLat+','+b.maxLon+');'+
+    'nwr["man_made"="mineshaft"]('+b.minLat+','+b.minLon+','+b.maxLat+','+b.maxLon+');'+
+    'nwr["landuse"="quarry"]('+b.minLat+','+b.minLon+','+b.maxLat+','+b.maxLon+');'+
+    'nwr["industrial"="data_centre"]('+b.minLat+','+b.minLon+','+b.maxLat+','+b.maxLon+');'+
+    'nwr["office"="company"]["headquarters"="yes"]('+b.minLat+','+b.minLon+','+b.maxLat+','+b.maxLon+');'+
+    'nwr["amenity"="hospital"]('+b.minLat+','+b.minLon+','+b.maxLat+','+b.maxLon+');'+
+    'nwr["office"="diplomatic"]('+b.minLat+','+b.minLon+','+b.maxLat+','+b.maxLon+');'+
+    'nwr["amenity"="embassy"]('+b.minLat+','+b.minLon+','+b.maxLat+','+b.maxLon+');'+
+    'nwr["military"]('+b.minLat+','+b.minLon+','+b.maxLat+','+b.maxLon+');'+
+    ');out center tags;';
+  var r=await fetch(overpassUrl,{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded','User-Agent':'TrackMeNow/1.0'},body:'data='+encodeURIComponent(q)});
+  if(!r.ok) throw Error('Overpass intelligence HTTP '+r.status);
+  var j=await r.json(),out=[];
+  for(var e of(j.elements||[])){
+    var t=e.tags||{},lon=e.lon!=null?e.lon:e.center&&e.center.lon,lat=e.lat!=null?e.lat:e.center&&e.center.lat;
+    if(!Number.isFinite(lon)||!Number.isFinite(lat))continue;
+    var category='poi',sub='';
+    if(t.power==='plant'||t.power==='generator'){category='power';sub=t['plant:source']||t['generator:source']||'other'}
+    else if(t.telecom==='data_center'||t.building==='data_center'||t.industrial==='data_centre'){category='datacenter';sub=t.operator||'other'}
+    else if(t.waterway==='dam'||t.waterway==='weir'){category='dam';sub=t.waterway}
+    else if(t.harbour==='yes'||t.amenity==='ferry_terminal'||t.man_made==='pier'){category='port';sub=t.harbour||'other'}
+    else if(t.railway){category='railway';sub=t.railway}
+    else if(t.power){category='network';sub=t.power}
+    else if(t.man_made==='communication_line'){category='cable';sub='communication'}
+    else if(t.man_made==='mine'||t.man_made==='mineshaft'||t.landuse==='quarry'){category='resource';sub=t.resource||t.landuse||'mining'}
+    else if(t.office==='company'&&t.headquarters==='yes'){category='hq';sub=t.office}
+    else if(t.amenity==='hospital'){category='poi';sub='hospital'}
+    else if(t.office==='diplomatic'||t.amenity==='embassy'){category='poi';sub='embassy'}
+    else if(t.military){category='poi';sub='military'}
+    out.push({type:'Feature',geometry:{type:'Point',coordinates:[lon,lat]},properties:{category:category,subtype:sub,source:'OpenStreetMap',osm_id:e.id,name:t.name||t.ref||category,operator:t.operator||'',owner:t.owner||'',plant_source:t['plant:source']||t['generator:source']||'',capacity:t['plant:output:electricity']||t['generator:output:electricity']||'',network:t.network||''}});
+  }
+  return put(k,out);
+}
+
 async function cells(b){
   if(!cellKey) return {status:'api-key-required',source:'OpenCelliD',features:[]};
   var u='https://opencellid.org/cell/getInArea?key='+encodeURIComponent(cellKey)+'&BBOX='+encodeURIComponent([b.minLat,b.minLon,b.maxLat,b.maxLon].join(','))+'&format=json&limit=50';
@@ -189,6 +238,7 @@ router.get('/movement',async function(req,res){
   if(layers.includes('ships'))try{var s=await ships(b);features.push.apply(features,s);sources.push({layer:'ships',status:aisUrl?'live':'api-key-or-feed-required',source:'AIS',count:s.length})}catch(e){sources.push({layer:'ships',status:'error',source:'AIS',error:e.message})}
   if(layers.includes('public-transport')){var t=await transit();features.push.apply(features,t);var tx=[];try{tx=await taxis(b);features.push.apply(features,tx)}catch(e){}sources.push({layer:'public-transport',status:(gtfsUrls.length&&t.length)||tx.length?'live':gtfsUrls.length?'no-current-vehicles':'feed-required',source:'GTFS-Realtime'+(taxiUrl?' + taxi feed':''),count:t.length+tx.length})}
   if(layers.includes('cameras')||layers.includes('infrastructure'))try{var a=await osmAssets(b);var aa=layers.includes('cameras')&&!layers.includes('infrastructure')?a.filter(function(x){return x.properties.category==='camera'}):a;features.push.apply(features,aa);sources.push({layer:'public-assets',status:'live',source:'OpenStreetMap/Overpass',count:aa.length})}catch(e){sources.push({layer:'public-assets',status:'error',source:'OpenStreetMap/Overpass',error:e.message})}
+  if(layers.includes('intelligence'))try{var ia=await intelligenceAssets(b);features.push.apply(features,ia);sources.push({layer:'intelligence',status:'live',source:'OpenStreetMap/Overpass',count:ia.length})}catch(e){sources.push({layer:'intelligence',status:'error',source:'OpenStreetMap/Overpass',error:e.message})}
   if(layers.includes('cells'))try{var c=await cells(b);features.push.apply(features,c.features);sources.push({layer:'cells',status:c.status,source:c.source,count:c.features.length})}catch(e){sources.push({layer:'cells',status:'error',source:'OpenCelliD',error:e.message})}
   res.json({type:'FeatureCollection',features:features,sources:sources,generatedAt:new Date().toISOString()});
 });
@@ -220,6 +270,6 @@ router.get('/search',async function(req,res){
 
 router.get('/cells',async function(req,res){var b=bbox(req.query.bbox);if(!b)return res.status(400).json({error:'invalid bbox'});try{res.json(await cells(b))}catch(e){res.status(502).json({error:e.message})}});
 router.get('/assets',async function(req,res){var b=bbox(req.query.bbox);if(!b)return res.status(400).json({error:'invalid bbox'});try{res.json({source:'OpenStreetMap/Overpass',features:await osmAssets(b)})}catch(e){res.status(502).json({error:e.message})}});
-router.get('/status',function(_,res){res.json({flights:'ADSB.lol-live',ships:aisUrl?'configured':'feed-required',publicTransport:gtfsUrls.length?'configured':'no-live-feed-configured',publicTransportFeeds:gtfsUrls.map(function(u){var c=gtfsCache.get(u);return {url:u,status:c&&c.status||'not-polled',vehicles:c?c.features.length:0,error:c&&c.error||null,lastPoll:c&&new Date(c.fetchedAt).toISOString()||null}}),publicAssets:'live',publicCells:cellKey?'configured':'api-key-required',aisStream:aisStreamKey?'configured':'api-key-required',taxiFeed:taxiUrl?'configured':'feed-required'})});
+router.get('/status',function(_,res){res.json({infrastructure:'OpenStreetMap/Overpass',flights:'ADSB.lol-live',ships:aisUrl?'configured':'feed-required',publicTransport:gtfsUrls.length?'configured':'no-live-feed-configured',publicTransportFeeds:gtfsUrls.map(function(u){var c=gtfsCache.get(u);return {url:u,status:c&&c.status||'not-polled',vehicles:c?c.features.length:0,error:c&&c.error||null,lastPoll:c&&new Date(c.fetchedAt).toISOString()||null}}),publicAssets:'live',publicCells:cellKey?'configured':'api-key-required',aisStream:aisStreamKey?'configured':'api-key-required',taxiFeed:taxiUrl?'configured':'feed-required'})});
 
 export default router;
