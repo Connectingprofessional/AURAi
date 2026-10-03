@@ -1,0 +1,11 @@
+services:
+  - type: web
+    name: trackmenow
+    runtime: node
+    region: singapore
+    plan: free
+    branch: main
+    autoDeploy: true
+    buildCommand: npm install
+    startCommand: npm start
+    healthCheckPath: /health
