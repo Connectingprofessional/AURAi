@@ -6,7 +6,7 @@ const terrain=L.tileLayer('https://{s}.tile.opentopomap.org/{z}/{y}/{x}.png',{ma
 L.control.layers({Map:streets,Satellite:satellite,Terrain:terrain},{'Satellite labels':labels},{collapsed:true,position:'bottomright'}).addTo(map);
 const status=document.getElementById('status'),search=document.getElementById('search');
 const selected=new Set(['flights','ships','public-transport','cameras','cells']); const layerGroups=new Map(); let marker,accuracy,trail,sessionId,watchId; const trailPoints=[];
-const icons={flight:'✈',transit:'●',camera:'📷'};
+const icons={flight:'✈',ship:'⚓',transit:'🚌',bus:'🚌',train:'🚆',metro:'🚇',tram:'🚋',taxi:'🚕',ferry:'⛴',camera:'📷',cell:'📡','cell-tower':'📡','bus-stop':'🚌','taxi-stand':'🚕','rail-infrastructure':'🚆',airport:'✈','ferry-terminal':'⛴',infrastructure:'🏗','road-vehicle':'🚗'};
 function clearLayer(name){const g=layerGroups.get(name);if(g){g.clearLayers();map.removeLayer(g);layerGroups.delete(name)}}
 function drawFeatures(fc){
   for(const [name,g] of layerGroups) if(selected.has(name)) { g.clearLayers(); map.removeLayer(g); layerGroups.delete(name); }
