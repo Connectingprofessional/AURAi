@@ -1,22 +1,23 @@
 <!doctype html>
 <html lang="en">
 <head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>TrackMeNow — Live Map</title>
-  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
-  <style>
-    html,body,#map{height:100%;margin:0} body{overflow:hidden;background:#0b1118;font-family:system-ui,-apple-system,Segoe UI,sans-serif}
-    .top{position:fixed;z-index:1000;top:14px;left:50%;transform:translateX(-50%);display:flex;gap:8px;width:min(760px,calc(100% - 28px));padding:8px;border-radius:14px;background:rgba(12,18,25,.88);backdrop-filter:blur(14px);box-shadow:0 10px 30px rgba(0,0,0,.35)}
-    input{flex:1;min-width:0;border:0;outline:0;border-radius:9px;padding:12px;background:#17222d;color:#fff;font-size:14px}.btn{border:0;border-radius:9px;padding:0 14px;background:#1f7aff;color:#fff;font-weight:700;cursor:pointer}.btn.stop{background:#a92f3a}
-    .status{position:fixed;z-index:1000;left:14px;bottom:14px;padding:9px 12px;border-radius:10px;background:rgba(12,18,25,.86);color:#dce7f2;font-size:12px;backdrop-filter:blur(12px)}
-  </style>
-</head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>TrackMeNow — Map Intelligence</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<style>
+html,body,#map{height:100%;margin:0}body{overflow:hidden;background:#081018;font-family:system-ui,-apple-system,Segoe UI,sans-serif}
+.top{position:fixed;z-index:1000;top:12px;left:50%;transform:translateX(-50%);display:flex;gap:7px;width:min(850px,calc(100% - 24px));padding:7px;border-radius:13px;background:rgba(8,15,23,.84);backdrop-filter:blur(12px);box-shadow:0 8px 28px rgba(0,0,0,.3)}
+input{flex:1;min-width:0;border:0;outline:0;border-radius:8px;padding:11px 12px;background:#14202b;color:#fff;font-size:14px}.btn{border:0;border-radius:8px;padding:0 13px;background:#1976ff;color:#fff;font-weight:700;cursor:pointer}.btn.stop{background:#a52c38}
+.legend{position:fixed;z-index:999;right:12px;top:76px;display:flex;flex-direction:column;gap:5px;align-items:flex-end}.layer{border:1px solid rgba(255,255,255,.12);background:rgba(8,15,23,.8);color:#dce8f4;border-radius:8px;padding:7px 9px;font-size:11px;cursor:pointer;backdrop-filter:blur(10px)}.layer.on{background:rgba(25,118,255,.9)}
+.status{position:fixed;z-index:999;left:12px;bottom:12px;padding:8px 10px;border-radius:9px;background:rgba(8,15,23,.8);color:#dce8f4;font-size:11px;backdrop-filter:blur(10px)}
+.leaflet-control-attribution{font-size:9px}
+</style></head>
 <body>
-  <div id="map"></div>
-  <div class="top"><input id="search" placeholder="Search city, place, coordinates, device ID, Cell ID, NCI…"><button class="btn" id="searchBtn">Search</button><button class="btn" id="gpsBtn">Start Live GPS</button></div>
-  <div class="status" id="status">READY · LIVE GPS OFF</div>
-  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-  <script src="./app.js"></script>
-</body>
-</html>
+<div id="map"></div>
+<div class="top"><input id="search" placeholder="Search city, place, coordinates, device ID, Cell ID, NCI…"><button class="btn" id="searchBtn">Search</button><button class="btn" id="gpsBtn">Locate Me</button></div>
+<div class="legend" id="layers">
+<button class="layer on" data-layer="flights">✈ Flights</button><button class="layer" data-layer="ships">⚓ Ships</button><button class="layer" data-layer="rail">🚆 Rail</button><button class="layer" data-layer="bus">🚌 Bus</button><button class="layer" data-layer="road">🚗 Road</button><button class="layer" data-layer="cameras">📷 Cameras</button><button class="layer" data-layer="cells">📡 Public Cells</button>
+</div>
+<div class="status" id="status">MAP · LIVE FEEDS READY</div>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script><script src="./app.js"></script>
+</body></html>
