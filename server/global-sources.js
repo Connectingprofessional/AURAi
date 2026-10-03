@@ -3,7 +3,7 @@ import GtfsRealtimeBindings from 'gtfs-realtime-bindings';
 
 const router = express.Router();
 const cache = new Map();
-const gtfsUrls=(process.env.GTFS_REALTIME_URLS||'').split(',').map(function(s){return s.trim()}).filter(Boolean); if(process.env.DELHI_OTD_API_KEY) gtfsUrls.push('https://otd.delhi.gov.in/api/realtime/VehiclePositions.pb?key='+encodeURIComponent(process.env.DELHI_OTD_API_KEY)); const gtfsIntervalMs=Math.max(10000,Number(process.env.GTFS_POLL_INTERVAL_MS||15000)); const gtfsCache=new Map();
+const gtfsUrls=(process.env.GTFS_REALTIME_URLS||'').split(',').map(function(s){return s.trim()}).filter(Boolean); if(process.env.DELHI_OTD_API_KEY) gtfsUrls.push('https://otd.delhi.gov.in/api/realtime/VehiclePositions.pb?key='+encodeURIComponent(process.env.DELHI_OTD_API_KEY)); const gtfsIntervalMs=Math.max(10000,Number(process.env.GTFS_POLL_INTERVAL_MS||15000)); const gtfsCache=new Map(); const transitousCountries=(process.env.TRANSITOUS_COUNTRIES||'in').split(',').map(function(s){return s.trim().toLowerCase()}).filter(Boolean); let discoveredGtfs=false;
 const aisUrl = process.env.AIS_API_URL || '';
 const overpassUrl = process.env.OVERPASS_URL || 'https://overpass-api.de/api/interpreter';
 const cellKey = process.env.OPENCELLID_API_KEY || '';
@@ -38,7 +38,19 @@ function transitMode(v){
   if(/ferry|boat|water/.test(x)) return 'ferry';
   return 'bus';
 }
-async function transit(){
+async function discoverTransitous(){
+  if(discoveredGtfs)return;
+  discoveredGtfs=true;
+  if(!transitousCountries.length||transitousCountries.includes('off'))return;
+  var countries=transitousCountries.includes('all')?['in','us','gb','de','fr','it','es','nl','be','ch','at','se','no','dk','fi','pl','cz','au','nz','jp','kr','sg','th','ae','za','br','mx','ca']:transitousCountries;
+  for(var i=0;i<countries.length;i++)try{
+    var rr=await fetch('https://raw.githubusercontent.com/public-transport/transitous/main/feeds/'+countries[i]+'.json',{headers:{'User-Agent':'TrackMeNow/1.0'}});
+    if(!rr.ok)continue;
+    var manifest=await rr.json();
+    for(var src of(manifest.sources||[]))if(src.spec==='gtfs-rt'&&src.url&&!gtfsUrls.includes(src.url))gtfsUrls.push(src.url);
+  }catch(e){}
+}
+async function transit(){ await discoverTransitous();
   var out=[],nowMs=Date.now();
   for(var i=0;i<gtfsUrls.length;i++){
     var u=gtfsUrls[i],c=gtfsCache.get(u);
