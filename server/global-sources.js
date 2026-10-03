@@ -1,13 +1,17 @@
 import express from 'express';
 import GtfsRealtimeBindings from 'gtfs-realtime-bindings';
+import WebSocket from 'ws';
 
 const router = express.Router();
 const cache = new Map();
 const gtfsUrls=(process.env.GTFS_REALTIME_URLS||'').split(',').map(function(s){return s.trim()}).filter(Boolean); if(process.env.DELHI_OTD_API_KEY) gtfsUrls.push('https://otd.delhi.gov.in/api/realtime/VehiclePositions.pb?key='+encodeURIComponent(process.env.DELHI_OTD_API_KEY)); const gtfsIntervalMs=Math.max(10000,Number(process.env.GTFS_POLL_INTERVAL_MS||15000)); const gtfsCache=new Map(); const transitousCountries=(process.env.TRANSITOUS_COUNTRIES||'all').split(',').map(function(s){return s.trim().toLowerCase()}).filter(Boolean); let discoveredGtfs=false;
 const aisUrl = process.env.AIS_API_URL || '';
+const aisStreamKey = process.env.AISSTREAM_API_KEY || '';
+const taxiUrl = process.env.TAXI_GEOJSON_URL || '';
 const overpassUrl = process.env.OVERPASS_URL || 'https://overpass-api.de/api/interpreter';
 const cellKey = process.env.OPENCELLID_API_KEY || '';
 const flightGlobalCache={at:0,features:null,promise:null};
+const shipStream={socket:null,bboxKey:'',connected:false,retryMs:1000,positions:new Map(),lastAt:0};
 
 function bbox(q){
   var a=String(q||'').split(',').map(Number);
