@@ -122,5 +122,29 @@
 </nav><div class="bottom"><div class="status" id="status"><span class="live">●</span> CONNECTING TO GLOBAL SOURCES…</div><div class="coords" id="coords">ZOOM 3 · GLOBAL</div></div>
 <section class="report card" id="report"><button class="btn reportClose" id="reportClose">Close</button><h2 style="margin:0 0 5px;font-size:20px">TrackMeNow Intelligence Report</h2><div class="source" id="reportSubtitle">Current viewport analysis · live sources only</div><hr style="border:0;border-top:1px solid var(--line);margin:12px 0"><div class="reportGrid" id="reportGrid"></div><h3 style="margin-top:18px">Source verification</h3><div class="feed" id="reportSources"></div></section>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script><script src="./trackmenow.js"></script>
+<script>
+(function(){
+  function bootFallback(){
+    const splash=document.getElementById('splash');
+    if(splash){splash.classList.add('open');}
+    if(!window.L || document.querySelector('#map.leaflet-container')) return;
+    const el=document.getElementById('map');
+    if(!el) return;
+    try{
+      const m=L.map(el,{zoomControl:true,worldCopyJump:true}).setView([20,0],3);
+      L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',{
+        maxZoom:19,attribution:'Esri World Imagery'
+      }).addTo(m);
+      L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}',{
+        maxZoom:19,attribution:'Esri'
+      }).addTo(m);
+      window.__trackMeNowFallbackMap=m;
+      setTimeout(()=>m.invalidateSize(),100);
+    }catch(e){console.error('TrackMeNow map fallback failed',e);}
+  }
+  window.addEventListener('load',()=>setTimeout(bootFallback,1200));
+  setTimeout(bootFallback,5500);
+})();
+</script>
 <script>(function(){const s=document.getElementById('splash'),f=document.getElementById('splashFill'),p=document.getElementById('splashPct'),t=document.getElementById('splashStatus');const a=[['INITIALIZING MAP ENGINE',18],['LOADING SATELLITE BASEMAP',38],['CONNECTING LIVE SOURCES',62],['LOADING GLOBAL TRANSPORT',82],['TRACKMENOW READY',100]];function go(i){if(i>=a.length){setTimeout(()=>s.classList.add('open'),450);return}f.style.width=a[i][1]+'%';p.textContent=a[i][1]+'%';t.textContent=a[i][0];setTimeout(()=>go(i+1),i?420:300)}window.addEventListener('load',()=>go(0));setTimeout(()=>{if(!s.classList.contains('open')){f.style.width='100%';p.textContent='100%';t.textContent='MAP READY';setTimeout(()=>s.classList.add('open'),350)}},5000)})()</script><div class="itk-ai" id="trackmenowAi" role="search" aria-label="TrackMeNow AI intelligence search"><span class="itk-ai-b">✦ TRACKMENOW AI</span><input id="tmAiInput" placeholder="Ask about a flight, ship, device, cell, place…" autocomplete="off"><button class="itk-ai-go" id="tmAiGo" aria-label="Search">➜</button></div></body>
 </html>
