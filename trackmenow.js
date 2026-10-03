@@ -83,7 +83,8 @@ createGeofence=async function(){const before=groups.size;await originalCreateGeo
 const originalLoadMovement=loadMovement;
 loadMovement=async function(){await originalLoadMovement();const src=lastData?.sources||[];const errors=src.filter(s=>s.status==='error').length;const badge=$('alertBadge');if(errors){badge.textContent=errors>9?'9+':errors;badge.classList.add('show')}else{badge.classList.remove('show')}};
 window.addEventListener('beforeunload',()=>{if(watchId!==null)navigator.geolocation.clearWatch(watchId)});
-\nconst itkBack=$('itkBack');function closeItk(){itkBack?.classList.remove('on');itkBack?.setAttribute('aria-hidden','true')}$('itkClose')?.addEventListener('click',closeItk);itkBack?.addEventListener('click',e=>{if(e.target===itkBack)closeItk()});document.addEventListener('keydown',e=>{if(e.key==='Escape')closeItk()});$('itkGo')?.addEventListener('click',()=>{const q=$('itkQuery').value.trim();if(q){search.value=q;closeItk();searchPlace()}});
+
+const itkBack=$('itkBack');function closeItk(){itkBack?.classList.remove('on');itkBack?.setAttribute('aria-hidden','true')}$('itkClose')?.addEventListener('click',closeItk);itkBack?.addEventListener('click',e=>{if(e.target===itkBack)closeItk()});document.addEventListener('keydown',e=>{if(e.key==='Escape')closeItk()});$('itkGo')?.addEventListener('click',()=>{const q=$('itkQuery').value.trim();if(q){search.value=q;closeItk();searchPlace()}});
 // TrackMeNow AI bar: uses the same universal search pipeline, never fabricates live intelligence.
 (function(){
   const ai=$('trackmenowAi'), input=$('tmAiInput'), go=$('tmAiGo');
