@@ -34,15 +34,16 @@ function renderSources(sources){$('feedHealth').innerHTML=(sources||[]).map(s=>'
 let movementBusy=false;let movementFailures=0;async function loadMovement(){if(movementBusy)return;movementBusy=true;const b=map.getBounds(),bbox=[b.getWest(),b.getSouth(),b.getEast(),b.getNorth()].join(','),zoom=map.getZoom();status.innerHTML='<span class="live">●</span> REFRESHING GLOBAL SOURCES…';try{const r=await fetch(API+'/api/global/movement?bbox='+encodeURIComponent(bbox)+'&zoom='+zoom+'&layers='+encodeURIComponent([...selected].join(',')),{cache:'no-store'});if(!r.ok)throw Error('HTTP '+r.status);const data=await r.json();lastData=data;drawFeatures(data);renderSources(data.sources);movementFailures=0;const live=(data.sources||[]).filter(s=>s.status==='live').length;status.innerHTML='<span class="live">●</span> '+live+' LIVE SOURCES · '+new Date().toLocaleTimeString();coords.textContent='ZOOM '+map.getZoom()+' · '+map.getCenter().lat.toFixed(2)+', '+map.getCenter().lng.toFixed(2)}catch(e){movementFailures=Math.min(movementFailures+1,3);status.innerHTML='<span style="color:#ff6672">●</span> SOURCE ERROR · '+safe(e.message)}finally{movementBusy=false}}
 let timer;map.on('moveend',()=>{clearTimeout(timer);timer=setTimeout(loadMovement,250)});let movementTimer;function scheduleMovement(){clearTimeout(movementTimer);movementTimer=setTimeout(async()=>{await loadMovement();scheduleMovement()},movementFailures?Math.min(15000,5000*Math.pow(2,movementFailures)):5000)}scheduleMovement();
 $('searchBtn').onclick=searchPlace;search.addEventListener('keydown',e=>{if(e.key==='Enter')searchPlace()});
-async function searchPlace(){const q=search.value.trim();if(!q)return;
-  const norm=q.toLowerCase();
-  const hit=(lastData?.features||[]).find(f=>{const p=f.properties||{};return [p.callsign,p.name,p.label,p.vehicle_id,p.icao24,p.mmsi,p.imo,p.cellid,p.nci,p.nci,p.eci,p.osm_id,p.id].some(v=>String(v??'').toLowerCase()===norm||String(v??'').toLowerCase().includes(norm));});
-  if(hit){const c=hit.geometry?.coordinates;if(c?.length>=2){map.setView([c[1],c[0]],Math.max(map.getZoom(),12),{animate:true});showObject(hit.properties||{},c);const marker=L.circleMarker([c[1],c[0]],{radius:9,weight:2,color:'#fff',fill:false}).addTo(map);setTimeout(()=>map.removeLayer(marker),5000);return}}
-  const coord=q.match(/^\s*(-?\d+(?:\.\d+)?)\s*,\s*(-?\d+(?:\.\d+)?)\s*$/);
-  if(coord)return flyTo(+coord[1],+coord[2],'Coordinates');
-  try{const r=await fetch('https://nominatim.openstreetmap.org/search?format=jsonv2&limit=1&q='+encodeURIComponent(q),{headers:{'Accept':'application/json'}});
-    const d=await r.json();if(!d[0])throw Error('No place, object or identifier found');flyTo(+d[0].lat,+d[0].lon,d[0].display_name);
-  }catch(e){alert(e.message)}
+async function searchPlace(){const q=search.value.trim();if(!q)return;status.innerHTML='<span class="live">●</span> SEARCHING GLOBAL DATA…';
+  try{
+    const sr=await fetch(API+'/api/global/search?q='+encodeURIComponent(q),{cache:'no-store'});if(!sr.ok)throw Error('Search service HTTP '+sr.status);const sd=await sr.json();
+    const hit=(lastData?.features||[]).find(f=>{const p=f.properties||{};return [p.callsign,p.name,p.label,p.vehicle_id,p.icao24,p.mmsi,p.imo,p.cellid,p.nci,p.eci,p.osm_id,p.id].some(v=>String(v??'').toLowerCase()===q.toLowerCase()||String(v??'').toLowerCase().includes(q.toLowerCase()))});
+    if(hit){const c=hit.geometry?.coordinates;if(c?.length>=2){map.setView([c[1],c[0]],Math.max(map.getZoom(),12),{animate:true});showObject(hit.properties||{},c);return}}
+    const r=sd.results?.[0];
+    if(!r)throw Error('No global result found for “'+q+'”');
+    if(r.lat!=null&&r.lon!=null){flyTo(Number(r.lat),Number(r.lon),r.label||q);status.innerHTML='<span class="live">●</span> FOUND · '+safe(r.label||q);return}
+    throw Error('Result has no map position');
+  }catch(e){status.innerHTML='<span style="color:#ff6672">●</span> SEARCH · '+safe(e.message);alert(e.message)}
 }
 function flyTo(lat,lon,label){map.setView([lat,lon],15,{animate:true});if(searchMarker)map.removeLayer(searchMarker);searchMarker=L.marker([lat,lon]).addTo(map).bindPopup('<b>'+safe(label)+'</b>').openPopup();loadMovement()}
 document.querySelectorAll('.nav[data-view]').forEach(n=>n.onclick=()=>{document.querySelectorAll('.nav').forEach(x=>x.classList.remove('active'));n.classList.add('active');const v=n.dataset.view;const mapLayers={air:['flights'],sea:['ships'],transport:['public-transport'],cameras:['cameras'],infra:['infrastructure','cells'],events:['road'],space:[]};if(mapLayers[v]){selected.clear();document.querySelectorAll('.switch').forEach(s=>s.classList.remove('on'));for(const l of mapLayers[v]){selected.add(l);document.querySelector('.switch[data-layer="'+l+'"]')?.classList.add('on')}loadMovement()}});
