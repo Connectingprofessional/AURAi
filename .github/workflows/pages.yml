@@ -1,1 +1,48 @@
-PLACEHOLDER4
+name: Deploy TrackMeNow (MapLibre) to GitHub Pages
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: trackmenow-pages
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Prepare static site (MapLibre Global Intelligence only)
+        run: |
+          mkdir -p _site
+          # Core UI
+          cp index.html _site/
+          cp trackmenow.js trackmenow-globe-engine.js trackmenow-icons.js water-effect.js _site/ 2>/dev/null || true
+          # Vendor MapLibre
+          mkdir -p _site/vendor/maplibre-gl
+          cp -r vendor/maplibre-gl/* _site/vendor/maplibre-gl/
+          # Optional docs
+          cp README.md _site/ 2>/dev/null || true
+          # Exclude Node server & secrets from static publish
+          echo "Static artifact ready"
+          find _site -type f | head -40
+
+      - uses: actions/configure-pages@v5
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+
+      - id: deployment
+        uses: actions/deploy-pages@v4
