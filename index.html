@@ -289,65 +289,6 @@ body.tm-panel-open #panel{right:8px}
  };
  window.addEventListener("keydown",e=>{if(e.key==="Escape")document.getElementById("trackmenow-ad-close")?.click()});
 })();
-</script><script id="trackmenow-mini-globe">
-(function(){
-  const host=document.getElementById('mm-globe'); if(!host)return;
-  host.innerHTML='';
-  const canvas=document.createElement('canvas'); canvas.id='tm-mini-globe';
-  canvas.setAttribute('aria-label','Rotating Earth'); host.appendChild(canvas);
-  const ctx=canvas.getContext('2d',{alpha:true});
-  if(!ctx)return;
-  let land=[], rot=0, last=performance.now(), raf=0;
-  const fallback=[
-    [[-168,72],[-140,70],[-125,55],[-105,50],[-95,30],[-82,25],[-80,10],[-100,15],[-120,30],[-135,50],[-168,55]],
-    [[-82,12],[-70,0],[-60,-15],[-55,-35],[-65,-55],[-78,-40],[-80,-15]],
-    [[-10,35],[10,45],[35,35],[55,25],[70,10],[55,0],[35,5],[20,20],[5,30]],
-    [[70,25],[90,30],[110,45],[140,50],[155,35],[145,15],[120,5],[100,10],[80,5],[70,25]],
-    [[20,-5],[35,-20],[45,-35],[30,-35],[15,-15]],
-    [[115,-25],[140,-20],[150,-35],[135,-45],[115,-40]]
-  ];
-  land=fallback;
-  fetch('https://raw.githubusercontent.com/nvkelso/natural-earth-vector/master/geojson/ne_110m_admin_0_countries.geojson',{cache:'force-cache'})
-    .then(r=>r.ok?r.json():null).then(g=>{
-      if(!g)return;
-      const out=[];
-      for(const f of (g.features||[])){
-        const z=f.geometry;
-        if(z?.type==='Polygon') out.push(...z.coordinates);
-        if(z?.type==='MultiPolygon') for(const p of z.coordinates) out.push(...p);
-      }
-      if(out.length)land=out;
-    }).catch(()=>{});
-  function resize(){
-    const w=Math.max(1,host.clientWidth||96),h=Math.max(1,host.clientHeight||96),d=Math.min(2,devicePixelRatio||1);
-    if(canvas.width!==Math.round(w*d)||canvas.height!==Math.round(h*d)){canvas.width=Math.round(w*d);canvas.height=Math.round(h*d);}
-    ctx.setTransform(d,0,0,d,0,0);
-  }
-  function project(lon,lat,cx,cy,r){
-    const p=(lon-rot)*Math.PI/180, q=lat*Math.PI/180;
-    const x=Math.cos(q)*Math.sin(p), y=Math.sin(q), z=Math.cos(q)*Math.cos(p);
-    if(z<=0)return null;
-    return [cx+x*r,cy-y*r,z];
-  }
-  function frame(now){
-    resize();
-    const w=host.clientWidth||96,h=host.clientHeight||96,cx=w/2,cy=h/2,r=Math.min(w,h)*.46;
-    rot=(rot+(now-last)*.012)%360; last=now;
-    ctx.clearRect(0,0,w,h);
-    const glow=ctx.createRadialGradient(cx-r*.35,cy-r*.4,2,cx,cy,r*1.25);
-    glow.addColorStop(0,'rgba(40,105,120,.98)');glow.addColorStop(.55,'rgba(5,35,45,.99)');glow.addColorStop(1,'rgba(1,7,11,1)');
-    ctx.fillStyle=glow;ctx.beginPath();ctx.arc(cx,cy,r,0,Math.PI*2);ctx.fill();
-    ctx.save();ctx.beginPath();ctx.arc(cx,cy,r,0,Math.PI*2);ctx.clip();
-    ctx.strokeStyle='rgba(100,215,205,.12)';ctx.lineWidth=.45;
-    for(let la=-60;la<=60;la+=30){ctx.beginPath();for(let lo=-180;lo<=180;lo+=4){const p=project(lo,la,cx,cy,r);if(p){if(lo===-180)ctx.moveTo(p[0],p[1]);else ctx.lineTo(p[0],p[1]);}}ctx.stroke();}
-    for(const ring of land){ctx.beginPath();let on=false;for(const q of ring){const p=project(q[0],q[1],cx,cy,r);if(!p){on=false;continue;}if(!on){ctx.moveTo(p[0],p[1]);on=true;}else ctx.lineTo(p[0],p[1]);}ctx.closePath();ctx.fillStyle='rgba(55,132,105,.92)';ctx.fill();ctx.strokeStyle='rgba(112,215,175,.45)';ctx.lineWidth=.45;ctx.stroke();}
-    ctx.restore();
-    ctx.strokeStyle='rgba(105,225,218,.38)';ctx.lineWidth=1;ctx.beginPath();ctx.arc(cx,cy,r,0,Math.PI*2);ctx.stroke();
-    raf=requestAnimationFrame(frame);
-  }
-  cancelAnimationFrame(raf);requestAnimationFrame(t=>{last=t;frame(t);});
-  window.addEventListener('resize',resize);
-})();
 </script><script src="./trackmenow.js"></script>
 </body>
 </html>
