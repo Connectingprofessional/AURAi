@@ -25,6 +25,7 @@ const BASES=[
 ];
 const MAP_STYLE={version:8,
   projection:{type:'globe'},
+  fog:{color:'#08131a',high-color:'#0a2230',space-color:'#02050b',horizon-blend:.16,range:[.5,10]},
   sources:{
     ocean:{type:'geojson',data:'https://d2ad6b4ur7yvpq.cloudfront.net/naturalearth-3.3.0/ne_110m_ocean.geojson'},
     land:{type:'geojson',data:'https://raw.githubusercontent.com/nvkelso/natural-earth-vector/master/geojson/ne_110m_land.geojson'},
@@ -174,6 +175,7 @@ function initOverlays(){
   dot('live-cams','still',on('cameras'),'#b9d8ff',zoomSize(2.5,4,7));
   dot('live-intel','still',on('intelligence'),['match',['get','category'],'power','#ffd23b','datacenter','#9fd0ff','dam','#5ec8f0','network','#37e0c8','resource','#ff9d3b','hq','#c08bff','poi','#ff7a85','government','#9fc0d8','#dce7ee'],zoomSize(3,4.5,7));
   dot('live-transit','moving',on('public-transport'),'#ffc85a',zoomSize(3,4.5,7));
+  map.addLayer({id:'live-flight-glow',type:'circle',source:'moving',filter:on('flights'),paint:{'circle-radius':['interpolate',['linear'],['zoom'],1,3,6,5,12,9],'circle-color':['case',['match',['get','alert_status'],['alert','warning','critical'],true,false],'#ff5964',['case',['has','altitude_m'],['interpolate',['linear'],['to-number',['get','altitude_m'],0],0,'#43e0c0',3000,'#8fd0ff',9000,'#c08bff',14000,'#ffcc66'],'#8fd0ff']],'circle-opacity':.28,'circle-blur':1.2}});
   map.addLayer({id:'live-ships',type:'symbol',source:'moving',filter:on('ships'),layout:{'icon-image':'ship','icon-size':zoomSize(.4,.55,.8),'icon-rotate':['get','hd'],'icon-rotation-alignment':'map','icon-pitch-alignment':'map','icon-allow-overlap':true,'icon-ignore-placement':true}});
   map.addLayer({id:'live-flights',type:'symbol',source:'moving',filter:on('flights'),layout:{'icon-image':['case',['==',['get','small'],true],'plane-small','plane'],'icon-size':zoomSize(.4,.58,.85),'icon-rotate':['get','hd'],'icon-rotation-alignment':'map','icon-pitch-alignment':'map','icon-allow-overlap':true,'icon-ignore-placement':true}});
   map.addLayer({id:'live-quakes',type:'circle',source:'quakes',paint:{'circle-radius':['interpolate',['linear'],['to-number',['get','mag'],0],0,4,5,10,8,18],'circle-color':'#ff7847','circle-opacity':.38,'circle-stroke-color':'#ff7847','circle-stroke-width':1}});
@@ -204,7 +206,7 @@ function applyNight(on){
     map.setPaintProperty(id,'raster-contrast',on?.1:0);
   });
 }
-function applyProjection(resetView=false){if(!mapReady)return;try{map.setProjection({type:globeOn?'globe':'mercator'});syncGlobeSkin();if(globeOn&&resetView){map.jumpTo({center:[18,38],zoom:1.9,bearing:0,pitch:0}); globeLongitude=18}}catch(e){console.warn('TrackMeNow projection change failed',e)}}
+function applyProjection(resetView=false){if(!mapReady)return;try{map.setProjection({type:globeOn?'globe':'mercator'});if(map.setFog)map.setFog(globeOn?{color:'#08131a',highColor:'#0a2230',spaceColor:'#02050b',horizonBlend:.16,range:[.5,10]}:null);syncGlobeSkin();if(globeOn&&resetView){map.jumpTo({center:[18,38],zoom:1.9,bearing:0,pitch:0}); globeLongitude=18}}catch(e){console.warn('TrackMeNow projection change failed',e)}}
 let globeSpin=true,globeLongitude=18,globeLast=performance.now();
 function spinGlobe(now){
   if(globeOn&&globeSpin&&mapReady){
@@ -324,12 +326,16 @@ const live=new Map();               // key -> {from,to,cur,t0,props,trail,seen}
 const ANIM_MS=4300, TRAIL_POINTS=6, MAX_ANIMATED=6000;
 let animRaf=0, lastPaint=0;
 const ease=q=>q<.5?2*q*q:1-Math.pow(-2*q+2,2)/2;
+function shortestLngDelta(a,b){let d=b-a;while(d>180)d-=360;while(d<-180)d+=360;return d}
+function interpLngLat(a,b,q){const d=shortestLngDelta(a[0],b[0]);return [((a[0]+d*q+540)%360)-180,a[1]+(b[1]-a[1])*q]}
+function interpHeading(a,b,q){if(!Number.isFinite(a))return Number.isFinite(b)?b:0;if(!Number.isFinite(b))return a;let d=b-a;while(d>180)d-=360;while(d<-180)d+=360;return (a+d*q+360)%360}
 function paintMoving(){
   const now=performance.now();let active=false;const feats=[];
   for(const st of live.values()){
     const q=Math.min(1,(now-st.t0)/ANIM_MS);if(q<1)active=true;
     const e=ease(q);
-    st.cur=[st.from[0]+(st.to[0]-st.from[0])*e,st.from[1]+(st.to[1]-st.from[1])*e];
+    st.cur=interpLngLat(st.from,st.to,e);
+    st.props.hd=interpHeading(st.fromHd,st.toHd,e);
     feats.push(featureOf(st.cur,st.props));
   }
   setSource('moving',{type:'FeatureCollection',features:feats});
@@ -367,10 +373,10 @@ function drawFeatures(fc){
     if(!MOVING.has(l)){still.push(featureOf([lng,lat],props));continue}
     seen.add(key);
     const to=[lng,lat],st=live.get(key);
-    if(!st){live.set(key,{from:to,to,cur:to,t0:nowPerf,props,trail:[to],seen:nowMs})}
+    if(!st){live.set(key,{from:to,to,cur:to,t0:nowPerf,props,trail:[to],seen:nowMs,fromHd:Number.isFinite(hdg)?hdg:0,toHd:Number.isFinite(hdg)?hdg:0})}
     else{
       const jump=!animate||Math.abs(to[0]-st.to[0])>180;
-      st.from=jump?to:(st.cur||st.to);st.to=to;st.t0=nowPerf;st.props=props;st.seen=nowMs;
+      st.from=jump?to:(st.cur||st.to);st.to=to;st.t0=nowPerf;st.fromHd=jump?hdg:(Number.isFinite(st.props.hd)?st.props.hd:hdg);st.toHd=Number.isFinite(hdg)?hdg:st.fromHd;st.props=props;st.seen=nowMs;
       const last=st.trail[st.trail.length-1];
       if(Math.abs(last[0]-to[0])+Math.abs(last[1]-to[1])>1e-6){st.trail.push(to);while(st.trail.length>TRAIL_POINTS)st.trail.shift()}
     }
@@ -575,8 +581,10 @@ let tmToastTimer=null;
 function tmToast(message,type='ok'){const el=$('tm-toast');if(!el)return;el.textContent=message;el.className='tm-toast-on '+(type==='warn'?'tm-toast-warn':'tm-toast-ok');clearTimeout(tmToastTimer);tmToastTimer=setTimeout(()=>el.className='',3200)}
 function setAlerts(n){const b=$('alertBadge');if(!b)return;if(n){b.textContent=n>9?'9+':n;b.classList.add('show')}else b.classList.remove('show')}
 $('argos-alerts')?.addEventListener('click',()=>{const bad=(lastData?.sources||[]).filter(s=>s.status==='error');if(!bad.length&&!movementFailures){tmToast('NO ACTIVE TRACKMENOW ALERTS');return}tmToast(bad.length?'SOURCE ERRORS · '+bad.map(s=>s.layer).join(', ').toUpperCase():'LIVE SOURCE SERVER UNREACHABLE','warn')});
-$('argos-sat')?.addEventListener('click',()=>{globeOn=false;try{localStorage.setItem('tm-globe','0')}catch(e){}applyProjection();const n=setBase(0);$('argos-globe')?.classList.remove('on');$('argos-map')?.classList.remove('on');$('argos-sat')?.classList.add('on');tmToast('SATELLITE · '+n.toUpperCase())});
-$('argos-map')?.addEventListener('click',()=>{globeOn=false;try{localStorage.setItem('tm-globe','0')}catch(e){}applyProjection();const n=setBase(1);$('argos-globe')?.classList.remove('on');$('argos-sat')?.classList.remove('on');$('argos-map')?.classList.add('on');tmToast('MAP · '+n.toUpperCase())});
+const BASE_CYCLE=[0,2,3];let baseCyclePos=Math.max(0,BASE_CYCLE.indexOf(baseIndex));
+function syncBaseCycleButton(){const id=['argos-sat','argos-map'];id.forEach(x=>$(x)?.classList.remove('on'));const label=BASES[baseIndex]?.name||'Satellite';const b=$('argos-sat');if(b){const l=b.querySelector('.util-label');if(l)l.textContent=label==='Dark'?'Satellite':label;b.title='Cycle Satellite / Streets / Terrain';}}
+$('argos-sat')?.addEventListener('click',()=>{globeOn=false;try{localStorage.setItem('tm-globe','0')}catch(e){}applyProjection();baseCyclePos=(baseCyclePos+1)%BASE_CYCLE.length;const n=setBase(BASE_CYCLE[baseCyclePos]);$('argos-globe')?.classList.remove('on');syncBaseCycleButton();tmToast(n.toUpperCase()+' BASEMAP')});
+$('argos-map')?.addEventListener('click',()=>{globeOn=false;try{localStorage.setItem('tm-globe','0')}catch(e){}applyProjection();const n=setBase(1);baseCyclePos=Math.max(0,BASE_CYCLE.indexOf(1));$('argos-globe')?.classList.remove('on');$('argos-map')?.classList.add('on');syncBaseCycleButton();tmToast('MAP · '+n.toUpperCase())});
 $('argos-globe')?.addEventListener('click',()=>{const on=toggleGlobe();$('argos-globe')?.classList.toggle('on',on);$('argos-map')?.classList.toggle('on',!on&&baseIndex===1);$('argos-sat')?.classList.toggle('on',!on&&baseIndex===0);tmToast(on?'3D GLOBE':'FLAT MAP')});
 $('argos-night')?.addEventListener('click',e=>{const on=!e.currentTarget.classList.contains('on');e.currentTarget.classList.toggle('on',on);setSolarTerminator(on);tmToast(on?'SOLAR TERMINATOR · DAY/NIGHT':'DAY/NIGHT TERMINATOR OFF')});
 $('argos-search')?.addEventListener('click',()=>{search?.focus();search?.select()});
@@ -633,7 +641,7 @@ function boot(){
   $('argos-map')?.classList.toggle('on',!globeOn&&baseIndex===1);
   $('argos-sat')?.classList.toggle('on',!globeOn&&baseIndex===0);
   $('argos-globe')?.classList.toggle('on',globeOn);
-  $('argos-globe')?.classList.toggle('on',globeOn);
+  syncBaseCycleButton();
   const qp=new URLSearchParams(location.search);
   if(qp.has('lat')&&qp.has('lon')&&Number.isFinite(+qp.get('lat'))&&Number.isFinite(+qp.get('lon')))map.jumpTo({center:[+qp.get('lon'),+qp.get('lat')],zoom:11});
   window.selected=selected;window.loadMovement=loadMovement;
