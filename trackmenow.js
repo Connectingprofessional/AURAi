@@ -24,13 +24,12 @@ const BASES=[
 ];
 const MAP_STYLE={version:8,
   projection:{type:'globe'},
-  sky:{'sky-color':'#02050a','horizon-color':'#08131a','atmosphere-blend':['interpolate',['linear'],['zoom'],0,1,3,1,6,0]},
-  light:{anchor:'map',position:[1.5,90,80],color:'#ffffff',intensity:.55},
+  sky:{'atmosphere-blend':['interpolate',['linear'],['zoom'],0,1,3,0.85,6,0]},
   sources:{
     satellite:{type:'raster',tileSize:256,maxzoom:19,tiles:['https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}'],attribution:'Esri World Imagery'},
     labels:{type:'raster',tileSize:256,maxzoom:19,tiles:['https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}'],attribution:'Esri'},
     streets:{type:'raster',tileSize:256,maxzoom:19,tiles:['https://tile.openstreetmap.org/{z}/{x}/{y}.png'],attribution:'© OpenStreetMap contributors'},
-    terrain:{type:'raster',tileSize:256,maxzoom:17,tiles:['https://a.tile.opentopomap.org/{z}/{x}/{y}.png','https://b.tile.opentopomap.org/{z}/{x}/{y}.png','https://c.tile.opentopomap.org/{z}/{x}/{y}.png'],attribution:'© OpenTopoMap (CC-BY-SA)'}
+    terrain:{type:'raster',tileSize:256,maxzoom:17,tiles:['https://a.tile.opentopomap.org/{z}/{y}/{x}.png','https://b.tile.opentopomap.org/{z}/{y}/{x}.png','https://c.tile.opentopomap.org/{z}/{y}/{x}.png'],attribution:'© OpenTopoMap (CC-BY-SA)'}
   },
   layers:[
     {id:'bg',type:'background',paint:{'background-color':'#050810'}},
@@ -107,12 +106,19 @@ function applyNight(on){
     map.setPaintProperty(id,'raster-contrast',on?.1:0);
   });
 }
-function applyProjection(resetView=false){if(!mapReady)return;try{map.setProjection({type:globeOn?'globe':'mercator'});if(globeOn&&resetView){map.jumpTo({center:[18,22],zoom:1.65,bearing:0,pitch:0})}}catch(e){console.warn('TrackMeNow projection change failed',e)}}
-let globeSpin=true,globeBearing=0,globeLast=performance.now();
+function applyProjection(resetView=false){if(!mapReady)return;try{map.setProjection({type:globeOn?'globe':'mercator'});if(globeOn&&resetView){map.jumpTo({center:[18,22],zoom:1.65,bearing:0,pitch:0}); globeLongitude=18}}catch(e){console.warn('TrackMeNow projection change failed',e)}}
+let globeSpin=true,globeLongitude=18,globeLast=performance.now();
 function spinGlobe(now){
   if(globeOn&&globeSpin&&mapReady){
-    const dt=Math.min(80,now-globeLast); globeBearing=(globeBearing-dt*.0045+360)%360;
-    try{map.setBearing(globeBearing);map.triggerRepaint()}catch(e){}
+    const dt=Math.min(80,now-globeLast);
+    // Move the globe horizontally by advancing longitude; keep camera bearing/pitch fixed.
+    globeLongitude=(globeLongitude+dt*.0045)%360;
+    try{
+      map.setCenter([globeLongitude,22]);
+      map.setBearing(0);
+      map.setPitch(0);
+      map.triggerRepaint();
+    }catch(e){}
   }
   globeLast=now;requestAnimationFrame(spinGlobe);
 }
