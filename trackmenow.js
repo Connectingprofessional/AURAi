@@ -1,314 +1,271 @@
-/* TrackMeNow — MapLibre Global Intelligence (self-contained, GitHub Pages safe)
- * Three views: 3D Globe · Satellite · Dark digital
- * Zoom: orbital Earth (z~0.5) → building tops (z~19)
+/* TrackMeNow — 3D Geospatial Engine (High-Precision Planetary Visualization)
+ * MapLibre GL WebGL · Globe / Satellite / Dark Digital
+ * Orbital (z≈0.5) → terrain → building scale (z≈19)
  */
 (function () {
+  'use strict';
+
   const API = (typeof location !== 'undefined' && location.origin && !String(location.origin).startsWith('file:'))
     ? location.origin : '';
   const $ = (id) => document.getElementById(id);
-  const status = $('status');
-  const coords = $('coords');
 
-  function setStatus(html) {
-    if (status) status.innerHTML = html;
+  function setStatus(msg, ok) {
+    const el = $('status');
+    if (!el) return;
+    const color = ok === false ? '#ff6672' : '#43e0a0';
+    el.innerHTML = '<span style="color:' + color + '">●</span> ' + msg;
+  }
+
+  function closeSplash() {
+    const s = $('splash');
+    if (s) {
+      s.classList.add('open');
+      s.style.opacity = '0';
+      s.style.pointerEvents = 'none';
+      setTimeout(function () { try { s.remove(); } catch (e) {} }, 800);
+    }
   }
 
   if (!window.maplibregl) {
-    setStatus('<span style="color:#ff6672">●</span> MAPLIBRE NOT LOADED');
+    setStatus('MAP ENGINE MISSING — maplibre-gl.js failed to load', false);
+    closeSplash();
     return;
   }
 
-  const EMPTY = { type: 'FeatureCollection', features: [] };
-
-  const MAP_STYLE = {
+  const STYLE = {
     version: 8,
-    projection: { type: 'globe' },
-    fog: {
-      color: '#08131a',
-      'high-color': '#0a2230',
-      'space-color': '#02050b',
-      'horizon-blend': 0.16,
-      range: [0.5, 10]
-    },
+    glyphs: 'https://demotiles.maplibre.org/font/{fontstack}/{range}.pbf',
     sources: {
-      ocean: {
-        type: 'geojson',
-        data: 'https://d2ad6b4ur7yvpq.cloudfront.net/naturalearth-3.3.0/ne_110m_ocean.geojson'
-      },
-      land: {
-        type: 'geojson',
-        data: 'https://raw.githubusercontent.com/nvkelso/natural-earth-vector/master/geojson/ne_110m_land.geojson'
-      },
-      countries: {
-        type: 'geojson',
-        data: 'https://raw.githubusercontent.com/nvkelso/natural-earth-vector/master/geojson/ne_110m_admin_0_countries.geojson'
-      },
       satellite: {
         type: 'raster',
         tileSize: 256,
         maxzoom: 19,
         tiles: ['https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}'],
-        attribution: 'Esri World Imagery'
-      },
-      labels: {
-        type: 'raster',
-        tileSize: 256,
-        maxzoom: 19,
-        tiles: ['https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}'],
-        attribution: 'Esri'
+        attribution: '© Esri'
       },
       dark: {
         type: 'raster',
         tileSize: 256,
         maxzoom: 19,
         tiles: ['https://services.arcgisonline.com/ArcGIS/rest/services/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}'],
-        attribution: 'Esri Dark Gray'
+        attribution: '© Esri'
       },
-      flights: { type: 'geojson', data: EMPTY },
-      ships: { type: 'geojson', data: EMPTY }
+      labels: {
+        type: 'raster',
+        tileSize: 256,
+        maxzoom: 19,
+        tiles: ['https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}'],
+        attribution: '© Esri'
+      },
+      terrain: {
+        type: 'raster-dem',
+        tiles: ['https://s3.amazonaws.com/elevation-tiles-prod/terrarium/{z}/{x}/{y}.png'],
+        encoding: 'terrarium',
+        tileSize: 256,
+        maxzoom: 15
+      },
+      flights: { type: 'geojson', data: { type: 'FeatureCollection', features: [] } }
     },
     layers: [
-      { id: 'bg', type: 'background', paint: { 'background-color': '#05070b' } },
-      { id: 'globe-ocean', type: 'fill', source: 'ocean', paint: { 'fill-color': '#078eaa', 'fill-opacity': 0.88 } },
-      { id: 'globe-land', type: 'fill', source: 'land', paint: { 'fill-color': '#c7cfbd', 'fill-opacity': 0.86 } },
-      { id: 'globe-borders', type: 'line', source: 'countries', paint: { 'line-color': '#18262a', 'line-width': 1.1, 'line-opacity': 0.95 } },
-      { id: 'base-satellite', type: 'raster', source: 'satellite', paint: { 'raster-opacity': 0.35 } },
-      { id: 'base-dark', type: 'raster', source: 'dark', layout: { visibility: 'none' }, paint: { 'raster-opacity': 0.96 } },
-      { id: 'base-labels', type: 'raster', source: 'labels', paint: { 'raster-opacity': 0.9 } },
+      { id: 'bg', type: 'background', paint: { 'background-color': '#02050b' } },
+      { id: 'base-satellite', type: 'raster', source: 'satellite', paint: { 'raster-opacity': 1 } },
+      { id: 'base-dark', type: 'raster', source: 'dark', layout: { visibility: 'none' }, paint: { 'raster-opacity': 0.98 } },
+      { id: 'base-labels', type: 'raster', source: 'labels', paint: { 'raster-opacity': 0.85 } },
       {
-        id: 'flights-layer',
+        id: 'flights-dot',
         type: 'circle',
         source: 'flights',
         paint: {
-          'circle-radius': ['interpolate', ['linear'], ['zoom'], 1, 2.5, 6, 4, 12, 6],
-          'circle-color': '#45a8ff',
-          'circle-stroke-color': '#05080c',
+          'circle-radius': ['interpolate', ['linear'], ['zoom'], 1, 2, 8, 4, 14, 6],
+          'circle-color': '#4fd0ff',
           'circle-stroke-width': 1,
-          'circle-opacity': 0.92
-        }
-      },
-      {
-        id: 'ships-layer',
-        type: 'circle',
-        source: 'ships',
-        paint: {
-          'circle-radius': ['interpolate', ['linear'], ['zoom'], 1, 2, 6, 3.5, 12, 5],
-          'circle-color': '#43e0c0',
-          'circle-stroke-color': '#05080c',
-          'circle-stroke-width': 1,
-          'circle-opacity': 0.9
+          'circle-stroke-color': '#031018',
+          'circle-opacity': 0.95
         }
       }
-    ]
-  };
-
-  let map;
-  try {
-    map = new maplibregl.Map({
-      container: 'map',
-      style: MAP_STYLE,
-      center: [20, 25],
-      zoom: 1.8,
-      minZoom: 0.5,
-      maxZoom: 19,
-      maxPitch: 70,
-      attributionControl: false,
-      renderWorldCopies: false
-    });
-    map.addControl(new maplibregl.AttributionControl({ compact: true }), 'bottom-right');
-    map.addControl(new maplibregl.NavigationControl({ visualizePitch: true }), 'bottom-right');
-  } catch (e) {
-    setStatus('<span style="color:#ff6672">●</span> WEBGL MAP FAILED · ' + (e.message || e));
-    return;
-  }
-  window.map = map;
-
-  map.on('load', () => {
-    const splash = $('splash');
-    if (splash) splash.classList.add('open');
-    setStatus('<span class="live">●</span> MAP READY · ' + (currentView || 'globe').toUpperCase());
-    loadFlights();
-  });
-
-  map.on('moveend', () => {
-    if (!coords) return;
-    const c = map.getCenter();
-    coords.textContent = 'ZOOM ' + map.getZoom().toFixed(1) + ' · ' + c.lat.toFixed(2) + ', ' + c.lng.toFixed(2);
-  });
-
-  const VIEWS = {
-    globe: {
-      id: 'globe',
-      projection: 'globe',
-      minZoom: 0.5,
-      maxZoom: 18,
-      fog: { color: '#08131a', 'high-color': '#0a2230', 'space-color': '#02050b', 'horizon-blend': 0.16, range: [0.5, 10] }
-    },
-    satellite: {
-      id: 'satellite',
-      projection: 'mercator',
-      minZoom: 0.8,
-      maxZoom: 19,
-      fog: null
-    },
-    dark: {
-      id: 'dark',
-      projection: 'mercator',
-      minZoom: 0.8,
-      maxZoom: 19,
-      fog: null
+    ],
+    sky: {
+      'sky-color': '#0a1a28',
+      'horizon-color': '#1a3040',
+      'fog-color': '#050810'
     }
   };
 
-  let currentView = 'globe';
+  var map;
+  try {
+    map = new maplibregl.Map({
+      container: 'map',
+      style: STYLE,
+      center: [15, 20],
+      zoom: 1.6,
+      minZoom: 0.4,
+      maxZoom: 19,
+      pitch: 0,
+      maxPitch: 85,
+      attributionControl: false,
+      renderWorldCopies: false,
+      canvasContextAttributes: { antialias: true }
+    });
+    map.addControl(new maplibregl.NavigationControl({ visualizePitch: true, showCompass: true }), 'bottom-right');
+    map.addControl(new maplibregl.AttributionControl({ compact: true }), 'bottom-right');
+  } catch (err) {
+    setStatus('WEBGL INIT FAILED · ' + (err && err.message ? err.message : err), false);
+    closeSplash();
+    return;
+  }
+
+  window.map = map;
+  window.TrackMeNowEngine = { name: 'TrackMeNow 3D Geospatial Engine', mode: 'planetary', version: '1.0.0' };
+
+  var currentView = 'globe';
   try { currentView = localStorage.getItem('tm-view') || 'globe'; } catch (e) {}
 
   function setBase(mode) {
-    const sat = mode === 'satellite' || mode === 'globe';
-    const dark = mode === 'dark';
+    var sat = mode === 'satellite' || mode === 'globe';
+    var dark = mode === 'dark';
     try {
       if (map.getLayer('base-satellite')) {
         map.setLayoutProperty('base-satellite', 'visibility', sat ? 'visible' : 'none');
-        map.setPaintProperty('base-satellite', 'raster-opacity', mode === 'globe' ? 0.35 : 1);
+        map.setPaintProperty('base-satellite', 'raster-opacity', mode === 'globe' ? 0.92 : 1);
       }
-      if (map.getLayer('base-dark')) {
-        map.setLayoutProperty('base-dark', 'visibility', dark ? 'visible' : 'none');
-      }
-      if (map.getLayer('base-labels')) {
-        map.setLayoutProperty('base-labels', 'visibility', 'visible');
-      }
-      ['globe-ocean', 'globe-land', 'globe-borders'].forEach((id) => {
-        if (map.getLayer(id)) map.setLayoutProperty(id, 'visibility', mode === 'globe' ? 'visible' : 'none');
-      });
+      if (map.getLayer('base-dark')) map.setLayoutProperty('base-dark', 'visibility', dark ? 'visible' : 'none');
+      if (map.getLayer('base-labels')) map.setLayoutProperty('base-labels', 'visibility', 'visible');
+    } catch (e) {}
+  }
+
+  function enableTerrain(on) {
+    try {
+      if (on && map.getSource('terrain')) map.setTerrain({ source: 'terrain', exaggeration: 1.35 });
+      else map.setTerrain(null);
     } catch (e) {}
   }
 
   function applyView(id, reset) {
-    const v = VIEWS[id] || VIEWS.globe;
-    currentView = v.id;
-    try { localStorage.setItem('tm-view', currentView); } catch (e) {}
+    var views = {
+      globe: { projection: 'globe', pitch: 0, zoom: 1.5, terrain: false },
+      satellite: { projection: 'mercator', pitch: 45, zoom: 3, terrain: true },
+      dark: { projection: 'mercator', pitch: 0, zoom: 2.2, terrain: false }
+    };
+    var v = views[id] || views.globe;
+    currentView = id;
+    try { localStorage.setItem('tm-view', id); } catch (e) {}
     try {
-      map.setMinZoom(v.minZoom);
-      map.setMaxZoom(v.maxZoom);
-      if (map.setProjection) map.setProjection({ type: v.projection });
-      if (map.setFog) map.setFog(v.fog);
-      setBase(v.id);
-      if (reset) {
-        map.easeTo({ zoom: v.id === 'globe' ? 1.6 : 2.2, pitch: 0, bearing: 0, duration: 800 });
+      if (typeof map.setProjection === 'function') map.setProjection({ type: v.projection });
+      setBase(id);
+      enableTerrain(!!v.terrain);
+      if (typeof map.setFog === 'function') {
+        if (id === 'globe') {
+          map.setFog({ color: '#08131a', 'high-color': '#0a2230', 'space-color': '#010308', 'horizon-blend': 0.18, range: [0.5, 12] });
+        } else if (id === 'satellite') {
+          map.setFog({ color: '#a0c0d8', 'high-color': '#c8e0f0', 'space-color': '#87a0b8', 'horizon-blend': 0.08, range: [0.8, 8] });
+        } else map.setFog(null);
       }
-    } catch (e) {}
-    document.querySelectorAll('[data-tm-view]').forEach((btn) => {
-      btn.classList.toggle('on', btn.getAttribute('data-tm-view') === currentView);
+      if (reset) map.easeTo({ pitch: v.pitch, zoom: Math.min(map.getZoom(), v.zoom + 2), bearing: 0, duration: 900 });
+    } catch (e) { console.warn('[TrackMeNow] view', e); }
+    document.querySelectorAll('[data-tm-view]').forEach(function (btn) {
+      btn.classList.toggle('on', btn.getAttribute('data-tm-view') === id);
     });
-    setStatus('<span class="live">●</span> ' + v.id.toUpperCase() + ' VIEW');
-    return currentView;
+    setStatus('3D ENGINE · ' + id.toUpperCase() + ' · Z' + map.getZoom().toFixed(1), true);
+    return id;
   }
 
-  function wireViewButtons() {
-    const g = $('argos-globe');
-    const s = $('argos-sat');
-    const m = $('argos-map');
-    if (g) { g.setAttribute('data-tm-view', 'globe'); g.onclick = () => applyView('globe', true); }
-    if (s) { s.setAttribute('data-tm-view', 'satellite'); s.onclick = () => applyView('satellite', false); }
-    if (m) { m.setAttribute('data-tm-view', 'dark'); m.onclick = () => applyView('dark', false); }
+  function wireButtons() {
+    var g = $('argos-globe'), s = $('argos-sat'), m = $('argos-map');
+    if (g) { g.setAttribute('data-tm-view', 'globe'); g.onclick = function () { applyView('globe', true); }; }
+    if (s) { s.setAttribute('data-tm-view', 'satellite'); s.onclick = function () { applyView('satellite', true); }; }
+    if (m) { m.setAttribute('data-tm-view', 'dark'); m.onclick = function () { applyView('dark', true); }; }
+    if (!g && !s && !m) {
+      var bar = document.createElement('div');
+      bar.style.cssText = 'position:fixed;z-index:2000;top:60px;right:14px;display:flex;flex-direction:column;gap:6px;';
+      ['globe', 'satellite', 'dark'].forEach(function (id) {
+        var b = document.createElement('button');
+        b.textContent = id === 'globe' ? '3D Globe' : id === 'satellite' ? 'Satellite 3D' : 'Dark Digital';
+        b.setAttribute('data-tm-view', id);
+        b.style.cssText = 'padding:8px 12px;border-radius:8px;border:1px solid rgba(255,255,255,.2);background:rgba(8,14,20,.9);color:#e8f4fa;cursor:pointer;font:700 11px system-ui;';
+        b.onclick = function () { applyView(id, true); };
+        bar.appendChild(b);
+      });
+      document.body.appendChild(bar);
+    }
     applyView(currentView, false);
   }
 
-  map.on('load', wireViewButtons);
+  map.on('load', function () {
+    closeSplash();
+    wireButtons();
+    setStatus('3D GEOSPATIAL ENGINE ONLINE · PLANETARY MODE', true);
+    loadFlights();
+  });
 
-  window.TrackMeNowViews = { applyView, VIEWS, get current() { return currentView; } };
+  map.on('error', function (e) { console.warn('[TrackMeNow map error]', e && e.error); });
+
+  map.on('moveend', function () {
+    var c = map.getCenter();
+    var el = $('coords');
+    if (el) el.textContent = 'Z' + map.getZoom().toFixed(1) + ' · ' + c.lat.toFixed(4) + ', ' + c.lng.toFixed(4);
+  });
 
   async function loadFlights() {
     try {
-      const b = map.getBounds();
-      const bbox = [b.getWest(), b.getSouth(), b.getEast(), b.getNorth()].join(',');
-      let fc = null;
-      if (API && !API.includes('github.io')) {
-        const r = await fetch(API + '/api/global/movement?bbox=' + encodeURIComponent(bbox) + '&layers=flights');
-        if (r.ok) fc = await r.json();
-      }
-      if (!fc) {
-        const url = 'https://opensky-network.org/api/states/all?lamin=' + b.getSouth() +
-          '&lomin=' + b.getWest() + '&lamax=' + b.getNorth() + '&lomax=' + b.getEast();
-        const r = await fetch(url);
-        if (r.ok) {
-          const j = await r.json();
-          const features = (j.states || [])
-            .filter((s) => Number.isFinite(s[5]) && Number.isFinite(s[6]))
-            .map((s) => ({
-              type: 'Feature',
-              geometry: { type: 'Point', coordinates: [s[5], s[6]] },
-              properties: { callsign: (s[1] || '').trim(), icao24: s[0] }
-            }));
-          fc = { type: 'FeatureCollection', features };
+      var b = map.getBounds();
+      var url = 'https://opensky-network.org/api/states/all?lamin=' + b.getSouth() + '&lomin=' + b.getWest() + '&lamax=' + b.getNorth() + '&lomax=' + b.getEast();
+      if (API && API.indexOf('github.io') === -1) {
+        var r0 = await fetch(API + '/api/global/movement?bbox=' + encodeURIComponent([b.getWest(), b.getSouth(), b.getEast(), b.getNorth()].join(',')) + '&layers=flights');
+        if (r0.ok) {
+          var data = await r0.json();
+          if (map.getSource('flights')) map.getSource('flights').setData({ type: 'FeatureCollection', features: (data.features || []).filter(function (f) { return f.geometry && f.geometry.type === 'Point'; }) });
+          return;
         }
       }
-      if (fc && map.getSource('flights')) {
-        const flights = {
-          type: 'FeatureCollection',
-          features: (fc.features || []).filter((f) => (f.properties || {}).category === 'flight' || f.properties?.icao24)
-        };
-        if (!flights.features.length && fc.features) flights.features = fc.features;
-        map.getSource('flights').setData(flights);
-        setStatus('<span class="live">●</span> ' + flights.features.length + ' AIRCRAFT · ' + currentView.toUpperCase());
+      var r = await fetch(url);
+      if (!r.ok) return;
+      var j = await r.json();
+      var features = (j.states || []).filter(function (s) { return Number.isFinite(s[5]) && Number.isFinite(s[6]); }).map(function (s) {
+        return { type: 'Feature', geometry: { type: 'Point', coordinates: [s[5], s[6]] }, properties: { callsign: (s[1] || '').trim(), icao24: s[0] } };
+      });
+      if (map.getSource('flights')) {
+        map.getSource('flights').setData({ type: 'FeatureCollection', features: features });
+        setStatus('3D ENGINE · ' + features.length + ' AIRCRAFT · ' + currentView.toUpperCase(), true);
       }
-    } catch (e) {
-      setStatus('<span class="live">●</span> MAP LIVE · FEEDS LIMITED');
-    }
+    } catch (e) {}
   }
 
-  map.on('moveend', () => {
-    clearTimeout(window.__tmFlightT);
-    window.__tmFlightT = setTimeout(loadFlights, 600);
-  });
-  setInterval(loadFlights, 30000);
+  map.on('moveend', function () { clearTimeout(window.__tmF); window.__tmF = setTimeout(loadFlights, 700); });
+  setInterval(loadFlights, 45000);
 
-  const gpsBtn = $('gpsBtn');
+  var gpsBtn = $('gpsBtn');
   if (gpsBtn) {
-    let watchId = null;
-    let marker = null;
-    gpsBtn.onclick = () => {
-      if (watchId != null) {
-        navigator.geolocation.clearWatch(watchId);
-        watchId = null;
-        gpsBtn.textContent = '◎ GPS';
-        return;
-      }
+    var watchId = null, marker = null;
+    gpsBtn.onclick = function () {
+      if (watchId != null) { navigator.geolocation.clearWatch(watchId); watchId = null; gpsBtn.textContent = '◎ GPS'; return; }
       if (!navigator.geolocation) return alert('GPS unavailable');
-      watchId = navigator.geolocation.watchPosition((p) => {
-        const ll = [p.coords.longitude, p.coords.latitude];
+      watchId = navigator.geolocation.watchPosition(function (p) {
+        var ll = [p.coords.longitude, p.coords.latitude];
         if (!marker) marker = new maplibregl.Marker({ color: '#43e0a0' }).setLngLat(ll).addTo(map);
         else marker.setLngLat(ll);
-        map.easeTo({ center: ll, zoom: Math.max(map.getZoom(), 14), duration: 600 });
-        setStatus('<span class="live">●</span> GPS ±' + Math.round(p.coords.accuracy) + 'm');
-      }, (e) => setStatus('GPS · ' + e.message), { enableHighAccuracy: true, maximumAge: 3000 });
+        map.easeTo({ center: ll, zoom: Math.max(map.getZoom(), 14), pitch: 55, duration: 700 });
+        setStatus('GPS LIVE ±' + Math.round(p.coords.accuracy) + 'm', true);
+      }, function (e) { setStatus('GPS · ' + e.message, false); }, { enableHighAccuracy: true });
       gpsBtn.textContent = 'Stop GPS';
     };
   }
 
-  const search = $('search');
-  const searchBtn = $('searchBtn');
-  async function doSearch() {
-    const q = (search && search.value || '').trim();
+  var search = $('search'), searchBtn = $('searchBtn');
+  function doSearch() {
+    var q = (search && search.value || '').trim();
     if (!q) return;
-    const coord = q.match(/^\s*(-?\d+(?:\.\d+)?)\s*,\s*(-?\d+(?:\.\d+)?)\s*$/);
-    if (coord) {
-      map.easeTo({ center: [+coord[2], +coord[1]], zoom: 12, duration: 800 });
-      return;
-    }
-    try {
-      const r = await fetch('https://nominatim.openstreetmap.org/search?format=jsonv2&limit=1&q=' + encodeURIComponent(q), {
-        headers: { Accept: 'application/json' }
-      });
-      const d = await r.json();
-      if (!d[0]) throw new Error('Not found');
-      map.easeTo({ center: [+d[0].lon, +d[0].lat], zoom: 11, duration: 900 });
-    } catch (e) {
-      alert(e.message || 'Search failed');
-    }
+    var coord = q.match(/^\s*(-?\d+(?:\.\d+)?)\s*,\s*(-?\d+(?:\.\d+)?)\s*$/);
+    if (coord) { map.flyTo({ center: [+coord[2], +coord[1]], zoom: 12, pitch: 50, duration: 1200 }); return; }
+    fetch('https://nominatim.openstreetmap.org/search?format=jsonv2&limit=1&q=' + encodeURIComponent(q), { headers: { Accept: 'application/json' } })
+      .then(function (r) { return r.json(); })
+      .then(function (d) {
+        if (!d[0]) throw new Error('Not found');
+        map.flyTo({ center: [+d[0].lon, +d[0].lat], zoom: 11, pitch: 45, duration: 1400 });
+      }).catch(function (e) { alert(e.message || 'Search failed'); });
   }
   if (searchBtn) searchBtn.onclick = doSearch;
-  if (search) search.addEventListener('keydown', (e) => { if (e.key === 'Enter') doSearch(); });
+  if (search) search.addEventListener('keydown', function (e) { if (e.key === 'Enter') doSearch(); });
 
-  setStatus('<span class="live">●</span> STARTING MAP…');
+  setTimeout(closeSplash, 4000);
+  setStatus('STARTING 3D GEOSPATIAL ENGINE…', true);
 })();
