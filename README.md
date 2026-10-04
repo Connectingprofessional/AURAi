@@ -4,7 +4,8 @@ Real-time consent-based GPS tracking and map intelligence foundation.
 
 ## Current foundation
 - Full-screen map with no overlay panels
-- Satellite imagery + labels, street and terrain layers
+- MapLibre GL (WebGL) map: satellite, street and terrain basemaps, flat/3D-globe switch, tilt and rotate
+- Live aircraft/ship icons drawn on the GPU, with trails and smooth movement between real observations
 - Browser GPS using navigator.geolocation.watchPosition
 - Accuracy circle, heading/speed and movement trail
 - Place/coordinate search
