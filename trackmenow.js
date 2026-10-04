@@ -14,7 +14,8 @@ const MOVING=new Set(['flights','ships','public-transport']);
 let lastData=null, searchMarker=null, gpsMarker=null, sessionId=null, watchId=null;
 let mapReady=false, baseIndex=1, globeOn=false, selKey=null;
 const gpsTrack=[], fences=[];
-try{globeOn=localStorage.getItem('tm-globe')==='1'}catch(e){globeOn=false}
+try{globeOn=window.TrackMeNowGlobeEngine?.readEngine()==='globe'}catch(e){globeOn=false}
+try{globeOn=localStorage.getItem('tm-globe')==='1'||globeOn}catch(e){}
 
 /* ───────────────────────── map ───────────────────────── */
 const BASES=[
@@ -222,8 +223,22 @@ map.on('dragend',()=>{try{globeLongitude=map.getCenter().lng}catch(e){}setTimeou
 map.on('zoomstart',()=>{globeSpin=false});
 map.on('zoomend',()=>{setTimeout(()=>{globeSpin=globeOn},1800)});
 function toggleGlobe(){
-  globeOn=!globeOn;try{localStorage.setItem('tm-globe',globeOn?'1':'0')}catch(e){}
-  applyProjection();$('argos-globe')?.classList.toggle('on',globeOn);
+  const next=!globeOn;
+  const engine=window.TrackMeNowGlobeEngine;
+  if(next&&engine&&!engine.webglAvailable()){
+    console.warn('[globe] WebGL unavailable; staying on flat map');
+    try{tmToast('3D globe requires WebGL / hardware acceleration','warn')}catch(e){}
+    return false;
+  }
+  if(engine)engine.saveEngine(next);
+  globeOn=next;
+  try{localStorage.setItem('tm-globe',globeOn?'1':'0')}catch(e){}
+  if(engine)engine.switchEngine(globeOn,map); else applyProjection();
+  if(globeOn){
+    try{const c=map.getCenter();globeLongitude=c.lng}catch(e){}
+  }
+  applyProjection();
+  $('argos-globe')?.classList.toggle('on',globeOn);
   return globeOn;
 }
 
