@@ -6,20 +6,18 @@
 <title>TrackMeNow — Global Intelligence</title>
 <link rel="stylesheet" href="./vendor/maplibre-gl/maplibre-gl.css">
 <style>
-:root{--bg:#05090d;--glass:rgba(7,11,16,.78);--line:rgba(255,255,255,.13);--text:#edf4f8;--blue:#45a8ff}
-*{box-sizing:border-box}html,body,#map{height:100%;margin:0}
-body{overflow:hidden;background:var(--bg);color:var(--text);font-family:Inter,system-ui,sans-serif}
+*{box-sizing:border-box}html,body,#map{height:100%;margin:0;width:100%}
+body{overflow:hidden;background:#05090d;color:#edf4f8;font-family:system-ui,sans-serif}
 #map{position:fixed;inset:0;z-index:1;background:#0a1520}
 .topbar{position:fixed;z-index:1200;top:12px;left:14px;right:14px;height:46px;display:flex;align-items:center;gap:9px;pointer-events:none}
 .topbar>*{pointer-events:auto}
-.brand{height:38px;display:flex;align-items:center;padding:0 12px;border:1px solid var(--line);border-radius:8px;background:var(--glass);backdrop-filter:blur(14px);font-size:12px;font-weight:950;letter-spacing:1.8px}
-.brand span{color:var(--blue)}
-.search{height:38px;display:flex;flex:1;max-width:520px;margin:auto;border:1px solid var(--line);border-radius:8px;background:var(--glass);backdrop-filter:blur(14px);overflow:hidden}
+.brand{height:38px;display:flex;align-items:center;padding:0 12px;border:1px solid rgba(255,255,255,.13);border-radius:8px;background:rgba(7,11,16,.78);font-size:12px;font-weight:950;letter-spacing:1.8px}
+.brand span{color:#45a8ff}
+.search{height:38px;display:flex;flex:1;max-width:520px;margin:auto;border:1px solid rgba(255,255,255,.13);border-radius:8px;background:rgba(7,11,16,.78);overflow:hidden}
 .search input{flex:1;border:0;outline:0;background:transparent;color:#fff;padding:0 13px;font-size:11px}
-.btn{height:38px;border:1px solid var(--line);border-radius:8px;background:var(--glass);color:#eaf4fa;padding:0 12px;font-size:10px;font-weight:800;cursor:pointer}
-.search .btn{border:0;border-left:1px solid var(--line);border-radius:0;background:rgba(69,168,255,.13);color:#9fd2ff}
-.status{position:fixed;z-index:1150;left:14px;bottom:12px;padding:7px 9px;border:1px solid var(--line);border-radius:7px;background:var(--glass);backdrop-filter:blur(14px);font-size:10px;color:#b9c9d2}
-button[data-scale="planet"],.tm-planet-btn{display:none!important}
+.btn{height:38px;border:1px solid rgba(255,255,255,.13);border-radius:8px;background:rgba(7,11,16,.78);color:#eaf4fa;padding:0 12px;font-size:10px;font-weight:800;cursor:pointer}
+.search .btn{border:0;border-left:1px solid rgba(255,255,255,.13);border-radius:0;background:rgba(69,168,255,.13);color:#9fd2ff}
+.status{position:fixed;z-index:1150;left:14px;bottom:12px;padding:7px 9px;border:1px solid rgba(255,255,255,.13);border-radius:7px;background:rgba(7,11,16,.78);font-size:10px;color:#b9c9d2}
 </style>
 </head>
 <body>
@@ -30,11 +28,11 @@ button[data-scale="planet"],.tm-planet-btn{display:none!important}
     <input id="searchInput" placeholder="Search place…" />
     <button class="btn" id="searchBtn" type="button">Search</button>
   </div>
-  <button class="btn gps" id="gpsBtn" type="button">GPS</button>
+  <button class="btn" id="gpsBtn" type="button">GPS</button>
 </div>
 <div id="status" class="status">Starting…</div>
 <script src="./vendor/maplibre-gl/maplibre-gl.js"></script>
-<script src="./trackmenow.js?v=20261004-scrubber"></script>
+<script src="./trackmenow.js?v=earth-restore-1"></script>
 <script>
 (function(){
   var input=document.getElementById('searchInput');
