@@ -24,16 +24,21 @@ const BASES=[
 ];
 const MAP_STYLE={version:8,
   projection:{type:'globe'},
-  sky:{'atmosphere-blend':['interpolate',['linear'],['zoom'],0,1,3,0.85,6,0]},
   sources:{
+    ocean:{type:'geojson',data:'https://d2ad6b4ur7yvpq.cloudfront.net/naturalearth-3.3.0/ne_110m_ocean.geojson'},
+    land:{type:'geojson',data:'https://raw.githubusercontent.com/nvkelso/natural-earth-vector/master/geojson/ne_110m_land.geojson'},
+    countries:{type:'geojson',data:'https://raw.githubusercontent.com/nvkelso/natural-earth-vector/master/geojson/ne_110m_admin_0_countries.geojson'},
     satellite:{type:'raster',tileSize:256,maxzoom:19,tiles:['https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}'],attribution:'Esri World Imagery'},
     labels:{type:'raster',tileSize:256,maxzoom:19,tiles:['https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}'],attribution:'Esri'},
     streets:{type:'raster',tileSize:256,maxzoom:19,tiles:['https://tile.openstreetmap.org/{z}/{x}/{y}.png'],attribution:'© OpenStreetMap contributors'},
     terrain:{type:'raster',tileSize:256,maxzoom:17,tiles:['https://a.tile.opentopomap.org/{z}/{y}/{x}.png','https://b.tile.opentopomap.org/{z}/{y}/{x}.png','https://c.tile.opentopomap.org/{z}/{y}/{x}.png'],attribution:'© OpenTopoMap (CC-BY-SA)'}
   },
   layers:[
-    {id:'bg',type:'background',paint:{'background-color':'#050810'}},
-    {id:'base-satellite',type:'raster',source:'satellite'},
+    {id:'bg',type:'background',paint:{'background-color':'#05070b'}},
+    {id:'globe-ocean',type:'fill',source:'ocean',paint:{'fill-color':'#078eaa','fill-opacity':.88}},
+    {id:'globe-land',type:'fill',source:'land',paint:{'fill-color':'#c7cfbd','fill-opacity':.86}},
+    {id:'globe-borders',type:'line',source:'countries',paint:{'line-color':'#18262a','line-width':1.15,'line-opacity':.96}},
+    {id:'base-satellite',type:'raster',source:'satellite',paint:{'raster-opacity':.24}},
     {id:'base-labels',type:'raster',source:'labels'},
     {id:'base-streets',type:'raster',source:'streets',layout:{visibility:'none'}},
     {id:'base-terrain',type:'raster',source:'terrain',layout:{visibility:'none'}}
@@ -45,7 +50,7 @@ function mapUnavailable(msg){
 let map;
 if(!window.maplibregl){mapUnavailable('The map engine could not be downloaded. Check your connection and reload.');throw new Error('maplibregl missing')}
 try{
-  map=new maplibregl.Map({container:'map',style:MAP_STYLE,center:[18,22],zoom:1.65,minZoom:1,maxZoom:18,maxPitch:70,attributionControl:false,renderWorldCopies:false});
+  map=new maplibregl.Map({container:'map',style:MAP_STYLE,center:[18,38],zoom:1.9,minZoom:1,maxZoom:18,maxPitch:70,attributionControl:false,renderWorldCopies:false});
   map.addControl(new maplibregl.AttributionControl({compact:true}),'bottom-right');
 }catch(e){mapUnavailable('This browser could not start the WebGL map. Try a current Chrome, Edge, Firefox or Safari with hardware acceleration on.');throw e}
 window.map=map;
@@ -92,10 +97,19 @@ function initOverlays(){
 }
 
 /* basemap, night mode, globe */
+function syncGlobeSkin(){
+  if(!mapReady)return;
+  const skin=globeOn;
+  if(map.getLayer('globe-ocean'))map.setLayoutProperty('globe-ocean','visibility',skin?'visible':'none');
+  if(map.getLayer('globe-land'))map.setLayoutProperty('globe-land','visibility',skin?'visible':'none');
+  if(map.getLayer('globe-borders'))map.setLayoutProperty('globe-borders','visibility',skin?'visible':'none');
+  if(map.getLayer('base-satellite'))map.setPaintProperty('base-satellite','raster-opacity',skin?.24:1);
+}
 function setBase(i){
   baseIndex=((i%BASES.length)+BASES.length)%BASES.length;
   if(!mapReady)return BASES[baseIndex].name;
   BASES.forEach((b,n)=>b.layers.forEach(id=>map.setLayoutProperty(id,'visibility',n===baseIndex?'visible':'none')));
+  syncGlobeSkin();
   return BASES[baseIndex].name;
 }
 function applyNight(on){
@@ -106,7 +120,7 @@ function applyNight(on){
     map.setPaintProperty(id,'raster-contrast',on?.1:0);
   });
 }
-function applyProjection(resetView=false){if(!mapReady)return;try{map.setProjection({type:globeOn?'globe':'mercator'});if(globeOn&&resetView){map.jumpTo({center:[18,22],zoom:1.65,bearing:0,pitch:0}); globeLongitude=18}}catch(e){console.warn('TrackMeNow projection change failed',e)}}
+function applyProjection(resetView=false){if(!mapReady)return;try{map.setProjection({type:globeOn?'globe':'mercator'});syncGlobeSkin();if(globeOn&&resetView){map.jumpTo({center:[18,38],zoom:1.9,bearing:0,pitch:0}); globeLongitude=18}}catch(e){console.warn('TrackMeNow projection change failed',e)}}
 let globeSpin=true,globeLongitude=18,globeLast=performance.now();
 function spinGlobe(now){
   if(globeOn&&globeSpin&&mapReady){
@@ -124,7 +138,7 @@ function spinGlobe(now){
 }
 requestAnimationFrame(spinGlobe);
 map.on('dragstart',()=>{globeSpin=false});
-map.on('dragend',()=>{setTimeout(()=>{globeSpin=globeOn},1800)});
+map.on('dragend',()=>{try{globeLongitude=map.getCenter().lng}catch(e){}setTimeout(()=>{globeSpin=globeOn},1800)});
 map.on('zoomstart',()=>{globeSpin=false});
 map.on('zoomend',()=>{setTimeout(()=>{globeSpin=globeOn},1800)});
 function toggleGlobe(){
