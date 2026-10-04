@@ -1,4 +1,4 @@
-/* TrackMeNow — Zoom.Earth-style bottom bar + natural day/night + Live/Weather drawers */
+/* TrackMeNow — day scrubber + continuous weather heatmaps */
 (function () {
   'use strict';
   const $ = (id) => document.getElementById(id);
@@ -106,9 +106,6 @@
     return d.toISOString().slice(0, 10);
   }
 
-  function updateGibsDate() {
-    updateTimeLabel();
-  }
   function updateTimeLabel() {
     const el = $('tm-time-label');
     if (!el) return;
@@ -118,6 +115,33 @@
       return;
     }
     el.textContent = gibsDateStr();
+  }
+
+  function applyGibsDay() {
+    updateTimeLabel();
+    if (!maplibre || scale !== 'earth') return;
+    const date = gibsDateStr();
+    const gibsUrl = 'https://gibs.earthdata.nasa.gov/wmts/epsg3857/best/VIIRS_SNPP_CorrectedReflectance_TrueColor/default/' +
+      date + '/GoogleMapsCompatible_Level9/{z}/{y}/{x}.jpg';
+    const fireUrl = 'https://gibs.earthdata.nasa.gov/wmts/epsg3857/best/VIIRS_SNPP_Thermal_Anomalies_375m_Day/default/' +
+      date + '/GoogleMapsCompatible_Level8/{z}/{y}/{x}.png';
+    try {
+      if (maplibre.getSource('gibs')) {
+        maplibre.getSource('gibs').setTiles([gibsUrl]);
+        if (maplibre.getLayer('gibs-live')) {
+          const vis = activeWx.live && !activeWx.dark ? 'visible' : 'none';
+          maplibre.setLayoutProperty('gibs-live', 'visibility', 'none');
+          setTimeout(function () {
+            try { maplibre.setLayoutProperty('gibs-live', 'visibility', vis); } catch (e) {}
+          }, 30);
+        }
+      }
+      if (maplibre.getSource('fires')) maplibre.getSource('fires').setTiles([fireUrl]);
+      setStatus('EARTH · imagery ' + date, true);
+    } catch (e) {
+      console.warn('applyGibsDay', e);
+      if (scale === 'earth') enterEarth();
+    }
   }
 
   async function loadActivity() {
@@ -202,6 +226,7 @@
       '  <input id="tm-time-slider" type="range" min="0" max="0" value="0" style="width:160px">',
       '</div>',
       '<div id="tm-wx-readout" style="display:none"></div>',
+      '<div id="tm-wx-legend" style="display:none;position:fixed;z-index:2280;left:14px;bottom:78px;padding:6px 12px;border-radius:8px;background:rgba(8,12,18,.92);border:1px solid rgba(255,255,255,.14);font:11px system-ui;color:#e8f0f6"></div>',
       '<div id="tm-zoom-stack">',
       '  <button id="tm-zoom-in" class="tm-z">+</button>',
       '  <button id="tm-zoom-out" class="tm-z">−</button>',
@@ -252,9 +277,15 @@
         activeWx[k] = !activeWx[k];
         if (k === 'dark' && activeWx.dark) activeWx.satellite = true;
         if (k === 'live' && activeWx.live) activeWx.dark = false;
+        if (['temp', 'humidity', 'pressure', 'wind', 'precip'].indexOf(k) >= 0) {
+          ['temp','humidity','pressure','wind','precip'].forEach(function(m){ if(m!==k) activeWx[m]=false; });
+          syncDrawerItems();
+          applyLayers();
+          refreshForecast();
+          return;
+        }
         syncDrawerItems();
         applyLayers();
-        if (['temp', 'humidity', 'pressure', 'wind', 'precip'].indexOf(k) >= 0) refreshForecast();
         if (k === 'events' || k === 'quakes') loadActivity();
       };
     });
@@ -273,13 +304,11 @@
     };
     if ($('tm-day-prev')) $('tm-day-prev').onclick = function () {
       gibsDayOffset = Math.max(-14, gibsDayOffset - 1);
-      updateTimeLabel();
-      if (scale === 'earth') enterEarth();
+      applyGibsDay();
     };
     if ($('tm-day-next')) $('tm-day-next').onclick = function () {
       gibsDayOffset = Math.min(0, gibsDayOffset + 1);
-      updateTimeLabel();
-      if (scale === 'earth') enterEarth();
+      applyGibsDay();
     };
     document.addEventListener('click', function (e) {
       if (!openDrawer) return;
@@ -447,9 +476,7 @@
     } catch (e) { rvFrames = []; }
   }
 
-  function updateTime() {
-    updateTimeLabel();
-  }
+  function updateTime() { updateTimeLabel(); }
 
   function applyRadar() {
     if (!maplibre || !rvFrames.length) return;
@@ -500,6 +527,123 @@
     } catch (e) {}
   }
 
+  function activeForecastMode() {
+    if (activeWx.precip) return 'precip';
+    if (activeWx.wind) return 'wind';
+    if (activeWx.temp) return 'temp';
+    if (activeWx.humidity) return 'humidity';
+    if (activeWx.pressure) return 'pressure';
+    return null;
+  }
+
+  function forecastScale(mode) {
+    if (mode === 'precip') return { prop: 'precip', stops: [0, '#1a2332', 0.5, '#2ecc71', 2, '#3498db', 8, '#9b59b6', 20, '#e74c3c', 40, '#ffffff'], label: 'Precipitation mm' };
+    if (mode === 'wind') return { prop: 'wind', stops: [0, '#0d2137', 15, '#1a6b8a', 40, '#2ecc71', 70, '#f1c40f', 110, '#e67e22', 160, '#c0392b'], label: 'Wind km/h' };
+    if (mode === 'temp') return { prop: 'temp', stops: [-30, '#2c0a6b', -10, '#3d5a9e', 0, '#5b9bd5', 12, '#7dcea0', 22, '#f4d03f', 32, '#e67e22', 42, '#c0392b'], label: 'Temperature °C' };
+    if (mode === 'humidity') return { prop: 'humidity', stops: [0, '#c9a66b', 30, '#a8c686', 55, '#5dade2', 80, '#3498db', 100, '#1a3a8a'], label: 'Humidity %' };
+    if (mode === 'pressure') return { prop: 'pressure', stops: [970, '#2980b9', 990, '#5dade2', 1013, '#f5e6c8', 1030, '#e74c3c', 1045, '#922b21'], label: 'Pressure hPa' };
+    return { prop: 'temp', stops: [0, '#888', 40, '#fff'], label: '' };
+  }
+
+  function paintForecast() {
+    if (!maplibre) return;
+    const mode = activeForecastMode();
+    const leg = $('tm-wx-legend');
+    if (!mode) {
+      try {
+        if (maplibre.getLayer('forecast-heat')) maplibre.setLayoutProperty('forecast-heat', 'visibility', 'none');
+        if (maplibre.getLayer('forecast-circles')) maplibre.setLayoutProperty('forecast-circles', 'visibility', 'none');
+        if (maplibre.getSource('forecast')) maplibre.getSource('forecast').setData({ type: 'FeatureCollection', features: [] });
+      } catch (e) {}
+      if (leg) leg.style.display = 'none';
+      return;
+    }
+    const sc = forecastScale(mode);
+    if (!window._fcGrid || !window._fcGrid.points) return;
+    const features = [];
+    window._fcGrid.points.forEach(function (p) {
+      const v = p[sc.prop];
+      if (v == null || isNaN(v)) return;
+      features.push({
+        type: 'Feature',
+        geometry: { type: 'Point', coordinates: [p.lon, p.lat] },
+        properties: { v: v }
+      });
+    });
+    try {
+      if (maplibre.getSource('forecast')) maplibre.getSource('forecast').setData({ type: 'FeatureCollection', features: features });
+      if (maplibre.getLayer('forecast-heat')) {
+        maplibre.setLayoutProperty('forecast-heat', 'visibility', 'visible');
+        maplibre.setPaintProperty('forecast-heat', 'heatmap-weight', [
+          'interpolate', ['linear'], ['get', 'v'],
+          sc.stops[0], 0.05,
+          sc.stops[sc.stops.length - 2], 1
+        ]);
+        const dens = ['interpolate', ['linear'], ['heatmap-density'], 0, 'rgba(0,0,0,0)'];
+        const cols = [];
+        for (let i = 1; i < sc.stops.length; i += 2) cols.push(sc.stops[i]);
+        const steps = [0.1, 0.25, 0.4, 0.55, 0.7, 0.85, 1];
+        for (let i = 0; i < cols.length && i < steps.length; i++) dens.push(steps[i], cols[i]);
+        maplibre.setPaintProperty('forecast-heat', 'heatmap-color', dens);
+      }
+      if (maplibre.getLayer('forecast-circles')) {
+        maplibre.setLayoutProperty('forecast-circles', 'visibility', 'visible');
+        maplibre.setPaintProperty('forecast-circles', 'circle-color',
+          ['interpolate', ['linear'], ['get', 'v']].concat(sc.stops));
+        maplibre.setPaintProperty('forecast-circles', 'circle-opacity', 0.4);
+        maplibre.setPaintProperty('forecast-circles', 'circle-radius', 16);
+      }
+    } catch (e) { console.warn(e); }
+    if (leg) {
+      leg.style.display = 'block';
+      leg.textContent = sc.label + ' · Open-Meteo';
+    }
+  }
+
+  async function refreshForecast() {
+    if (!maplibre || scale !== 'earth') return;
+    const mode = activeForecastMode();
+    if (!mode) {
+      window._fcGrid = null;
+      paintForecast();
+      return;
+    }
+    setStatus('Loading ' + mode + ' map…', true);
+    const c = maplibre.getCenter();
+    const z = maplibre.getZoom();
+    const step = z < 2 ? 14 : z < 3.5 ? 9 : z < 5 ? 6 : 4;
+    const pts = [];
+    for (let lat = Math.max(-55, c.lat - step * 2.2); lat <= Math.min(70, c.lat + step * 2.2); lat += step) {
+      for (let lon = c.lng - step * 3; lon <= c.lng + step * 3; lon += step) {
+        let L = lon;
+        while (L > 180) L -= 360;
+        while (L < -180) L += 360;
+        pts.push({ lat: +lat.toFixed(2), lon: +L.toFixed(2) });
+      }
+    }
+    const limited = pts.slice(0, 48);
+    const results = await Promise.all(limited.map(async function (p) {
+      try {
+        const u = 'https://api.open-meteo.com/v1/forecast?latitude=' + p.lat +
+          '&longitude=' + p.lon +
+          '&current=temperature_2m,relative_humidity_2m,surface_pressure,wind_speed_10m,wind_gusts_10m,precipitation';
+        const j = await (await fetch(u)).json();
+        const cur = j.current || {};
+        return {
+          lat: p.lat, lon: p.lon,
+          temp: cur.temperature_2m,
+          humidity: cur.relative_humidity_2m,
+          pressure: cur.surface_pressure,
+          wind: cur.wind_gusts_10m != null ? cur.wind_gusts_10m : cur.wind_speed_10m,
+          precip: cur.precipitation
+        };
+      } catch (e) { return null; }
+    }));
+    window._fcGrid = { points: results.filter(Boolean) };
+    paintForecast();
+    setStatus('Weather · ' + mode, true);
+  }
+
   function applyLayers() {
     if (!maplibre) return;
     try {
@@ -517,77 +661,12 @@
         maplibre.setLayoutProperty('eonet-pts', 'visibility', activeWx.events ? 'visible' : 'none');
       if (maplibre.getLayer('quakes-pts'))
         maplibre.setLayoutProperty('quakes-pts', 'visibility', activeWx.quakes ? 'visible' : 'none');
-      if (maplibre.getLayer('forecast-circles')) {
-        const any = activeWx.temp || activeWx.humidity || activeWx.pressure || activeWx.wind || activeWx.precip;
-        maplibre.setLayoutProperty('forecast-circles', 'visibility', any ? 'visible' : 'none');
-      }
     } catch (e) {}
     applyDayNight();
+    paintForecast();
     refreshWx();
     syncBar();
     syncDrawerItems();
-  }
-
-  function paintForecast() {
-    if (!maplibre || !maplibre.getLayer('forecast-circles')) return;
-    let prop = 'temp';
-    if (activeWx.temp) prop = 'temp';
-    else if (activeWx.humidity) prop = 'humidity';
-    else if (activeWx.pressure) prop = 'pressure';
-    else if (activeWx.wind) prop = 'wind';
-    else if (activeWx.precip) prop = 'precip';
-    try {
-      maplibre.setPaintProperty('forecast-circles', 'circle-color', [
-        'case',
-        ['==', prop, 'temp'], ['interpolate', ['linear'], ['get', 'temp'], -20, '#4b6cb7', 0, '#6a9bd1', 15, '#f0d060', 35, '#e04040'],
-        ['==', prop, 'humidity'], ['interpolate', ['linear'], ['get', 'humidity'], 0, '#d4a574', 50, '#7ec8e3', 100, '#3F54BA'],
-        ['==', prop, 'pressure'], ['interpolate', ['linear'], ['get', 'pressure'], 980, '#e07040', 1013, '#90b0c0', 1040, '#4b6cb7'],
-        ['==', prop, 'wind'], ['interpolate', ['linear'], ['get', 'wind'], 0, '#7ec8a0', 15, '#f0d060', 40, '#e04040'],
-        ['interpolate', ['linear'], ['get', 'precip'], 0, '#334455', 2, '#4fd0a0', 10, '#3D8BFF', 30, '#9b59b6']
-      ]);
-    } catch (e) {}
-  }
-
-  async function refreshForecast() {
-    if (!maplibre || scale !== 'earth') return;
-    const any = activeWx.temp || activeWx.humidity || activeWx.pressure || activeWx.wind || activeWx.precip;
-    if (!any) {
-      if (maplibre.getSource('forecast')) maplibre.getSource('forecast').setData({ type: 'FeatureCollection', features: [] });
-      return;
-    }
-    const c = maplibre.getCenter();
-    const z = maplibre.getZoom();
-    const step = z < 2 ? 25 : z < 4 ? 12 : 6;
-    const points = [];
-    for (let lat = Math.max(-55, c.lat - step * 2); lat <= Math.min(55, c.lat + step * 2); lat += step) {
-      for (let lon = c.lng - step * 2; lon <= c.lng + step * 2; lon += step) {
-        let L = lon;
-        while (L > 180) L -= 360;
-        while (L < -180) L += 360;
-        points.push({ lat: lat, lon: L });
-      }
-    }
-    const features = [];
-    await Promise.all(points.slice(0, 16).map(async function (p) {
-      try {
-        const u = 'https://api.open-meteo.com/v1/forecast?latitude=' + p.lat.toFixed(2) +
-          '&longitude=' + p.lon.toFixed(2) +
-          '&current=temperature_2m,relative_humidity_2m,surface_pressure,wind_speed_10m,precipitation';
-        const res = await fetch(u);
-        const j = await res.json();
-        const cur = j.current || {};
-        features.push({
-          type: 'Feature',
-          geometry: { type: 'Point', coordinates: [p.lon, p.lat] },
-          properties: {
-            temp: cur.temperature_2m, humidity: cur.relative_humidity_2m,
-            pressure: cur.surface_pressure, wind: cur.wind_speed_10m, precip: cur.precipitation
-          }
-        });
-      } catch (e) {}
-    }));
-    if (maplibre.getSource('forecast')) maplibre.getSource('forecast').setData({ type: 'FeatureCollection', features: features });
-    paintForecast();
   }
 
   function refreshWx() {
@@ -620,7 +699,7 @@
     const radarPath = rvFrames.length ? rvHost + rvFrames[rvIndex].path + '/256/{z}/{x}/{y}/2/1_1.png' : null;
     const useGlobe = earthMode === 'globe';
     const date = gibsDateStr();
-    updateGibsDate();
+    updateTimeLabel();
 
     const style = {
       version: 8,
@@ -686,11 +765,29 @@
         },
         { id: 'labels', type: 'raster', source: 'labels', paint: { 'raster-opacity': 0.85 } },
         {
+          id: 'forecast-heat', type: 'heatmap', source: 'forecast',
+          layout: { visibility: 'none' },
+          paint: {
+            'heatmap-radius': 42,
+            'heatmap-intensity': 1.4,
+            'heatmap-opacity': 0.85,
+            'heatmap-color': [
+              'interpolate', ['linear'], ['heatmap-density'],
+              0, 'rgba(0,0,0,0)',
+              0.15, '#2980b9',
+              0.35, '#2ecc71',
+              0.55, '#f1c40f',
+              0.75, '#e67e22',
+              1, '#c0392b'
+            ]
+          }
+        },
+        {
           id: 'forecast-circles', type: 'circle', source: 'forecast',
           layout: { visibility: 'none' },
           paint: {
-            'circle-radius': 11, 'circle-color': '#4fd0a0', 'circle-opacity': 0.75,
-            'circle-stroke-width': 1, 'circle-stroke-color': '#ffffff88'
+            'circle-radius': 14, 'circle-color': '#4fd0a0', 'circle-opacity': 0.35,
+            'circle-stroke-width': 0
           }
         },
         {
@@ -751,9 +848,8 @@
       if (forecastTimer) clearTimeout(forecastTimer);
       forecastTimer = setTimeout(function () {
         refreshWx();
-        if (activeWx.temp || activeWx.humidity || activeWx.pressure || activeWx.wind || activeWx.precip)
-          refreshForecast();
-      }, 400);
+        if (activeForecastMode()) refreshForecast();
+      }, 500);
     });
     setTimeout(function () { try { maplibre.resize(); } catch (e) {} }, 300);
   }
