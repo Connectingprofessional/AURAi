@@ -28,6 +28,7 @@ const MAP_STYLE={version:8,
     ocean:{type:'geojson',data:'https://d2ad6b4ur7yvpq.cloudfront.net/naturalearth-3.3.0/ne_110m_ocean.geojson'},
     land:{type:'geojson',data:'https://raw.githubusercontent.com/nvkelso/natural-earth-vector/master/geojson/ne_110m_land.geojson'},
     countries:{type:'geojson',data:'https://raw.githubusercontent.com/nvkelso/natural-earth-vector/master/geojson/ne_110m_admin_0_countries.geojson'},
+    'solar-terminator':{type:'geojson',data:{type:'FeatureCollection',features:[]}},
     satellite:{type:'raster',tileSize:256,maxzoom:19,tiles:['https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}'],attribution:'Esri World Imagery'},
     labels:{type:'raster',tileSize:256,maxzoom:19,tiles:['https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}'],attribution:'Esri'},
     streets:{type:'raster',tileSize:256,maxzoom:19,tiles:['https://tile.openstreetmap.org/{z}/{x}/{y}.png'],attribution:'© OpenStreetMap contributors'},
@@ -41,8 +42,41 @@ const MAP_STYLE={version:8,
     {id:'base-satellite',type:'raster',source:'satellite',paint:{'raster-opacity':.24}},
     {id:'base-labels',type:'raster',source:'labels'},
     {id:'base-streets',type:'raster',source:'streets',layout:{visibility:'none'}},
-    {id:'base-terrain',type:'raster',source:'terrain',layout:{visibility:'none'}}
+    {id:'base-terrain',type:'raster',source:'terrain',layout:{visibility:'none'}},
+    {id:'solar-night',type:'fill',source:'solar-terminator',paint:{'fill-color':'#02050b','fill-opacity':.38}},
+    {id:'solar-terminator-line',type:'line',source:'solar-terminator',paint:{'line-color':'#8fd9ff','line-width':1.15,'line-opacity':.7}}
   ]};
+function solarTerminatorGeoJSON(date=new Date()){
+  const dayMs=86400000, y=date.getUTCFullYear(), start=Date.UTC(y,0,1);
+  const n=(date.getTime()-start)/dayMs;
+  const g=2*Math.PI/365.2422*(n-1);
+  const decl=0.006918-0.399912*Math.cos(g)+0.070257*Math.sin(g)-0.006758*Math.cos(2*g)+0.000907*Math.sin(2*g)-0.002697*Math.cos(3*g)+0.00148*Math.sin(3*g);
+  const utc=date.getUTCHours()+date.getUTCMinutes()/60+date.getUTCSeconds()/3600;
+  let subLon=((12-utc)*15+540)%360-180;
+  const east=[],west=[];
+  for(let lat=-90;lat<=90;lat+=2){
+    const phi=lat*Math.PI/180, t=-Math.tan(phi)*Math.tan(decl);
+    const h=Math.abs(t)>=1?(t>0?Math.PI:0):Math.acos(t);
+    const d=h*180/Math.PI;
+    east.push([((subLon+d+540)%360)-180,lat]);
+    west.push([((subLon-d+540)%360)-180,lat]);
+  }
+  const ring=[...east,...west.reverse()];
+  return {type:'FeatureCollection',features:[{type:'Feature',geometry:{type:'Polygon',coordinates:[[[-180,-90],...ring,[-180,90],[-180,-90]]]},properties:{}},{type:'Feature',geometry:{type:'LineString',coordinates:east},properties:{}}]};
+}
+function updateSolarTerminator(){
+  if(!mapReady)return;
+  const src=map.getSource('solar-terminator');if(src)src.setData(solarTerminatorGeoJSON());
+}
+let solarTimer=null;
+function setSolarTerminator(on){
+  if(!mapReady)return;
+  const vis=on?'visible':'none';
+  if(map.getLayer('solar-night'))map.setLayoutProperty('solar-night','visibility',vis);
+  if(map.getLayer('solar-terminator-line'))map.setLayoutProperty('solar-terminator-line','visibility',vis);
+  if(on){updateSolarTerminator();clearInterval(solarTimer);solarTimer=setInterval(updateSolarTerminator,60000)}
+  else clearInterval(solarTimer);
+}
 function mapUnavailable(msg){
   const el=$('map');if(el)el.innerHTML='<div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;padding:24px;text-align:center;color:#cfe9ec;font:13px/1.5 system-ui,sans-serif">'+safe(msg)+'</div>';
   const s=$('splash');if(s)s.classList.add('open');
@@ -320,7 +354,9 @@ map.on('mousemove',e=>{
   });
 });
 map.on('click',e=>{
-  if(!mapReady)return;const f=hitTest(e.point);if(!f)return;
+  if(!mapReady)return;
+  if(drawingFence){drawingFencePts.push([e.lngLat.lng,e.lngLat.lat]);tmToast('GEOFENCE POINT '+drawingFencePts.length+' · CLICK ⌖ TO FINISH');return}
+  const f=hitTest(e.point);if(!f)return;
   const p=Object.assign({},f.properties),c=f.geometry.coordinates.slice();
   const st=live.get(p.key);if(st)c[0]=st.cur[0],c[1]=st.cur[1];
   showObject(p,c);
@@ -440,15 +476,22 @@ $('historyBtn').onclick=async()=>{
     status.innerHTML='<span class="live">●</span> GPS HISTORY · '+pts.length+' POINTS';
   }catch(e){alert(e.message)}
 };
-async function createGeofence(){
-  const center=map.getCenter();const raw=prompt('Geofence radius in metres','500');if(raw===null)return;const radius=Number(raw);
-  if(!Number.isFinite(radius)||radius<=0){tmToast('ENTER A RADIUS GREATER THAN 0','warn');return}
-  let g={lat:center.lat,lon:center.lng,radius_m:radius},saved=false;
-  if(sessionId){try{const r=await fetch(API+'/api/geofences',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({sessionId,lat:center.lat,lon:center.lng,radius_m:radius,name:'TrackMeNow geofence'})});if(!r.ok)throw Error('HTTP '+r.status);g=await r.json();saved=true}catch(e){}}
-  fences.push(circlePoly(Number(g.lon),Number(g.lat),Number(g.radius_m)));
-  setSource('fences',{type:'FeatureCollection',features:fences});
-  tmToast(saved?'GEOFENCE CREATED · ENTER/EXIT ALERTS ACTIVE':'GEOFENCE DRAWN ONLY · START GPS FOR ENTER/EXIT ALERTS',saved?'ok':'warn');
+let drawingFence=false,drawingFencePts=[];
+function startDrawGeofence(){
+  if(drawingFence){finishDrawGeofence();return}
+  drawingFence=true;drawingFencePts=[];tmToast('DRAW GEOFENCE · CLICK MAP TO ADD POINTS · CLICK ⌖ TO FINISH','ok');
+  map.getCanvas().style.cursor='crosshair';
 }
+function finishDrawGeofence(){
+  if(!drawingFence)return;
+  drawingFence=false;map.getCanvas().style.cursor='';
+  if(drawingFencePts.length<3){drawingFencePts=[];tmToast('GEOFENCE NEEDS AT LEAST 3 POINTS','warn');return}
+  const ring=[...drawingFencePts,drawingFencePts[0]];
+  fences.push({type:'Feature',geometry:{type:'Polygon',coordinates:[ring]},properties:{type:'geofence'}});
+  setSource('fences',{type:'FeatureCollection',features:fences});
+  drawingFencePts=[];tmToast('GEOFENCE DRAWN · AUTHORIZED MONITORING ONLY','ok');
+}
+async function createGeofence(){startDrawGeofence()}
 $('geoBtn').onclick=createGeofence;
 
 /* ───────────────────────── report ───────────────────────── */
@@ -464,7 +507,10 @@ $('argos-alerts')?.addEventListener('click',()=>{const bad=(lastData?.sources||[
 $('argos-sat')?.addEventListener('click',()=>{globeOn=false;try{localStorage.setItem('tm-globe','0')}catch(e){}applyProjection();const n=setBase(0);$('argos-globe')?.classList.remove('on');$('argos-map')?.classList.remove('on');$('argos-sat')?.classList.add('on');tmToast('SATELLITE · '+n.toUpperCase())});
 $('argos-map')?.addEventListener('click',()=>{globeOn=false;try{localStorage.setItem('tm-globe','0')}catch(e){}applyProjection();const n=setBase(1);$('argos-globe')?.classList.remove('on');$('argos-sat')?.classList.remove('on');$('argos-map')?.classList.add('on');tmToast('MAP · '+n.toUpperCase())});
 $('argos-globe')?.addEventListener('click',()=>{const on=toggleGlobe();$('argos-globe')?.classList.toggle('on',on);$('argos-map')?.classList.toggle('on',!on&&baseIndex===1);$('argos-sat')?.classList.toggle('on',!on&&baseIndex===0);tmToast(on?'3D GLOBE':'FLAT MAP')});
-$('argos-night')?.addEventListener('click',e=>{const on=document.body.classList.toggle('tm-night');e.currentTarget.classList.toggle('on',on);applyNight(on);tmToast(on?'NIGHT MODE':'DAY MODE')});
+$('argos-night')?.addEventListener('click',e=>{const on=!e.currentTarget.classList.contains('on');e.currentTarget.classList.toggle('on',on);setSolarTerminator(on);tmToast(on?'SOLAR TERMINATOR · DAY/NIGHT':'DAY/NIGHT TERMINATOR OFF')});
+$('argos-search')?.addEventListener('click',()=>{search?.focus();search?.select()});
+document.addEventListener('keydown',e=>{if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==='k'){e.preventDefault();search?.focus();search?.select()}});
+$('argos-fence')?.addEventListener('click',()=>{startDrawGeofence()});
 $('zoomIn')?.addEventListener('click',()=>map.zoomIn());
 $('zoomOut')?.addEventListener('click',()=>map.zoomOut());
 $('zoomNorth')?.addEventListener('click',()=>map.easeTo({bearing:0,pitch:0}));
@@ -512,7 +558,7 @@ let booted=false;
 function boot(){
   if(booted)return;booted=true;
   initOverlays();mapReady=true;
-  setBase(baseIndex);applyProjection(true);
+  setBase(baseIndex);applyProjection(true);setSolarTerminator(false);
   $('argos-map')?.classList.toggle('on',!globeOn&&baseIndex===1);
   $('argos-sat')?.classList.toggle('on',!globeOn&&baseIndex===0);
   $('argos-globe')?.classList.toggle('on',globeOn);
