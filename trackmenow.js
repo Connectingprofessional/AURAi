@@ -1,6 +1,4 @@
-/* TrackMeNow — full engine restored
- * Earth (Esri satellite + layers), Moon, Mars, Universe, Solar System
- */
+/* TrackMeNow — Earth: Flat / 3D Globe / Day-Night terminator + Moon + Mars + Universe */
 (function () {
   'use strict';
   const $ = (id) => document.getElementById(id);
@@ -22,13 +20,12 @@
   ];
 
   let scale = 'earth';
+  let earthMode = 'flat';
   let globe = null, og = null, maplibre = null;
   let solarZoom = 1, solarCanvas = null, solarCtx = null, animId = 0;
-  let activeWx = {
-    satellite: true, dark: false, radar: false, live: false,
-    precip: false, wind: false, temp: false, humidity: false, pressure: false
-  };
+  let activeWx = { satellite: true, dark: false, radar: false };
   let rvHost = '', rvFrames = [], rvIndex = 0, playTimer = null, playing = false;
+  let terminatorTimer = null;
 
   function setStatus(msg, ok) {
     const el = $('status');
@@ -43,6 +40,55 @@
     document.head.appendChild(l);
   }
 
+  function sunLonLat(date) {
+    const d = date || new Date();
+    const start = Date.UTC(d.getUTCFullYear(), 0, 0);
+    const day = (d - start) / 86400000;
+    const decl = 23.44 * Math.sin((2 * Math.PI / 365) * (day - 81));
+    const utcH = d.getUTCHours() + d.getUTCMinutes() / 60 + d.getUTCSeconds() / 3600;
+    const lon = 15 * (12 - utcH);
+    return { lon: lon, lat: decl };
+  }
+
+  function normalizeLon(lon) {
+    while (lon > 180) lon -= 360;
+    while (lon < -180) lon += 360;
+    return lon;
+  }
+
+  function terminatorGeoJSON(date) {
+    const sun = sunLonLat(date);
+    const coords = [];
+    const steps = 72;
+    for (let i = 0; i <= steps; i++) {
+      const lat = -90 + (180 * i) / steps;
+      const latRad = lat * Math.PI / 180;
+      const sunLatRad = sun.lat * Math.PI / 180;
+      let cosHA = -Math.tan(latRad) * Math.tan(sunLatRad);
+      cosHA = Math.max(-1, Math.min(1, cosHA));
+      const ha = Math.acos(cosHA) * 180 / Math.PI;
+      coords.push([normalizeLon(sun.lon - ha), lat]);
+    }
+    for (let i = steps; i >= 0; i--) {
+      const lat = -90 + (180 * i) / steps;
+      const latRad = lat * Math.PI / 180;
+      const sunLatRad = sun.lat * Math.PI / 180;
+      let cosHA = -Math.tan(latRad) * Math.tan(sunLatRad);
+      cosHA = Math.max(-1, Math.min(1, cosHA));
+      const ha = Math.acos(cosHA) * 180 / Math.PI;
+      coords.push([normalizeLon(sun.lon + ha), lat]);
+    }
+    coords.push(coords[0]);
+    return {
+      type: 'FeatureCollection',
+      features: [{
+        type: 'Feature',
+        properties: { name: 'night' },
+        geometry: { type: 'Polygon', coordinates: [coords] }
+      }]
+    };
+  }
+
   function injectChrome() {
     if ($('tm-universe-chrome')) return;
     const box = document.createElement('div');
@@ -55,17 +101,16 @@
       '  <button data-scale="moon" class="tm-scale-btn">Moon</button>',
       '  <button data-scale="mars" class="tm-scale-btn">Mars</button>',
       '</div>',
-      '<div id="tm-ze-menu" style="display:none;position:fixed;z-index:2200;left:12px;top:100px;width:200px;padding:10px 0;border-radius:12px;background:rgba(28,20,18,.92);border:1px solid rgba(255,255,255,.12);color:#f0e8e0;font:12px system-ui">',
+      '<div id="tm-earth-modes" style="display:none;position:fixed;z-index:2200;left:50%;top:100px;transform:translateX(-50%);gap:6px;flex-wrap:wrap;justify-content:center">',
+      '  <button data-emode="flat" class="tm-emode on">Flat</button>',
+      '  <button data-emode="globe" class="tm-emode">3D Globe</button>',
+      '  <button data-emode="terminator" class="tm-emode">Day / Night</button>',
+      '</div>',
+      '<div id="tm-ze-menu" style="display:none;position:fixed;z-index:2200;left:12px;top:140px;width:200px;padding:10px 0;border-radius:12px;background:rgba(28,20,18,.92);border:1px solid rgba(255,255,255,.12);color:#f0e8e0;font:12px system-ui">',
       '  <div style="padding:4px 14px;font-weight:800;opacity:.7;font-size:10px">LIVE MAPS</div>',
       '  <button data-wx="satellite" class="tm-ze-item on">Satellite</button>',
       '  <button data-wx="dark" class="tm-ze-item">Dark</button>',
       '  <button data-wx="radar" class="tm-ze-item">Radar</button>',
-      '  <div style="padding:12px 14px 4px;font-weight:800;opacity:.7;font-size:10px">FORECAST MAPS</div>',
-      '  <button data-wx="precip" class="tm-ze-item">Precipitation</button>',
-      '  <button data-wx="wind" class="tm-ze-item">Wind</button>',
-      '  <button data-wx="temp" class="tm-ze-item">Temperature</button>',
-      '  <button data-wx="humidity" class="tm-ze-item">Humidity</button>',
-      '  <button data-wx="pressure" class="tm-ze-item">Pressure</button>',
       '</div>',
       '<div id="tm-timebar" style="display:none;position:fixed;z-index:2200;left:50%;bottom:52px;transform:translateX(-50%);min-width:260px;padding:8px 12px;border-radius:12px;background:rgba(8,12,18,.92);border:1px solid rgba(255,255,255,.15);color:#e8f0f6;font:11px ui-monospace">',
       '  <div style="display:flex;align-items:center;gap:8px;justify-content:center">',
@@ -83,8 +128,8 @@
       '  <button id="tm-zoom-home" class="tm-z" style="font-size:12px">⌂</button>',
       '</div>',
       '<style>',
-      '.tm-scale-btn,.tm-z,.tm-tbtn{border:1px solid rgba(255,255,255,.2);border-radius:8px;background:rgba(6,12,18,.92);color:#eaf4fa;cursor:pointer;font:700 11px system-ui;padding:8px 12px}',
-      '.tm-scale-btn.on{border-color:#4fd0a0;color:#4fd0a0;box-shadow:0 0 12px #4fd0a044}',
+      '.tm-scale-btn,.tm-emode,.tm-z,.tm-tbtn{border:1px solid rgba(255,255,255,.2);border-radius:8px;background:rgba(6,12,18,.92);color:#eaf4fa;cursor:pointer;font:700 11px system-ui;padding:8px 12px}',
+      '.tm-scale-btn.on,.tm-emode.on{border-color:#4fd0a0;color:#4fd0a0;box-shadow:0 0 12px #4fd0a044}',
       '.tm-z{width:40px;height:40px;font-size:20px;font-weight:900;padding:0}',
       '.tm-tbtn{width:32px;height:32px;padding:0}',
       '.tm-ze-item{display:block;width:100%;text-align:left;border:0;background:transparent;color:#f0e8e0;padding:9px 14px;cursor:pointer;font:600 13px system-ui}',
@@ -96,6 +141,15 @@
 
     box.querySelectorAll('[data-scale]').forEach(function (b) {
       b.onclick = function () { setScale(b.getAttribute('data-scale')); };
+    });
+    box.querySelectorAll('[data-emode]').forEach(function (b) {
+      b.onclick = function () {
+        earthMode = b.getAttribute('data-emode');
+        document.querySelectorAll('[data-emode]').forEach(function (x) {
+          x.classList.toggle('on', x.getAttribute('data-emode') === earthMode);
+        });
+        if (scale === 'earth') enterEarth();
+      };
     });
     box.querySelectorAll('[data-wx]').forEach(function (b) {
       b.onclick = function () {
@@ -112,7 +166,7 @@
     $('tm-zoom-in').onclick = function () { zoomBy(1); };
     $('tm-zoom-out').onclick = function () { zoomBy(-1); };
     $('tm-zoom-home').onclick = function () {
-      if (maplibre) maplibre.flyTo({ center: [20, 15], zoom: 2, duration: 800 });
+      if (maplibre) maplibre.flyTo({ center: [20, 15], zoom: earthMode === 'globe' ? 1.5 : 2, duration: 800 });
     };
     $('tm-play').onclick = togglePlay;
     $('tm-prev').onclick = function () { stepFrame(-1); };
@@ -129,6 +183,8 @@
       b.classList.toggle('on', b.getAttribute('data-scale') === scale);
     });
     const show = scale === 'earth';
+    const modes = $('tm-earth-modes');
+    if (modes) modes.style.display = show ? 'flex' : 'none';
     ['tm-ze-menu', 'tm-timebar', 'tm-wx-readout'].forEach(function (id) {
       const el = $(id);
       if (el) el.style.display = show ? 'block' : 'none';
@@ -241,6 +297,7 @@
 
   function destroyViews() {
     if (playing) { playing = false; if (playTimer) clearInterval(playTimer); playTimer = null; }
+    if (terminatorTimer) { clearInterval(terminatorTimer); terminatorTimer = null; }
     try { if (globe && globe.destroy) globe.destroy(); } catch (e) {}
     globe = null;
     try { if (maplibre) maplibre.remove(); } catch (e) {}
@@ -322,6 +379,8 @@
         maplibre.setLayoutProperty('dark', 'visibility', activeWx.dark ? 'visible' : 'none');
       if (maplibre.getLayer('radar'))
         maplibre.setLayoutProperty('radar', 'visibility', activeWx.radar ? 'visible' : 'none');
+      if (maplibre.getLayer('night-shade'))
+        maplibre.setLayoutProperty('night-shade', 'visibility', earthMode === 'terminator' ? 'visible' : 'none');
     } catch (e) {}
     refreshWx();
   }
@@ -348,6 +407,13 @@
       }).catch(function () {});
   }
 
+  function updateTerminator() {
+    if (!maplibre || !maplibre.getSource('terminator')) return;
+    try {
+      maplibre.getSource('terminator').setData(terminatorGeoJSON(new Date()));
+    } catch (e) {}
+  }
+
   async function enterEarth() {
     destroyViews();
     showSolar(false);
@@ -357,6 +423,9 @@
     const radarPath = rvFrames.length
       ? rvHost + rvFrames[rvIndex].path + '/256/{z}/{x}/{y}/2/1_1.png'
       : null;
+
+    const useGlobe = earthMode === 'globe';
+    const useTerm = earthMode === 'terminator';
 
     const style = {
       version: 8,
@@ -374,44 +443,85 @@
         labels: {
           type: 'raster', tileSize: 256, maxzoom: 19,
           tiles: ['https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}']
+        },
+        terminator: {
+          type: 'geojson',
+          data: useTerm ? terminatorGeoJSON(new Date()) : { type: 'FeatureCollection', features: [] }
         }
       },
       layers: [
         { id: 'sat', type: 'raster', source: 'sat' },
         { id: 'dark', type: 'raster', source: 'dark', layout: { visibility: 'none' } },
+        {
+          id: 'night-shade',
+          type: 'fill',
+          source: 'terminator',
+          layout: { visibility: useTerm ? 'visible' : 'none' },
+          paint: {
+            'fill-color': '#000818',
+            'fill-opacity': 0.55,
+            'fill-outline-color': '#4fd0a088'
+          }
+        },
         { id: 'labels', type: 'raster', source: 'labels', paint: { 'raster-opacity': 0.85 } }
       ]
     };
+
+    if (useGlobe) {
+      style.projection = { type: 'globe' };
+      style.fog = {
+        color: 'rgb(10, 20, 40)',
+        'high-color': 'rgb(30, 50, 80)',
+        'space-color': 'rgb(1, 3, 8)',
+        'horizon-blend': 0.08,
+        range: [0.5, 10]
+      };
+    }
 
     if (radarPath) {
       style.sources.radar = {
         type: 'raster', tileSize: 256,
         tiles: [radarPath], attribution: 'RainViewer'
       };
-      style.layers.push({
+      style.layers.splice(2, 0, {
         id: 'radar', type: 'raster', source: 'radar',
         layout: { visibility: 'none' },
         paint: { 'raster-opacity': 0.7 }
       });
     }
 
-    maplibre = new maplibregl.Map({
+    const mapOpts = {
       container: 'map',
       style: style,
       center: [20, 15],
-      zoom: 2,
-      minZoom: 1,
+      zoom: useGlobe ? 1.4 : 2,
+      minZoom: useGlobe ? 0.5 : 1,
       maxZoom: 18,
-      attributionControl: false
-    });
+      attributionControl: false,
+      failIfMajorPerformanceCaveat: false
+    };
+    if (useGlobe) {
+      mapOpts.pitch = 0;
+      mapOpts.maxPitch = 85;
+    }
+
+    maplibre = new maplibregl.Map(mapOpts);
     window.map = maplibre;
-    maplibre.addControl(new maplibregl.NavigationControl(), 'bottom-right');
+    maplibre.addControl(new maplibregl.NavigationControl({ visualizePitch: useGlobe }), 'bottom-right');
+
     maplibre.on('load', function () {
       try { maplibre.resize(); } catch (e) {}
       applyLayers();
-      setStatus('EARTH LIVE · satellite ready', true);
+      const modeLabel = earthMode === 'globe' ? '3D GLOBE' : (earthMode === 'terminator' ? 'DAY / NIGHT' : 'FLAT');
+      setStatus('EARTH · ' + modeLabel + ' · satellite', true);
+      if (useTerm) {
+        terminatorTimer = setInterval(updateTerminator, 60000);
+      }
     });
     maplibre.on('moveend', function () { refreshWx(); });
+    maplibre.on('error', function (e) {
+      console.warn('maplibre', e && e.error);
+    });
     setTimeout(function () { try { maplibre.resize(); } catch (e) {} }, 300);
   }
 
@@ -502,7 +612,7 @@
     }
     if (maplibre) {
       maplibre.easeTo({
-        zoom: Math.max(1, Math.min(18, maplibre.getZoom() + (dir > 0 ? 0.8 : -0.8))),
+        zoom: Math.max(0.5, Math.min(18, maplibre.getZoom() + (dir > 0 ? 0.8 : -0.8))),
         duration: 250
       });
       return;
@@ -553,9 +663,10 @@
   setScale(scale);
 
   window.TrackMeNowEngine = {
-    name: 'TrackMeNow full',
+    name: 'TrackMeNow Earth modes',
     setScale: setScale,
     zoomBy: zoomBy,
-    get scale() { return scale; }
+    get scale() { return scale; },
+    get earthMode() { return earthMode; }
   };
 })();
