@@ -50,3 +50,21 @@ Live feed panels need the Node API (run `npm start` or host `server/` elsewhere)
 
 ## License / attribution
 MapLibre GL, OpenStreetMap, Natural Earth, OpenSky, USGS, and other sources remain under their respective licences.
+
+
+## API keys (AISstream, OpenCelliD, Mobility Database)
+
+The keys are read by the Node server (`server/`) from **environment variables**. Never put them in the repo, in
+`index.html` or in any browser file: the site is public and anything in it can be read by anyone.
+
+| Service | Environment variable | What it powers |
+|---|---|---|
+| [aisstream.io](https://aisstream.io/account) | `AISSTREAM_API_KEY` | live ship positions (AIS) |
+| [opencellid.org](https://opencellid.org) | `OPENCELLID_API_KEY` | cell tower locations |
+| [mobilitydatabase.org](https://mobilitydatabase.org/account/api-access) | `MOBILITY_DB_REFRESH_TOKEN` | discovers open GTFS-Realtime vehicle feeds (buses, trams, trains) |
+
+**Set them on Render:** dashboard -> your service -> *Environment* -> add each variable -> *Save* (the service redeploys).
+For local work copy `.env.example` to `.env` and fill it in (`.env` is git-ignored).
+
+Check they are picked up: `GET /api/global/status` shows `aisStream`, `publicCells` and `mobilityDatabase` as
+`configured` (the Mobility Database line also shows how many feeds were found, or the error).

@@ -10,6 +10,8 @@ const aisStreamKey = process.env.AISSTREAM_API_KEY || '';
 const taxiUrl = process.env.TAXI_GEOJSON_URL || '';
 const overpassUrl = process.env.OVERPASS_URL || 'https://overpass-api.de/api/interpreter';
 const cellKey = process.env.OPENCELLID_API_KEY || '';
+const mdbToken = process.env.MOBILITY_DB_REFRESH_TOKEN || process.env.MOBILITY_DATABASE_REFRESH_TOKEN || '';
+const mdbState = { done: false, feeds: 0, error: null };
 const flightGlobalCache={at:0,features:null,promise:null};
 const shipStream={socket:null,bboxKey:'',connected:false,retryMs:1000,positions:new Map(),lastAt:0};
 
@@ -70,13 +72,39 @@ async function discoverTransitous(){
     for(var src of(manifest.sources||[]))if(src.spec==='gtfs-rt'&&src.url&&!gtfsUrls.includes(src.url))gtfsUrls.push(src.url);
   }catch(e){}
 }
-async function transit(){ await discoverTransitous();
+/* Mobility Database (mobilitydatabase.org): find open GTFS-Realtime vehicle-position feeds worldwide.
+ * Needs MOBILITY_DB_REFRESH_TOKEN (from the account page). Only active feeds that need no auth are used. */
+async function discoverMobilityDb(){
+  if(!mdbToken||mdbState.done||Date.now()<(mdbState.retryAt||0))return;
+  mdbState.done=true;
+  try{
+    var tr=await fetch('https://api.mobilitydatabase.org/v1/tokens',{method:'POST',headers:{'Content-Type':'application/json','User-Agent':'TrackMeNow/1.0'},body:JSON.stringify({refresh_token:mdbToken})});
+    if(!tr.ok)throw Error('token request HTTP '+tr.status);
+    var access=(await tr.json()).access_token; if(!access)throw Error('no access_token in response');
+    var found=[],maxFeeds=Number(process.env.MOBILITY_DB_MAX_FEEDS||150);
+    for(var offset=0;offset<4000&&found.length<maxFeeds;offset+=1000){
+      var r=await fetch('https://api.mobilitydatabase.org/v1/gtfs_rt_feeds?entity_types=vp&limit=1000&offset='+offset,{headers:{'Authorization':'Bearer '+access,'User-Agent':'TrackMeNow/1.0'}});
+      if(!r.ok)throw Error('feed list HTTP '+r.status);
+      var list=await r.json(); if(!Array.isArray(list))break;
+      for(var f of list){
+        var si=f.source_info||{};
+        if(f.status!=='active'||!si.producer_url||(si.authentication_type&&si.authentication_type!==0))continue;
+        if(!gtfsUrls.includes(si.producer_url)&&!found.includes(si.producer_url))found.push(si.producer_url);
+        if(found.length>=maxFeeds)break;
+      }
+      if(list.length<1000)break;
+    }
+    found.forEach(function(u){gtfsUrls.push(u)});
+    mdbState.feeds=found.length;
+  }catch(e){mdbState.error=e.message;mdbState.done=false;mdbState.retryAt=Date.now()+600000}
+}
+async function transit(){ await discoverTransitous(); await discoverMobilityDb();
   var out=[],nowMs=Date.now();
-  for(var i=0;i<gtfsUrls.length;i++){
-    var u=gtfsUrls[i],c=gtfsCache.get(u);
-    if(c&&nowMs-c.fetchedAt<gtfsIntervalMs){out.push.apply(out,c.features);continue}
+  async function one(u){
+    var c=gtfsCache.get(u);
+    if(c&&nowMs-c.fetchedAt<gtfsIntervalMs){out.push.apply(out,c.features);return}
     try{
-      var r=await fetch(u,{headers:{'User-Agent':'TrackMeNow/1.0','Accept':'application/x-protobuf,application/octet-stream'}});
+      var r=await fetch(u,{headers:{'User-Agent':'TrackMeNow/1.0','Accept':'application/x-protobuf,application/octet-stream'},signal:AbortSignal.timeout(6000)});
       if(!r.ok)throw Error('HTTP '+r.status);
       var feed=GtfsRealtimeBindings.transit_realtime.FeedMessage.decode(new Uint8Array(await r.arrayBuffer()));
       var now=Math.floor(Date.now()/1000),features=[];
@@ -89,6 +117,10 @@ async function transit(){ await discoverTransitous();
       gtfsCache.set(u,{fetchedAt:nowMs,features:features,status:'live',error:null});out.push.apply(out,features);
     }catch(err){gtfsCache.set(u,{fetchedAt:nowMs,features:[],status:'error',error:err.message})}
   }
+  /* poll feeds in parallel (12 at a time) so hundreds of feeds fit inside the request time limit */
+  var queue=gtfsUrls.slice(),workers=[];
+  for(var w=0;w<12;w++)workers.push((async function(){while(queue.length)await one(queue.shift())})());
+  await Promise.all(workers);
   return out;
 }
 async function geo(url,b,source){
@@ -271,7 +303,7 @@ async function liveEvents(){
   return {features:out,sources};
 }
 router.get('/events',async function(req,res){try{res.json(await liveEvents())}catch(e){res.status(502).json({error:e.message})}});
-router.get('/health',function(req,res){res.json({ok:true,service:'trackmenow-global',sources:{flights:'OpenSky ADS-B',ships:aisUrl?'configured':'feed-required',transport:gtfsUrls.length?'configured':'feed-required',osm:'available',cells:cellKey?'configured':'api-key-required'}})});
+router.get('/health',function(req,res){res.json({ok:true,service:'trackmenow-global',sources:{flights:'OpenSky ADS-B',ships:aisUrl?'configured':'feed-required',transport:gtfsUrls.length?'configured':'feed-required',osm:'available',cells:cellKey?'configured':'api-key-required',mobilityDatabase:mdbToken?'configured':'api-key-required'}})});
 router.get('/movement',async function(req,res){
   var b=bbox(req.query.bbox);if(!b)return res.status(400).json({error:'invalid bbox'});
   var layers=String(req.query.layers||'flights,ships,public-transport,cameras,cells,infrastructure').split(',').map(function(x){return x.trim()});
@@ -323,6 +355,6 @@ router.get('/search',async function(req,res){
 
 router.get('/cells',async function(req,res){var b=bbox(req.query.bbox);if(!b)return res.status(400).json({error:'invalid bbox'});try{res.json(await cells(b))}catch(e){res.status(502).json({error:e.message})}});
 router.get('/assets',async function(req,res){var b=bbox(req.query.bbox);if(!b)return res.status(400).json({error:'invalid bbox'});try{res.json({source:'OpenStreetMap/Overpass',features:await osmAssets(b)})}catch(e){res.status(502).json({error:e.message})}});
-router.get('/status',function(_,res){res.json({infrastructure:'OpenStreetMap/Overpass',flights:'ADSB.lol-live',ships:aisUrl?'configured':'feed-required',publicTransport:gtfsUrls.length?'configured':'no-live-feed-configured',publicTransportFeeds:gtfsUrls.map(function(u){var c=gtfsCache.get(u);return {url:u,status:c&&c.status||'not-polled',vehicles:c?c.features.length:0,error:c&&c.error||null,lastPoll:c&&new Date(c.fetchedAt).toISOString()||null}}),publicAssets:'live',publicCells:cellKey?'configured':'api-key-required',aisStream:aisStreamKey?'configured':'api-key-required',taxiFeed:taxiUrl?'configured':'feed-required'})});
+router.get('/status',function(_,res){res.json({infrastructure:'OpenStreetMap/Overpass',flights:'ADSB.lol-live',ships:aisUrl?'configured':'feed-required',publicTransport:gtfsUrls.length?'configured':'no-live-feed-configured',publicTransportFeeds:gtfsUrls.map(function(u){var c=gtfsCache.get(u);return {url:u,status:c&&c.status||'not-polled',vehicles:c?c.features.length:0,error:c&&c.error||null,lastPoll:c&&new Date(c.fetchedAt).toISOString()||null}}),publicAssets:'live',publicCells:cellKey?'configured':'api-key-required',aisStream:aisStreamKey?'configured':'api-key-required',mobilityDatabase:mdbToken?(mdbState.error?'error: '+mdbState.error:mdbState.feeds?'configured · '+mdbState.feeds+' feeds':'configured · not yet queried'):'api-key-required',taxiFeed:taxiUrl?'configured':'feed-required'})});
 
 export default router;
