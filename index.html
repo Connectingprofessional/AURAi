@@ -5,16 +5,60 @@
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>TrackMeNow — Global Intelligence</title>
 <link rel="stylesheet" href="./vendor/maplibre-gl/maplibre-gl.css">
-<style id="tm-fix-earth-css">
-#map{z-index:1!important;background:#0a1520!important}
-button[data-scale="planet"],.tm-planet-btn,button[data-planet]{display:none!important}
-#tm-universe-chrome,#tm-ze-menu{z-index:2200!important}
+<style>
+:root{--bg:#05090d;--glass:rgba(7,11,16,.78);--line:rgba(255,255,255,.13);--text:#edf4f8;--blue:#45a8ff;--green:#43e0a0}
+*{box-sizing:border-box}html,body,#map{height:100%;margin:0}
+body{overflow:hidden;background:var(--bg);color:var(--text);font-family:Inter,system-ui,sans-serif}
+#map{position:fixed;inset:0;z-index:1;background:#0a1520}
+.topbar{position:fixed;z-index:1200;top:12px;left:14px;right:14px;height:46px;display:flex;align-items:center;gap:9px;pointer-events:none}
+.topbar>*{pointer-events:auto}
+.brand{height:38px;display:flex;align-items:center;padding:0 12px;border:1px solid var(--line);border-radius:8px;background:var(--glass);backdrop-filter:blur(14px);font-size:12px;font-weight:950;letter-spacing:1.8px}
+.brand span{color:var(--blue)}
+.search{height:38px;display:flex;flex:1;max-width:520px;margin:auto;border:1px solid var(--line);border-radius:8px;background:var(--glass);backdrop-filter:blur(14px);overflow:hidden}
+.search input{flex:1;border:0;outline:0;background:transparent;color:#fff;padding:0 13px;font-size:11px}
+.btn{height:38px;border:1px solid var(--line);border-radius:8px;background:var(--glass);color:#eaf4fa;padding:0 12px;font-size:10px;font-weight:800;cursor:pointer}
+.search .btn{border:0;border-left:1px solid var(--line);border-radius:0;background:rgba(69,168,255,.13);color:#9fd2ff}
+.status{position:fixed;z-index:1150;left:14px;bottom:12px;padding:7px 9px;border:1px solid var(--line);border-radius:7px;background:var(--glass);backdrop-filter:blur(14px);font-size:10px;color:#b9c9d2}
+button[data-scale="planet"],.tm-planet-btn{display:none!important}
 </style>
-<script src="./vendor/maplibre-gl/maplibre-gl.js"></script>
-<script src="./trackmenow.js?v=20261004-earthfix2"></script>
 </head>
 <body>
 <div id="map"></div>
-<div id="status" class="status" style="position:fixed;left:14px;bottom:12px;z-index:1150;padding:7px 9px;border:1px solid rgba(255,255,255,.13);border-radius:7px;background:rgba(7,11,16,.78);font-size:10px;color:#b9c9d2">Loading…</div>
+<div class="topbar">
+  <div class="brand">TRACK<span>ME</span>NOW</div>
+  <div class="search">
+    <input id="searchInput" placeholder="Search place…" />
+    <button class="btn" id="searchBtn" type="button">Search</button>
+  </div>
+  <button class="btn gps" id="gpsBtn" type="button">GPS</button>
+</div>
+<div id="status" class="status">Starting…</div>
+<script src="./vendor/maplibre-gl/maplibre-gl.js"></script>
+<script src="./trackmenow.js?v=20261004-earthfix2"></script>
+<script>
+(function(){
+  var input=document.getElementById('searchInput');
+  var btn=document.getElementById('searchBtn');
+  var gps=document.getElementById('gpsBtn');
+  function go(){
+    var q=(input&&input.value||'').trim();
+    if(!q||!window.map||!window.map.flyTo) return;
+    fetch('https://nominatim.openstreetmap.org/search?format=json&limit=1&q='+encodeURIComponent(q))
+      .then(function(r){return r.json()})
+      .then(function(j){
+        if(!j||!j[0]) return;
+        window.map.flyTo({center:[parseFloat(j[0].lon),parseFloat(j[0].lat)],zoom:10,duration:1200});
+      }).catch(function(){});
+  }
+  if(btn) btn.onclick=go;
+  if(input) input.addEventListener('keydown',function(e){if(e.key==='Enter')go();});
+  if(gps) gps.onclick=function(){
+    if(!navigator.geolocation||!window.map) return;
+    navigator.geolocation.getCurrentPosition(function(p){
+      window.map.flyTo({center:[p.coords.longitude,p.coords.latitude],zoom:12,duration:1000});
+    });
+  };
+})();
+</script>
 </body>
 </html>
