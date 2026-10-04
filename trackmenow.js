@@ -1,6 +1,6 @@
-/* TrackMeNow — Live Earth (Zoom.Earth-style) + NASA Moon/Mars
- * Earth: GIBS near-real-time true color + RainViewer radar
- * Moon/Mars: NASA-lineage mosaics | no Planet tab
+/* TrackMeNow — Zoom.Earth-complete Live Earth + NASA Moon/Mars
+ * LIVE: Satellite (NASA GIBS), Radar (RainViewer)
+ * FORECAST: Precip / Wind / Temp / Humidity / Pressure (Open-Meteo)
  */
 (function () {
   'use strict';
@@ -24,10 +24,12 @@
   ];
 
   let scale = 'earth';
-  let activePlanet = 'earth';
   let globe = null, og = null, maplibre = null;
   let solarZoom = 1, solarCanvas = null, solarCtx = null, animId = 0;
   let liveDate = gibsDate(-1);
+  let radarPath = null;
+  let activeWx = { satellite: true, radar: false, precip: false, wind: false, temp: false, humidity: false, pressure: false };
+  let forecastTimer = null;
 
   function gibsDate(offsetDays) {
     const d = new Date();
@@ -69,21 +71,29 @@
       '  <button data-scale="moon" class="tm-scale-btn">Moon</button>',
       '  <button data-scale="mars" class="tm-scale-btn">Mars</button>',
       '</div>',
-      '<div id="tm-weather-bar" style="position:fixed;z-index:2100;left:14px;top:110px;display:none;flex-direction:column;gap:6px;max-width:200px">',
-      '  <button data-wx="live" class="tm-wx-btn on">Satellite Live</button>',
-      '  <button data-wx="radar" class="tm-wx-btn">Radar / Rain</button>',
-      '  <button data-wx="labels" class="tm-wx-btn on">Labels</button>',
-      '  <div style="font:9px ui-monospace;color:#8ab;padding:4px 2px">GIBS / RainViewer · near real-time sky</div>',
+      '<div id="tm-ze-menu" style="display:none;position:fixed;z-index:2100;left:12px;top:100px;width:200px;padding:10px 0;border-radius:12px;background:rgba(30,22,20,.88);backdrop-filter:blur(14px);border:1px solid rgba(255,255,255,.12);color:#f0e8e0;font:12px system-ui">',
+      '  <div style="padding:4px 14px 8px;font-weight:800;letter-spacing:.6px;opacity:.7;font-size:10px">LIVE MAPS</div>',
+      '  <button data-wx="satellite" class="tm-ze-item on">Satellite</button>',
+      '  <button data-wx="radar" class="tm-ze-item">Radar</button>',
+      '  <div style="padding:12px 14px 8px;font-weight:800;letter-spacing:.6px;opacity:.7;font-size:10px">FORECAST MAPS</div>',
+      '  <button data-wx="precip" class="tm-ze-item">Precipitation</button>',
+      '  <button data-wx="wind" class="tm-ze-item">Wind</button>',
+      '  <button data-wx="temp" class="tm-ze-item">Temperature</button>',
+      '  <button data-wx="humidity" class="tm-ze-item">Humidity</button>',
+      '  <button data-wx="pressure" class="tm-ze-item">Pressure</button>',
       '</div>',
+      '<div id="tm-wx-readout" style="display:none;position:fixed;z-index:2100;left:12px;bottom:56px;min-width:200px;max-width:280px;padding:10px 12px;border-radius:10px;background:rgba(8,14,20,.9);border:1px solid rgba(255,255,255,.15);color:#e8f0f6;font:11px/1.4 ui-monospace,system-ui"></div>',
       '<div style="position:fixed;z-index:2100;right:14px;bottom:120px;display:flex;flex-direction:column;gap:6px">',
       '  <button id="tm-zoom-in" style="width:40px;height:40px;font-size:20px;font-weight:900">+</button>',
       '  <button id="tm-zoom-out" style="width:40px;height:40px;font-size:20px;font-weight:900">−</button>',
       '  <button id="tm-zoom-home" style="width:40px;height:40px;font-size:12px;font-weight:800">⌂</button>',
       '</div>',
       '<style>',
-      '.tm-scale-btn,.tm-wx-btn,#tm-zoom-in,#tm-zoom-out,#tm-zoom-home{border:1px solid rgba(255,255,255,.2);border-radius:8px;background:rgba(6,12,18,.92);color:#eaf4fa;cursor:pointer;font:700 11px system-ui;padding:8px 12px;backdrop-filter:blur(10px);text-align:left}',
-      '.tm-scale-btn.on,.tm-wx-btn.on{border-color:#4fd0a0;color:#4fd0a0;box-shadow:0 0 12px #4fd0a044}',
-      '#tm-zoom-in:hover,#tm-zoom-out:hover,#tm-zoom-home:hover,.tm-scale-btn:hover,.tm-wx-btn:hover{background:rgba(69,168,255,.22)}',
+      '.tm-scale-btn,#tm-zoom-in,#tm-zoom-out,#tm-zoom-home{border:1px solid rgba(255,255,255,.2);border-radius:8px;background:rgba(6,12,18,.92);color:#eaf4fa;cursor:pointer;font:700 11px system-ui;padding:8px 12px;backdrop-filter:blur(10px)}',
+      '.tm-scale-btn.on{border-color:#4fd0a0;color:#4fd0a0;box-shadow:0 0 12px #4fd0a044}',
+      '.tm-ze-item{display:block;width:100%;text-align:left;border:0;background:transparent;color:#f0e8e0;padding:9px 14px;cursor:pointer;font:600 13px system-ui}',
+      '.tm-ze-item:hover{background:rgba(255,255,255,.08)}',
+      '.tm-ze-item.on{background:rgba(255,255,255,.12);color:#fff;box-shadow:inset 3px 0 0 #4fd0a0}',
       '#tm-solar-canvas{position:absolute;inset:0;width:100%;height:100%;display:block;background:#010208;cursor:grab;z-index:2}',
       '#map canvas{pointer-events:auto!important}',
       '</style>'
@@ -93,7 +103,13 @@
       b.onclick = function () { setScale(b.getAttribute('data-scale')); };
     });
     box.querySelectorAll('[data-wx]').forEach(function (b) {
-      b.onclick = function () { b.classList.toggle('on'); applyWeatherLayers(); };
+      b.onclick = function () {
+        const k = b.getAttribute('data-wx');
+        activeWx[k] = !activeWx[k];
+        b.classList.toggle('on', activeWx[k]);
+        applyWeatherLayers();
+        if (['temp', 'humidity', 'pressure', 'wind', 'precip'].indexOf(k) >= 0) refreshForecast();
+      };
     });
     $('tm-zoom-in').onclick = function () { zoomBy(1); };
     $('tm-zoom-out').onclick = function () { zoomBy(-1); };
@@ -104,13 +120,10 @@
     document.querySelectorAll('[data-scale]').forEach(function (b) {
       b.classList.toggle('on', b.getAttribute('data-scale') === scale);
     });
-    const wx = $('tm-weather-bar');
-    if (wx) wx.style.display = scale === 'earth' ? 'flex' : 'none';
-  }
-
-  function wxOn(id) {
-    const b = document.querySelector('[data-wx="' + id + '"]');
-    return b && b.classList.contains('on');
+    const m = $('tm-ze-menu');
+    const r = $('tm-wx-readout');
+    if (m) m.style.display = scale === 'earth' ? 'block' : 'none';
+    if (r) r.style.display = scale === 'earth' ? 'block' : 'none';
   }
 
   function ensureSolarCanvas() {
@@ -166,23 +179,13 @@
   }
 
   function drawSolar() {
-    if (!solarCanvas || !solarCtx) return;
-    if (scale !== 'solar' && scale !== 'universe') return;
+    if (!solarCanvas || !solarCtx || (scale !== 'solar' && scale !== 'universe')) return;
     const c = solarCanvas, ctx = solarCtx;
     const dpr = Math.min(2, window.devicePixelRatio || 1);
     const w = c.clientWidth, h = c.clientHeight;
     if (c.width !== (w * dpr | 0) || c.height !== (h * dpr | 0)) { c.width = w * dpr | 0; c.height = h * dpr | 0; }
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-    ctx.fillStyle = '#010208';
-    ctx.fillRect(0, 0, w, h);
-    ctx.fillStyle = '#fff';
-    for (let i = 0; i < 200; i++) {
-      const sx = (Math.sin(i * 12.9898) * 43758.5453) % 1;
-      const sy = (Math.sin(i * 78.233) * 12345.678) % 1;
-      ctx.globalAlpha = 0.25 + (i % 5) * 0.1;
-      ctx.fillRect((sx < 0 ? sx + 1 : sx) * w, (sy < 0 ? sy + 1 : sy) * h, 1, 1);
-    }
-    ctx.globalAlpha = 1;
+    ctx.fillStyle = '#010208'; ctx.fillRect(0, 0, w, h);
     const laid = layoutPlanets(w, h);
     const cx = w / 2 + (c._pan ? c._pan().x : 0), cy = h / 2 + (c._pan ? c._pan().y : 0);
     const scalePx = Math.min(w, h) * 0.035 * solarZoom;
@@ -215,6 +218,7 @@
     globe = null;
     try { if (maplibre) maplibre.remove(); } catch (e) {}
     maplibre = null;
+    if (forecastTimer) { clearTimeout(forecastTimer); forecastTimer = null; }
     const target = $('map');
     if (target) {
       Array.from(target.children).forEach(function (ch) {
@@ -226,10 +230,39 @@
   function applyWeatherLayers() {
     if (!maplibre) return;
     try {
-      if (maplibre.getLayer('gibs-live')) maplibre.setLayoutProperty('gibs-live', 'visibility', wxOn('live') ? 'visible' : 'none');
-      if (maplibre.getLayer('radar')) maplibre.setLayoutProperty('radar', 'visibility', wxOn('radar') ? 'visible' : 'none');
-      if (maplibre.getLayer('labels')) maplibre.setLayoutProperty('labels', 'visibility', wxOn('labels') ? 'visible' : 'none');
+      if (maplibre.getLayer('gibs-live'))
+        maplibre.setLayoutProperty('gibs-live', 'visibility', activeWx.satellite ? 'visible' : 'none');
+      if (maplibre.getLayer('radar'))
+        maplibre.setLayoutProperty('radar', 'visibility', activeWx.radar ? 'visible' : 'none');
+      if (maplibre.getLayer('forecast-circles')) {
+        const any = activeWx.temp || activeWx.humidity || activeWx.pressure || activeWx.wind || activeWx.precip;
+        maplibre.setLayoutProperty('forecast-circles', 'visibility', any ? 'visible' : 'none');
+        paintForecastCircles();
+      }
     } catch (e) {}
+    updateReadout();
+  }
+
+  function paintForecastCircles() {
+    if (!maplibre || !maplibre.getLayer('forecast-circles')) return;
+    let prop = 'temp';
+    if (activeWx.temp) prop = 'temp';
+    else if (activeWx.humidity) prop = 'humidity';
+    else if (activeWx.pressure) prop = 'pressure';
+    else if (activeWx.wind) prop = 'wind';
+    else if (activeWx.precip) prop = 'precip';
+    maplibre.setPaintProperty('forecast-circles', 'circle-color', [
+      'case',
+      ['==', prop, 'temp'],
+      ['interpolate', ['linear'], ['get', 'temp'], -20, '#4b6cb7', 0, '#6a9bd1', 15, '#f0d060', 35, '#e04040'],
+      ['==', prop, 'humidity'],
+      ['interpolate', ['linear'], ['get', 'humidity'], 0, '#d4a574', 50, '#7ec8e3', 100, '#3F54BA'],
+      ['==', prop, 'pressure'],
+      ['interpolate', ['linear'], ['get', 'pressure'], 980, '#e07040', 1013, '#90b0c0', 1040, '#4b6cb7'],
+      ['==', prop, 'wind'],
+      ['interpolate', ['linear'], ['get', 'wind'], 0, '#7ec8a0', 15, '#f0d060', 40, '#e04040'],
+      ['interpolate', ['linear'], ['get', 'precip'], 0, '#334455', 2, '#4fd0a0', 10, '#3D8BFF', 30, '#9b59b6']
+    ]);
   }
 
   async function loadRainViewerPath() {
@@ -238,9 +271,86 @@
       const j = await r.json();
       const frames = (j.radar && j.radar.past) || [];
       if (!frames.length) return null;
-      const last = frames[frames.length - 1];
-      return j.host + last.path;
+      return j.host + frames[frames.length - 1].path;
     } catch (e) { return null; }
+  }
+
+  async function refreshForecast() {
+    if (!maplibre || scale !== 'earth') return;
+    const any = activeWx.temp || activeWx.humidity || activeWx.pressure || activeWx.wind || activeWx.precip;
+    if (!any) {
+      if (maplibre.getSource('forecast')) maplibre.getSource('forecast').setData({ type: 'FeatureCollection', features: [] });
+      updateReadout();
+      return;
+    }
+    const c = maplibre.getCenter();
+    const z = maplibre.getZoom();
+    const step = z < 2 ? 25 : z < 4 ? 12 : z < 6 ? 6 : 3;
+    const points = [];
+    for (let lat = Math.max(-55, c.lat - step * 2); lat <= Math.min(55, c.lat + step * 2); lat += step) {
+      for (let lon = c.lng - step * 2; lon <= c.lng + step * 2; lon += step) {
+        let L = lon;
+        while (L > 180) L -= 360;
+        while (L < -180) L += 360;
+        points.push({ lat: lat, lon: L });
+      }
+    }
+    const sample = points.slice(0, 16);
+    const features = [];
+    await Promise.all(sample.map(async function (p) {
+      try {
+        const u = 'https://api.open-meteo.com/v1/forecast?latitude=' + p.lat.toFixed(2) +
+          '&longitude=' + p.lon.toFixed(2) +
+          '&current=temperature_2m,relative_humidity_2m,surface_pressure,wind_speed_10m,precipitation';
+        const res = await fetch(u);
+        const j = await res.json();
+        const cur = j.current || {};
+        features.push({
+          type: 'Feature',
+          geometry: { type: 'Point', coordinates: [p.lon, p.lat] },
+          properties: {
+            temp: cur.temperature_2m,
+            humidity: cur.relative_humidity_2m,
+            pressure: cur.surface_pressure,
+            wind: cur.wind_speed_10m,
+            precip: cur.precipitation
+          }
+        });
+      } catch (e) {}
+    }));
+    if (maplibre.getSource('forecast')) {
+      maplibre.getSource('forecast').setData({ type: 'FeatureCollection', features: features });
+    }
+    paintForecastCircles();
+    updateReadout();
+  }
+
+  function updateReadout() {
+    const el = $('tm-wx-readout');
+    if (!el || !maplibre) return;
+    const c = maplibre.getCenter();
+    el.innerHTML = '<div style="opacity:.65;font-size:9px;margin-bottom:4px">MAP CENTER · ' +
+      c.lat.toFixed(2) + '°, ' + c.lng.toFixed(2) + '°</div><div id="tm-wx-vals">Loading…</div>';
+    fetch('https://api.open-meteo.com/v1/forecast?latitude=' + c.lat.toFixed(3) +
+      '&longitude=' + c.lng.toFixed(3) +
+      '&current=temperature_2m,relative_humidity_2m,surface_pressure,wind_speed_10m,precipitation')
+      .then(function (r) { return r.json(); })
+      .then(function (j) {
+        const cur = j.current || {};
+        const vals = el.querySelector('#tm-wx-vals');
+        if (!vals) return;
+        vals.innerHTML = [
+          '<b>Temp</b> ' + (cur.temperature_2m != null ? cur.temperature_2m + ' °C' : '—'),
+          '<b>Humidity</b> ' + (cur.relative_humidity_2m != null ? cur.relative_humidity_2m + ' %' : '—'),
+          '<b>Pressure</b> ' + (cur.surface_pressure != null ? Math.round(cur.surface_pressure) + ' hPa' : '—'),
+          '<b>Wind</b> ' + (cur.wind_speed_10m != null ? cur.wind_speed_10m + ' km/h' : '—'),
+          '<b>Precip</b> ' + (cur.precipitation != null ? cur.precipitation + ' mm' : '—')
+        ].join('<br>');
+      })
+      .catch(function () {
+        const vals = el.querySelector('#tm-wx-vals');
+        if (vals) vals.textContent = 'Weather unavailable';
+      });
   }
 
   async function enterEarthLive() {
@@ -249,7 +359,7 @@
     if (!window.maplibregl) throw new Error('MapLibre missing');
 
     liveDate = gibsDate(-1);
-    const radarHostPath = await loadRainViewerPath();
+    radarPath = await loadRainViewerPath();
 
     const style = {
       version: 8,
@@ -272,12 +382,21 @@
           type: 'raster', tileSize: 256, maxzoom: 19,
           tiles: ['https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}'],
           attribution: 'Esri'
-        }
+        },
+        forecast: { type: 'geojson', data: { type: 'FeatureCollection', features: [] } }
       },
       layers: [
-        { id: 'basemap', type: 'raster', source: 'basemap', paint: { 'raster-opacity': 0.35 } },
+        { id: 'basemap', type: 'raster', source: 'basemap', paint: { 'raster-opacity': 0.3 } },
         { id: 'gibs-live', type: 'raster', source: 'gibs', paint: { 'raster-opacity': 0.92 } },
-        { id: 'labels', type: 'raster', source: 'labels', paint: { 'raster-opacity': 0.85 } }
+        { id: 'labels', type: 'raster', source: 'labels', paint: { 'raster-opacity': 0.8 } },
+        {
+          id: 'forecast-circles', type: 'circle', source: 'forecast',
+          layout: { visibility: 'none' },
+          paint: {
+            'circle-radius': 12, 'circle-color': '#4fd0a0', 'circle-opacity': 0.7,
+            'circle-stroke-width': 1, 'circle-stroke-color': '#ffffff88'
+          }
+        }
       ],
       fog: {
         color: '#0a1a28', 'high-color': '#1a3048', 'space-color': '#010308',
@@ -285,13 +404,13 @@
       }
     };
 
-    if (radarHostPath) {
+    if (radarPath) {
       style.sources.radar = {
         type: 'raster', tileSize: 256, maxzoom: 12,
-        tiles: [radarHostPath + '/256/{z}/{x}/{y}/2/1_1.png'],
+        tiles: [radarPath + '/256/{z}/{x}/{y}/2/1_1.png'],
         attribution: 'RainViewer'
       };
-      style.layers.push({
+      style.layers.splice(2, 0, {
         id: 'radar', type: 'raster', source: 'radar',
         layout: { visibility: 'none' },
         paint: { 'raster-opacity': 0.65 }
@@ -309,23 +428,17 @@
 
     maplibre.on('load', function () {
       applyWeatherLayers();
-      setStatus('EARTH LIVE · NASA GIBS ' + liveDate + ' · clouds & sky · Zoom.Earth-style', true);
+      updateReadout();
+      setStatus('EARTH LIVE · GIBS ' + liveDate + ' · all Zoom.Earth layers', true);
     });
-
-    setInterval(function () {
-      if (scale !== 'earth' || !maplibre) return;
-      const d = gibsDate(-1);
-      if (d === liveDate) return;
-      liveDate = d;
-      try {
-        if (maplibre.getSource('gibs')) {
-          maplibre.getSource('gibs').setTiles([
-            'https://gibs.earthdata.nasa.gov/wmts/epsg3857/best/VIIRS_SNPP_CorrectedReflectance_TrueColor/default/' +
-              liveDate + '/GoogleMapsCompatible_Level9/{z}/{y}/{x}.jpg'
-          ]);
-        }
-      } catch (e) {}
-    }, 3600000);
+    maplibre.on('moveend', function () {
+      if (forecastTimer) clearTimeout(forecastTimer);
+      forecastTimer = setTimeout(function () {
+        updateReadout();
+        if (activeWx.temp || activeWx.humidity || activeWx.pressure || activeWx.wind || activeWx.precip)
+          refreshForecast();
+      }, 400);
+    });
 
     return maplibre;
   }
@@ -340,12 +453,10 @@
   async function enterOgPlanet(planetId) {
     destroyGlobe();
     showSolar(false);
-    activePlanet = planetId;
     const mod = await loadOg();
     const Globe = mod.Globe, XYZ = mod.XYZ, LonLat = mod.LonLat, control = mod.control;
     const EmptyTerrain = mod.EmptyTerrain, RgbTerrain = mod.RgbTerrain;
     const moonEll = mod.moon, marsEll = mod.mars, quadTreeStrategyType = mod.quadTreeStrategyType;
-
     const target = $('map');
     let layers = [], terrain = null;
     const opts = { target: target, name: planetId, autoActivate: true, maxGridSize: 128 };
@@ -359,16 +470,13 @@
       try {
         terrain = new RgbTerrain(null, {
           geoidSrc: null, maxZoom: 7,
-          url: 'https://{s}.terrain.openglobus.org/moon/dem/{z}/{x}/{y}.png',
-          heightFactor: 0.5
+          url: 'https://{s}.terrain.openglobus.org/moon/dem/{z}/{x}/{y}.png', heightFactor: 0.5
         });
       } catch (e) { terrain = new EmptyTerrain(); }
       opts.ellipsoid = moonEll;
       opts.atmosphereEnabled = false;
-      opts.nightTextureSrc = null;
-      opts.specularTextureSrc = null;
+      opts.nightTextureSrc = null; opts.specularTextureSrc = null;
       if (quadTreeStrategyType && quadTreeStrategyType.equi) opts.quadTreeStrategyPrototype = quadTreeStrategyType.equi;
-      opts.maxAltitude = 5e6;
     } else {
       layers = [
         new XYZ('OnMars MDIM', {
@@ -385,18 +493,13 @@
       try {
         terrain = new RgbTerrain('Mars', {
           geoidSrc: null, maxZoom: 8,
-          url: 'https://{s}.terrain.openglobus.org/mars/dem/{z}/{x}/{y}.png',
-          heightFactor: 1.1
+          url: 'https://{s}.terrain.openglobus.org/mars/dem/{z}/{x}/{y}.png', heightFactor: 1.1
         });
-      } catch (e) {
-        try { terrain = new EmptyTerrain(); } catch (e2) { terrain = null; }
-      }
+      } catch (e) { try { terrain = new EmptyTerrain(); } catch (e2) { terrain = null; } }
       if (marsEll) opts.ellipsoid = marsEll;
       opts.atmosphereEnabled = false;
-      opts.nightTextureSrc = null;
-      opts.specularTextureSrc = null;
+      opts.nightTextureSrc = null; opts.specularTextureSrc = null;
       if (quadTreeStrategyType && quadTreeStrategyType.equi) opts.quadTreeStrategyPrototype = quadTreeStrategyType.equi;
-      opts.maxAltitude = 8e6;
     }
 
     opts.layers = layers;
@@ -406,18 +509,14 @@
     try {
       if (globe.planet.camera) {
         globe.planet.camera.minAltitude = 50;
-        globe.planet.camera.maxAltitude = opts.maxAltitude || 1e7;
+        globe.planet.camera.maxAltitude = 8e6;
       }
-    } catch (e) {}
-    try {
       if (control && control.ZoomControl) globe.planet.addControl(new control.ZoomControl());
       if (control && control.LayerSwitcher) globe.planet.addControl(new control.LayerSwitcher());
-    } catch (e) {}
-    try {
       const alt = planetId === 'mars' ? 5e6 : 2.5e6;
       if (globe.planet.camera.flyLonLat) globe.planet.camera.flyLonLat(new LonLat(0, 10, alt));
     } catch (e) {}
-    setStatus(planetId.toUpperCase() + ' · NASA mosaic · zoom +/-', true);
+    setStatus(planetId.toUpperCase() + ' · NASA mosaic', true);
   }
 
   function zoomBy(dir) {
@@ -426,12 +525,10 @@
       if (scale === 'universe' && solarZoom > 0.7) { setScale('solar'); return; }
       if (scale === 'solar' && solarZoom > 2.8) { setScale('earth'); return; }
       if (scale === 'solar' && solarZoom < 0.35) { setScale('universe'); return; }
-      setStatus(scale.toUpperCase() + ' · z ' + solarZoom.toFixed(2), true);
       return;
     }
     if (maplibre) {
-      const z = maplibre.getZoom();
-      maplibre.easeTo({ zoom: Math.max(0.5, Math.min(18, z + (dir > 0 ? 0.8 : -0.8))), duration: 250 });
+      maplibre.easeTo({ zoom: Math.max(0.5, Math.min(18, maplibre.getZoom() + (dir > 0 ? 0.8 : -0.8))), duration: 250 });
       return;
     }
     if (globe && og) {
@@ -440,30 +537,23 @@
         const LonLat = og.LonLat;
         const ll = cam.getLonLat && cam.getLonLat();
         const alt = (ll && ll.height) || 5e6;
-        const next = Math.max(80, Math.min(2e7, dir > 0 ? alt * 0.55 : alt * 1.85));
-        cam.flyLonLat(new LonLat(ll ? ll.lon : 0, ll ? ll.lat : 10, next));
+        cam.flyLonLat(new LonLat(ll ? ll.lon : 0, ll ? ll.lat : 10, Math.max(80, Math.min(2e7, dir > 0 ? alt * 0.55 : alt * 1.85))));
       } catch (e) {}
     }
   }
 
   function zoomHome() {
     if (maplibre) maplibre.easeTo({ center: [20, 15], zoom: 1.8, pitch: 0, duration: 600 });
-    else if (scale === 'solar' || scale === 'universe') {
-      solarZoom = 1;
-      if (solarCanvas && solarCanvas._setPan) solarCanvas._setPan(0, 0);
-    }
   }
 
   async function setScale(next) {
     scale = next;
-    if (next === 'earth' || next === 'moon' || next === 'mars') activePlanet = next;
     markChrome();
     try { localStorage.setItem('tm-scale', scale); } catch (e) {}
-
     if (scale === 'universe' || scale === 'solar') {
       destroyGlobe();
       showSolar(true);
-      setStatus(scale === 'universe' ? 'UNIVERSE' : 'SOLAR SYSTEM · click Earth/Moon/Mars', true);
+      setStatus(scale === 'universe' ? 'UNIVERSE' : 'SOLAR SYSTEM', true);
       return;
     }
     showSolar(false);
@@ -475,23 +565,20 @@
     } catch (err) {
       console.error(err);
       setStatus('FAILED · ' + (err.message || err), false);
-      if (scale !== 'earth') {
-        try { await enterEarthLive(); scale = 'earth'; markChrome(); } catch (e2) {}
-      }
     }
   }
 
   injectChrome();
   try { scale = localStorage.getItem('tm-scale') || 'earth'; } catch (e) {}
   if (scale === 'planet') scale = 'earth';
-  setStatus('STARTING LIVE EARTH ENGINE…', true);
-  setScale(scale === 'moon' || scale === 'mars' || scale === 'solar' || scale === 'universe' ? scale : 'earth')
+  setStatus('STARTING ZOOM.EARTH-COMPLETE ENGINE…', true);
+  setScale(['moon', 'mars', 'solar', 'universe'].indexOf(scale) >= 0 ? scale : 'earth')
     .then(closeSplash)
     .catch(function () { setScale('earth'); closeSplash(); });
   setTimeout(closeSplash, 6000);
 
   window.TrackMeNowEngine = {
-    name: 'TrackMeNow Live Earth + NASA Planets',
+    name: 'TrackMeNow Zoom.Earth Complete',
     setScale: setScale,
     zoomBy: zoomBy,
     get scale() { return scale; }
