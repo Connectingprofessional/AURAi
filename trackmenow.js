@@ -895,8 +895,9 @@
       wxBuf[y * bw + x] = mode === 'precip' ? v : 0;
       wxColor(ramp, v, col); d[o] = col[0]; d[o + 1] = col[1]; d[o + 2] = col[2]; d[o + 3] = Math.round(255 * col[3] * info[1]);
     }
-    octx.putImageData(img, 0, 0);
-    const ctx = wxField.getContext('2d'); ctx.clearRect(0, 0, W, H); ctx.imageSmoothingEnabled = true; ctx.imageSmoothingQuality = 'high'; ctx.drawImage(wxOff, 0, 0, W, H);
+    const ctx = wxField.getContext('2d');
+    if (mode === 'precip') { ctx.clearRect(0, 0, W, H); wxFieldAt = performance.now(); return; } /* rain = streaks + radar only, no colour patches */
+    octx.putImageData(img, 0, 0); ctx.clearRect(0, 0, W, H); ctx.imageSmoothingEnabled = true; ctx.imageSmoothingQuality = 'high'; ctx.drawImage(wxOff, 0, 0, W, H);
     if (mode === 'pressure') wxIsobars(ctx, globe, cen);
     wxFieldAt = performance.now();
   }
@@ -1014,7 +1015,8 @@
     const grad = ramp.v.map(function (v, i) { const c = ramp.c[i]; return 'rgba(' + (c[0] | 0) + ',' + (c[1] | 0) + ',' + (c[2] | 0) + ',' + (mode === 'precip' && i === 0 ? 0.15 : 1) + ') ' + Math.round((v - lo) / (hi - lo) * 100) + '%'; }).join(',');
     if (leg) {
       leg.style.display = 'block'; leg.style.bottom = '184px';
-      leg.innerHTML = '<b>' + ramp.label + '</b>' + (wxGrid ? ' · updated ' + new Date(wxGrid.t).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : ' · loading…') +
+      if (mode === 'precip') { leg.innerHTML = '<b>Rain</b>' + (wxGrid ? ' · updated ' + new Date(wxGrid.t).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : ' · loading…') + '<div style="margin-top:4px;color:#9fb4c8">Streaks = forecast rain · map = live radar</div>'; }
+      else leg.innerHTML = '<b>' + ramp.label + '</b>' + (wxGrid ? ' · updated ' + new Date(wxGrid.t).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : ' · loading…') +
         '<div style="width:190px;height:8px;border-radius:4px;margin:6px 0 3px;background:linear-gradient(90deg,' + grad + ')"></div><div style="display:flex;justify-content:space-between;width:190px"><span>' + lo + '</span><span>' + hi + '</span></div>';
     }
     if (!wxEnsure()) return; wxStart(); wxView = '';
