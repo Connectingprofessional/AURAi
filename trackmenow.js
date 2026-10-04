@@ -23,7 +23,9 @@ const BASES=[
   {name:'Terrain',layers:['base-terrain']}
 ];
 const MAP_STYLE={version:8,
-  sky:{'atmosphere-blend':['interpolate',['linear'],['zoom'],0,1,3,0.85,6,0]},
+  projection:{type:'globe'},
+  sky:{'sky-color':'#02050a','horizon-color':'#08131a','atmosphere-blend':['interpolate',['linear'],['zoom'],0,1,3,1,6,0]},
+  light:{anchor:'map',position:[1.5,90,80],color:'#ffffff',intensity:.55},
   sources:{
     satellite:{type:'raster',tileSize:256,maxzoom:19,tiles:['https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}'],attribution:'Esri World Imagery'},
     labels:{type:'raster',tileSize:256,maxzoom:19,tiles:['https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}'],attribution:'Esri'},
@@ -44,7 +46,7 @@ function mapUnavailable(msg){
 let map;
 if(!window.maplibregl){mapUnavailable('The map engine could not be downloaded. Check your connection and reload.');throw new Error('maplibregl missing')}
 try{
-  map=new maplibregl.Map({container:'map',style:MAP_STYLE,center:[0,20],zoom:2,minZoom:1,maxZoom:18,maxPitch:70,attributionControl:false,renderWorldCopies:true});
+  map=new maplibregl.Map({container:'map',style:MAP_STYLE,center:[18,22],zoom:1.65,minZoom:1,maxZoom:18,maxPitch:70,attributionControl:false,renderWorldCopies:false});
   map.addControl(new maplibregl.AttributionControl({compact:true}),'bottom-right');
 }catch(e){mapUnavailable('This browser could not start the WebGL map. Try a current Chrome, Edge, Firefox or Safari with hardware acceleration on.');throw e}
 window.map=map;
@@ -105,7 +107,7 @@ function applyNight(on){
     map.setPaintProperty(id,'raster-contrast',on?.1:0);
   });
 }
-function applyProjection(){if(mapReady){map.setProjection({type:globeOn?'globe':'mercator'});if(globeOn){try{map.setCenter([18,22]);map.setZoom(1.65);map.setPitch(0)}catch(e){}}}}
+function applyProjection(resetView=false){if(!mapReady)return;try{map.setProjection({type:globeOn?'globe':'mercator'});if(globeOn&&resetView){map.jumpTo({center:[18,22],zoom:1.65,bearing:0,pitch:0})}}catch(e){console.warn('TrackMeNow projection change failed',e)}}
 let globeSpin=true,globeBearing=0,globeLast=performance.now();
 function spinGlobe(now){
   if(globeOn&&globeSpin&&mapReady){
@@ -482,7 +484,7 @@ let booted=false;
 function boot(){
   if(booted)return;booted=true;
   initOverlays();mapReady=true;
-  setBase(baseIndex);applyProjection();
+  setBase(baseIndex);applyProjection(true);
   $('argos-globe')?.classList.toggle('on',globeOn);
   const qp=new URLSearchParams(location.search);
   if(qp.has('lat')&&qp.has('lon')&&Number.isFinite(+qp.get('lat'))&&Number.isFinite(+qp.get('lon')))map.jumpTo({center:[+qp.get('lon'),+qp.get('lat')],zoom:11});
