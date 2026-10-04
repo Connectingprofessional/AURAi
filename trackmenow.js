@@ -279,7 +279,7 @@ function drawFeatures(fc){
   paintMoving();kick();
   updateIntelCounts();
   setTxt('argos-flight-count',counts.flights||0);setTxt('argos-ship-count',counts.ships||0);setTxt('argos-transport-count',counts['public-transport']||0);setTxt('argos-camera-count',counts.cameras||0);setTxt('argos-infra-count',counts.infrastructure||0);setTxt('argos-intel-count',counts.intelligence||0);
-  setTxt('argos-people-count','—');setTxt('argos-org-count','—');setTxt('argos-sat-count','—');setTxt('argos-area-count','—');setTxt('argos-pred-count','—');
+  setTxt('argos-people-count','—');setTxt('argos-org-count','—');setTxt('argos-sat-count','—');setTxt('argos-area-count','—');setTxt('argos-pred-count','—');setTxt('argos-recorded-count','—');
   setTxt('flightCount',counts.flights||0);setTxt('shipCount',counts.ships||0);setTxt('transportCount',counts['public-transport']||0);setTxt('cameraCount',counts.cameras||0);
   return counts;
 }
@@ -375,9 +375,9 @@ function updateIntelCounts(){
 }
 const VIEW_LAYERS={map:['flights','ships','public-transport','cameras','cells','infrastructure','intelligence'],air:['flights'],sea:['ships'],transport:['public-transport'],cameras:['cameras'],infra:['infrastructure','cells','intelligence'],catalog:['intelligence'],events:[],space:[]};
 const ARGOS_LAYER={flights:'flights',ships:'ships',transport:'public-transport',cameras:'cameras',infrastructure:'infrastructure',intelligence:'intelligence'};
-const ARGOS_UNWIRED=new Set(['people','organizations','satellites','areas','predictions']);
+const ARGOS_UNWIRED=new Set(['people','organizations','satellites','areas','predictions','recorded']);
 function argosFilterMessage(v){
-  const labels={people:'VIP people',organizations:'organizations',satellites:'satellites',areas:'areas',predictions:'predictions'};
+  const labels={people:'VIP people',organizations:'organizations',satellites:'satellites',areas:'areas',predictions:'predictions',recorded:'recorded · PRO'};
   tmToast((labels[v]||v).toUpperCase()+' · PUBLIC SOURCE CONNECTOR NOT YET WIRED','warn');
 }
 
@@ -394,7 +394,7 @@ document.querySelectorAll('.nav[data-view]').forEach(n=>n.onclick=()=>{
   setLayers(VIEW_LAYERS[v]||[]);
 });
 $('tmcp-open-btn')?.addEventListener('click',()=>{const cp=$('tm-control-panel');const open=!cp.classList.contains('on');closePanels();cp.classList.toggle('on',open)});
-document.querySelectorAll('[data-argos]').forEach(b=>b.addEventListener('click',()=>{const v=b.dataset.argos;if(v==='ai'){window.tmToggleAi?.();return}if(v==='people'||v==='organizations'||v==='satellites'||v==='areas'||v==='predictions'){argosFilterMessage(v);return}const l=ARGOS_LAYER[v];if(!l)return;if(selected.has(l))selected.delete(l);else selected.add(l);syncLayerButtons();loadMovement()}));
+document.querySelectorAll('[data-argos]').forEach(b=>b.addEventListener('click',()=>{const v=b.dataset.argos;if(v==='ai'){window.tmToggleAi?.();return}if(v==='people'||v==='organizations'||v==='satellites'||v==='areas'||v==='predictions'||v==='recorded'){argosFilterMessage(v);return}const l=ARGOS_LAYER[v];if(!l)return;if(selected.has(l))selected.delete(l);else selected.add(l);syncLayerButtons();loadMovement()}));
 const leftNav=$('leftNav'),collapseNav=$('collapseNav');
 collapseNav.onclick=()=>{leftNav.classList.toggle('expanded');collapseNav.textContent=leftNav.classList.contains('expanded')?'‹':'›'};
 
