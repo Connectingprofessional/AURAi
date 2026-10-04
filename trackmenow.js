@@ -1,6 +1,6 @@
-/* TrackMeNow — NASA-linked Universal Planetary Engine
- * Imagery: OpenGlobus + NASA Trek lineage / ArcGIS OnMars / OPM
- * Facts: NASA Solar System Exploration–style public parameters
+/* TrackMeNow — Live Earth (Zoom.Earth-style) + NASA Moon/Mars
+ * Earth: GIBS near-real-time true color + RainViewer radar
+ * Moon/Mars: NASA-lineage mosaics | no Planet tab
  */
 (function () {
   'use strict';
@@ -11,30 +11,29 @@
   const OG_CSS = 'https://cdn.jsdelivr.net/npm/@openglobus/og@' + OG_VER + '/lib/og.css';
 
   const PLANETS = [
-    { id: 'sun', name: 'Sun', color: '#FDB813', r: 32, au: 0, engine: null,
-      info: { type: 'Star (G2V)', radiusKm: 695700, dayH: null, yearD: null, au: 0, source: 'NASA SDO / SOHO', note: 'Plasma photosphere ~5772 K' } },
-    { id: 'mercury', name: 'Mercury', color: '#B5B5B5', r: 5, au: 0.39, engine: null,
-      info: { type: 'Terrestrial', radiusKm: 2439.7, dayH: 1407.6, yearD: 88, au: 0.387, source: 'MESSENGER', note: 'Gray cratered; extreme temps' } },
-    { id: 'venus', name: 'Venus', color: '#E8CDA0', r: 7, au: 0.72, engine: null,
-      info: { type: 'Terrestrial', radiusKm: 6051.8, dayH: 5832.5, yearD: 225, au: 0.723, source: 'Magellan', note: 'Thick CO2 clouds; surface ~464 C' } },
-    { id: 'earth', name: 'Earth', color: '#3D8BFF', r: 8, au: 1.0, engine: 'earth',
-      info: { type: 'Terrestrial', radiusKm: 6371, dayH: 24, yearD: 365.25, au: 1.0, source: 'NASA / Esri', note: 'Oceans + continents; life' } },
-    { id: 'moon', name: 'Moon', color: '#C8C8C8', r: 3.2, au: 1.0026, engine: 'moon',
-      info: { type: 'Satellite', radiusKm: 1737.4, dayH: 655.7, yearD: 27.3, au: 0.00257, source: 'LRO / NASA Moon Trek', note: 'Anorthosite highlands + maria' } },
-    { id: 'mars', name: 'Mars', color: '#C1440E', r: 6, au: 1.52, engine: 'mars',
-      info: { type: 'Terrestrial', radiusKm: 3389.5, dayH: 24.6, yearD: 687, au: 1.524, source: 'Viking / MGS MOLA / NASA Mars Trek', note: 'Iron-oxide dust; polar ice' } },
-    { id: 'jupiter', name: 'Jupiter', color: '#C88B3A', r: 18, au: 5.2, engine: null,
-      info: { type: 'Gas giant', radiusKm: 69911, dayH: 9.9, yearD: 4333, au: 5.203, source: 'Juno / Hubble', note: 'Bands + Great Red Spot' } },
-    { id: 'saturn', name: 'Saturn', color: '#E6D3A3', r: 15, au: 9.5, engine: null,
-      info: { type: 'Gas giant', radiusKm: 58232, dayH: 10.7, yearD: 10759, au: 9.537, source: 'Cassini', note: 'Prominent ring system' } },
-    { id: 'uranus', name: 'Uranus', color: '#7EC8E3', r: 11, au: 19.2, engine: null,
-      info: { type: 'Ice giant', radiusKm: 25362, dayH: 17.2, yearD: 30687, au: 19.19, source: 'Voyager 2', note: 'Methane-blue atmosphere' } },
-    { id: 'neptune', name: 'Neptune', color: '#3F54BA', r: 10, au: 30.1, engine: null,
-      info: { type: 'Ice giant', radiusKm: 24622, dayH: 16.1, yearD: 60190, au: 30.07, source: 'Voyager 2', note: 'Deep blue; strongest winds' } }
+    { id: 'sun', name: 'Sun', color: '#FDB813', r: 30, au: 0, engine: null },
+    { id: 'mercury', name: 'Mercury', color: '#B5B5B5', r: 5, au: 0.39, engine: null },
+    { id: 'venus', name: 'Venus', color: '#E8CDA0', r: 7, au: 0.72, engine: null },
+    { id: 'earth', name: 'Earth', color: '#3D8BFF', r: 8, au: 1.0, engine: 'earth' },
+    { id: 'moon', name: 'Moon', color: '#C8C8C8', r: 3.2, au: 1.05, engine: 'moon' },
+    { id: 'mars', name: 'Mars', color: '#C1440E', r: 6, au: 1.52, engine: 'mars' },
+    { id: 'jupiter', name: 'Jupiter', color: '#C88B3A', r: 16, au: 5.2, engine: null },
+    { id: 'saturn', name: 'Saturn', color: '#E6D3A3', r: 14, au: 9.5, engine: null },
+    { id: 'uranus', name: 'Uranus', color: '#7EC8E3', r: 10, au: 19.2, engine: null },
+    { id: 'neptune', name: 'Neptune', color: '#3F54BA', r: 9, au: 30.1, engine: null }
   ];
 
-  let scale = 'solar', activePlanet = 'earth', globe = null, og = null;
+  let scale = 'earth';
+  let activePlanet = 'earth';
+  let globe = null, og = null, maplibre = null;
   let solarZoom = 1, solarCanvas = null, solarCtx = null, animId = 0;
+  let liveDate = gibsDate(-1);
+
+  function gibsDate(offsetDays) {
+    const d = new Date();
+    d.setUTCDate(d.getUTCDate() + (offsetDays || 0));
+    return d.toISOString().slice(0, 10);
+  }
 
   function setStatus(msg, ok) {
     const el = $('status');
@@ -48,7 +47,7 @@
     s.classList.add('open');
     s.style.opacity = '0';
     s.style.pointerEvents = 'none';
-    setTimeout(function () { try { s.remove(); } catch (e) {} }, 600);
+    setTimeout(function () { try { s.remove(); } catch (e) {} }, 500);
   }
 
   function ensureCss(href) {
@@ -56,30 +55,6 @@
     const l = document.createElement('link');
     l.rel = 'stylesheet'; l.href = href; l.setAttribute('data-og-css', '1');
     document.head.appendChild(l);
-  }
-
-  function showPlanetInfo(id) {
-    let panel = $('tm-planet-info');
-    if (!panel) {
-      panel = document.createElement('div');
-      panel.id = 'tm-planet-info';
-      panel.style.cssText = 'position:fixed;z-index:2100;left:14px;bottom:56px;width:min(300px,90vw);padding:12px 14px;border:1px solid rgba(255,255,255,.18);border-radius:10px;background:rgba(5,10,16,.92);backdrop-filter:blur(12px);color:#e8f0f6;font:11px/1.45 ui-monospace,system-ui;pointer-events:none;';
-      document.body.appendChild(panel);
-    }
-    const p = PLANETS.find(function (x) { return x.id === id || x.engine === id; }) || PLANETS[3];
-    const i = p.info || {};
-    panel.innerHTML = [
-      '<div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">',
-      '<span style="width:12px;height:12px;border-radius:50%;background:' + p.color + ';box-shadow:0 0 10px ' + p.color + '"></span>',
-      '<strong style="font-size:13px;letter-spacing:.5px">' + p.name.toUpperCase() + '</strong>',
-      '<span style="margin-left:auto;color:#7a90a0;font-size:9px">' + (i.type || '') + '</span></div>',
-      '<div style="color:#9ab">Radius <b style="color:#dff">' + (i.radiusKm != null ? i.radiusKm.toLocaleString() + ' km' : '—') + '</b></div>',
-      '<div style="color:#9ab">Day length <b style="color:#dff">' + (i.dayH != null ? i.dayH + ' h' : '—') + '</b></div>',
-      '<div style="color:#9ab">Year <b style="color:#dff">' + (i.yearD != null ? i.yearD + ' Earth days' : '—') + '</b></div>',
-      '<div style="color:#9ab">Distance <b style="color:#dff">' + (i.au != null ? i.au + ' AU' : '—') + '</b></div>',
-      '<div style="margin-top:6px;color:#7ec8e3;font-size:10px">' + (i.note || '') + '</div>',
-      '<div style="margin-top:4px;color:#5a7080;font-size:9px">Source: ' + (i.source || 'NASA') + '</div>'
-    ].join('');
   }
 
   function injectChrome() {
@@ -90,11 +65,15 @@
       '<div style="position:fixed;z-index:2100;left:50%;top:58px;transform:translateX(-50%);display:flex;gap:6px;flex-wrap:wrap;justify-content:center;max-width:96vw">',
       '  <button data-scale="universe" class="tm-scale-btn">Universe</button>',
       '  <button data-scale="solar" class="tm-scale-btn">Solar System</button>',
-      '  <button data-scale="planet" class="tm-scale-btn">Planet</button>',
-      '  <span style="width:6px"></span>',
-      '  <button data-planet="earth" class="tm-planet-btn">Earth</button>',
-      '  <button data-planet="moon" class="tm-planet-btn">Moon</button>',
-      '  <button data-planet="mars" class="tm-planet-btn">Mars</button>',
+      '  <button data-scale="earth" class="tm-scale-btn">Earth Live</button>',
+      '  <button data-scale="moon" class="tm-scale-btn">Moon</button>',
+      '  <button data-scale="mars" class="tm-scale-btn">Mars</button>',
+      '</div>',
+      '<div id="tm-weather-bar" style="position:fixed;z-index:2100;left:14px;top:110px;display:none;flex-direction:column;gap:6px;max-width:200px">',
+      '  <button data-wx="live" class="tm-wx-btn on">Satellite Live</button>',
+      '  <button data-wx="radar" class="tm-wx-btn">Radar / Rain</button>',
+      '  <button data-wx="labels" class="tm-wx-btn on">Labels</button>',
+      '  <div style="font:9px ui-monospace;color:#8ab;padding:4px 2px">GIBS / RainViewer · near real-time sky</div>',
       '</div>',
       '<div style="position:fixed;z-index:2100;right:14px;bottom:120px;display:flex;flex-direction:column;gap:6px">',
       '  <button id="tm-zoom-in" style="width:40px;height:40px;font-size:20px;font-weight:900">+</button>',
@@ -102,11 +81,10 @@
       '  <button id="tm-zoom-home" style="width:40px;height:40px;font-size:12px;font-weight:800">⌂</button>',
       '</div>',
       '<style>',
-      '.tm-scale-btn,.tm-planet-btn,#tm-zoom-in,#tm-zoom-out,#tm-zoom-home{border:1px solid rgba(255,255,255,.2);border-radius:8px;background:rgba(6,12,18,.92);color:#eaf4fa;cursor:pointer;font:700 11px system-ui;padding:8px 12px;backdrop-filter:blur(10px)}',
-      '.tm-scale-btn.on,.tm-planet-btn.on{border-color:#4fd0a0;color:#4fd0a0;box-shadow:0 0 12px #4fd0a044}',
-      '#tm-zoom-in:hover,#tm-zoom-out:hover,#tm-zoom-home:hover,.tm-scale-btn:hover,.tm-planet-btn:hover{background:rgba(69,168,255,.2)}',
+      '.tm-scale-btn,.tm-wx-btn,#tm-zoom-in,#tm-zoom-out,#tm-zoom-home{border:1px solid rgba(255,255,255,.2);border-radius:8px;background:rgba(6,12,18,.92);color:#eaf4fa;cursor:pointer;font:700 11px system-ui;padding:8px 12px;backdrop-filter:blur(10px);text-align:left}',
+      '.tm-scale-btn.on,.tm-wx-btn.on{border-color:#4fd0a0;color:#4fd0a0;box-shadow:0 0 12px #4fd0a044}',
+      '#tm-zoom-in:hover,#tm-zoom-out:hover,#tm-zoom-home:hover,.tm-scale-btn:hover,.tm-wx-btn:hover{background:rgba(69,168,255,.22)}',
       '#tm-solar-canvas{position:absolute;inset:0;width:100%;height:100%;display:block;background:#010208;cursor:grab;z-index:2}',
-      '#tm-solar-canvas:active{cursor:grabbing}',
       '#map canvas{pointer-events:auto!important}',
       '</style>'
     ].join('');
@@ -114,8 +92,8 @@
     box.querySelectorAll('[data-scale]').forEach(function (b) {
       b.onclick = function () { setScale(b.getAttribute('data-scale')); };
     });
-    box.querySelectorAll('[data-planet]').forEach(function (b) {
-      b.onclick = function () { activePlanet = b.getAttribute('data-planet'); setScale('planet'); };
+    box.querySelectorAll('[data-wx]').forEach(function (b) {
+      b.onclick = function () { b.classList.toggle('on'); applyWeatherLayers(); };
     });
     $('tm-zoom-in').onclick = function () { zoomBy(1); };
     $('tm-zoom-out').onclick = function () { zoomBy(-1); };
@@ -126,9 +104,13 @@
     document.querySelectorAll('[data-scale]').forEach(function (b) {
       b.classList.toggle('on', b.getAttribute('data-scale') === scale);
     });
-    document.querySelectorAll('[data-planet]').forEach(function (b) {
-      b.classList.toggle('on', b.getAttribute('data-planet') === activePlanet && scale === 'planet');
-    });
+    const wx = $('tm-weather-bar');
+    if (wx) wx.style.display = scale === 'earth' ? 'flex' : 'none';
+  }
+
+  function wxOn(id) {
+    const b = document.querySelector('[data-wx="' + id + '"]');
+    return b && b.classList.contains('on');
   }
 
   function ensureSolarCanvas() {
@@ -153,10 +135,7 @@
         if (scale !== 'solar' && scale !== 'universe') return;
         const rect = c.getBoundingClientRect();
         const hit = pickPlanet(e.clientX - rect.left, e.clientY - rect.top);
-        if (!hit) return;
-        showPlanetInfo(hit.id);
-        if (hit.engine) { activePlanet = hit.engine; setScale('planet'); }
-        else setStatus(hit.name + ' · NASA ' + (hit.info && hit.info.source) + ' · surface for Earth/Moon/Mars', true);
+        if (hit && hit.engine) setScale(hit.engine);
       });
     }
     return c;
@@ -194,43 +173,31 @@
     const w = c.clientWidth, h = c.clientHeight;
     if (c.width !== (w * dpr | 0) || c.height !== (h * dpr | 0)) { c.width = w * dpr | 0; c.height = h * dpr | 0; }
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-    ctx.fillStyle = scale === 'universe' ? '#00000a' : '#010208';
+    ctx.fillStyle = '#010208';
     ctx.fillRect(0, 0, w, h);
     ctx.fillStyle = '#fff';
-    for (let i = 0; i < (scale === 'universe' ? 420 : 160); i++) {
+    for (let i = 0; i < 200; i++) {
       const sx = (Math.sin(i * 12.9898) * 43758.5453) % 1;
       const sy = (Math.sin(i * 78.233) * 12345.678) % 1;
-      ctx.globalAlpha = 0.2 + (i % 5) * 0.12;
-      ctx.fillRect((sx < 0 ? sx + 1 : sx) * w, (sy < 0 ? sy + 1 : sy) * h, i % 3 === 0 ? 2 : 1, i % 3 === 0 ? 2 : 1);
+      ctx.globalAlpha = 0.25 + (i % 5) * 0.1;
+      ctx.fillRect((sx < 0 ? sx + 1 : sx) * w, (sy < 0 ? sy + 1 : sy) * h, 1, 1);
     }
     ctx.globalAlpha = 1;
     const laid = layoutPlanets(w, h);
     const cx = w / 2 + (c._pan ? c._pan().x : 0), cy = h / 2 + (c._pan ? c._pan().y : 0);
     const scalePx = Math.min(w, h) * 0.035 * solarZoom;
-    ctx.strokeStyle = 'rgba(100,140,180,0.22)'; ctx.lineWidth = 1;
+    ctx.strokeStyle = 'rgba(100,140,180,0.25)';
     PLANETS.forEach(function (p) {
       if (!p.au) return;
       const dist = p.au * scalePx * 28;
       ctx.beginPath(); ctx.ellipse(cx, cy, dist, dist * 0.55, 0, 0, Math.PI * 2); ctx.stroke();
     });
     laid.forEach(function (o) {
-      const g = ctx.createRadialGradient(o.x - o.rad * 0.3, o.y - o.rad * 0.3, 0, o.x, o.y, o.rad);
-      g.addColorStop(0, '#ffffffaa'); g.addColorStop(0.35, o.p.color); g.addColorStop(1, o.p.color + '99');
-      ctx.fillStyle = g; ctx.beginPath(); ctx.arc(o.x, o.y, o.rad, 0, Math.PI * 2); ctx.fill();
-      if (o.p.id === 'saturn') {
-        ctx.strokeStyle = '#e6d3a3aa'; ctx.lineWidth = 2;
-        ctx.beginPath(); ctx.ellipse(o.x, o.y, o.rad * 1.85, o.rad * 0.42, -0.35, 0, Math.PI * 2); ctx.stroke();
-      }
-      if (o.p.id === 'sun') {
-        ctx.shadowColor = '#FDB813'; ctx.shadowBlur = 24;
-        ctx.beginPath(); ctx.arc(o.x, o.y, o.rad, 0, Math.PI * 2); ctx.fill();
-        ctx.shadowBlur = 0;
-      }
-      ctx.fillStyle = '#dce9f0'; ctx.font = '10px ui-monospace,monospace';
+      ctx.fillStyle = o.p.color;
+      ctx.beginPath(); ctx.arc(o.x, o.y, o.rad, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = '#dce9f0'; ctx.font = '10px ui-monospace';
       ctx.fillText(o.p.name, o.x + o.rad + 4, o.y + 3);
     });
-    ctx.fillStyle = 'rgba(180,200,220,0.75)'; ctx.font = '11px ui-monospace,monospace';
-    ctx.fillText(scale === 'universe' ? 'UNIVERSE · scroll toward Sol · NASA colors' : 'SOLAR SYSTEM · click planet · Earth/Moon/Mars = real mosaics', 12, h - 14);
     animId = requestAnimationFrame(drawSolar);
   }
 
@@ -243,6 +210,126 @@
     else cancelAnimationFrame(animId);
   }
 
+  function destroyGlobe() {
+    try { if (globe && globe.destroy) globe.destroy(); } catch (e) {}
+    globe = null;
+    try { if (maplibre) maplibre.remove(); } catch (e) {}
+    maplibre = null;
+    const target = $('map');
+    if (target) {
+      Array.from(target.children).forEach(function (ch) {
+        if (ch.id !== 'tm-solar-canvas') ch.remove();
+      });
+    }
+  }
+
+  function applyWeatherLayers() {
+    if (!maplibre) return;
+    try {
+      if (maplibre.getLayer('gibs-live')) maplibre.setLayoutProperty('gibs-live', 'visibility', wxOn('live') ? 'visible' : 'none');
+      if (maplibre.getLayer('radar')) maplibre.setLayoutProperty('radar', 'visibility', wxOn('radar') ? 'visible' : 'none');
+      if (maplibre.getLayer('labels')) maplibre.setLayoutProperty('labels', 'visibility', wxOn('labels') ? 'visible' : 'none');
+    } catch (e) {}
+  }
+
+  async function loadRainViewerPath() {
+    try {
+      const r = await fetch('https://api.rainviewer.com/public/weather-maps.json');
+      const j = await r.json();
+      const frames = (j.radar && j.radar.past) || [];
+      if (!frames.length) return null;
+      const last = frames[frames.length - 1];
+      return j.host + last.path;
+    } catch (e) { return null; }
+  }
+
+  async function enterEarthLive() {
+    destroyGlobe();
+    showSolar(false);
+    if (!window.maplibregl) throw new Error('MapLibre missing');
+
+    liveDate = gibsDate(-1);
+    const radarHostPath = await loadRainViewerPath();
+
+    const style = {
+      version: 8,
+      projection: { type: 'globe' },
+      sources: {
+        basemap: {
+          type: 'raster', tileSize: 256, maxzoom: 19,
+          tiles: ['https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}'],
+          attribution: 'Esri'
+        },
+        gibs: {
+          type: 'raster', tileSize: 256, maxzoom: 9,
+          tiles: [
+            'https://gibs.earthdata.nasa.gov/wmts/epsg3857/best/VIIRS_SNPP_CorrectedReflectance_TrueColor/default/' +
+              liveDate + '/GoogleMapsCompatible_Level9/{z}/{y}/{x}.jpg'
+          ],
+          attribution: 'NASA GIBS / VIIRS'
+        },
+        labels: {
+          type: 'raster', tileSize: 256, maxzoom: 19,
+          tiles: ['https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}'],
+          attribution: 'Esri'
+        }
+      },
+      layers: [
+        { id: 'basemap', type: 'raster', source: 'basemap', paint: { 'raster-opacity': 0.35 } },
+        { id: 'gibs-live', type: 'raster', source: 'gibs', paint: { 'raster-opacity': 0.92 } },
+        { id: 'labels', type: 'raster', source: 'labels', paint: { 'raster-opacity': 0.85 } }
+      ],
+      fog: {
+        color: '#0a1a28', 'high-color': '#1a3048', 'space-color': '#010308',
+        'horizon-blend': 0.12, range: [0.6, 10]
+      }
+    };
+
+    if (radarHostPath) {
+      style.sources.radar = {
+        type: 'raster', tileSize: 256, maxzoom: 12,
+        tiles: [radarHostPath + '/256/{z}/{x}/{y}/2/1_1.png'],
+        attribution: 'RainViewer'
+      };
+      style.layers.push({
+        id: 'radar', type: 'raster', source: 'radar',
+        layout: { visibility: 'none' },
+        paint: { 'raster-opacity': 0.65 }
+      });
+    }
+
+    maplibre = new maplibregl.Map({
+      container: 'map', style: style, center: [20, 15], zoom: 1.8,
+      minZoom: 0.5, maxZoom: 18, maxPitch: 70, attributionControl: false,
+      canvasContextAttributes: { antialias: true }
+    });
+    window.map = maplibre;
+    maplibre.addControl(new maplibregl.NavigationControl({ visualizePitch: true }), 'bottom-right');
+    maplibre.addControl(new maplibregl.AttributionControl({ compact: true }), 'bottom-right');
+
+    maplibre.on('load', function () {
+      applyWeatherLayers();
+      setStatus('EARTH LIVE · NASA GIBS ' + liveDate + ' · clouds & sky · Zoom.Earth-style', true);
+    });
+
+    setInterval(function () {
+      if (scale !== 'earth' || !maplibre) return;
+      const d = gibsDate(-1);
+      if (d === liveDate) return;
+      liveDate = d;
+      try {
+        if (maplibre.getSource('gibs')) {
+          maplibre.getSource('gibs').setTiles([
+            'https://gibs.earthdata.nasa.gov/wmts/epsg3857/best/VIIRS_SNPP_CorrectedReflectance_TrueColor/default/' +
+              liveDate + '/GoogleMapsCompatible_Level9/{z}/{y}/{x}.jpg'
+          ]);
+        }
+      } catch (e) {}
+    }, 3600000);
+
+    return maplibre;
+  }
+
   async function loadOg() {
     if (og) return og;
     ensureCss(OG_CSS);
@@ -250,201 +337,163 @@
     return og;
   }
 
-  async function enterPlanet(planetId) {
-    activePlanet = planetId || 'earth';
+  async function enterOgPlanet(planetId) {
+    destroyGlobe();
     showSolar(false);
-    showPlanetInfo(activePlanet);
-
+    activePlanet = planetId;
     const mod = await loadOg();
     const Globe = mod.Globe, XYZ = mod.XYZ, LonLat = mod.LonLat, control = mod.control;
-    const GlobusTerrain = mod.GlobusTerrain, EmptyTerrain = mod.EmptyTerrain, RgbTerrain = mod.RgbTerrain;
+    const EmptyTerrain = mod.EmptyTerrain, RgbTerrain = mod.RgbTerrain;
     const moonEll = mod.moon, marsEll = mod.mars, quadTreeStrategyType = mod.quadTreeStrategyType;
 
     const target = $('map');
-    if (!target) throw new Error('#map missing');
-    try { if (globe && globe.destroy) globe.destroy(); } catch (e) {}
-    Array.from(target.children).forEach(function (ch) { if (ch.id !== 'tm-solar-canvas') ch.remove(); });
-
     let layers = [], terrain = null;
-    const opts = { target: target, name: activePlanet, autoActivate: true, maxGridSize: 128 };
+    const opts = { target: target, name: planetId, autoActivate: true, maxGridSize: 128 };
 
-    if (activePlanet === 'moon') {
-      layers = [
-        new XYZ('LRO WAC (NASA)', {
-          isBaseLayer: true, pickingEnabled: false,
-          url: 'https://{s}.terrain.openglobus.org/moon/sat/{z}/{x}/{y}.png',
-          visibility: true, maxNativeZoom: 10,
-          attribution: 'NASA LRO / OpenGlobus',
-          diffuse: [1, 1, 1.15], ambient: [0.06, 0.06, 0.08]
-        }),
-        new XYZ('OPM Moon', {
-          isBaseLayer: true,
-          url: 'https://cartocdn-gusc.global.ssl.fastly.net/opmbuilder/api/v1/map/named/opm-moon-basemap-v0-1/all/{z}/{x}/{y}.png',
-          visibility: false, attribution: 'OpenPlanetaryMap'
-        })
-      ];
+    if (planetId === 'moon') {
+      layers = [new XYZ('LRO', {
+        isBaseLayer: true,
+        url: 'https://{s}.terrain.openglobus.org/moon/sat/{z}/{x}/{y}.png',
+        visibility: true, maxNativeZoom: 10, attribution: 'NASA LRO'
+      })];
       try {
         terrain = new RgbTerrain(null, {
           geoidSrc: null, maxZoom: 7,
           url: 'https://{s}.terrain.openglobus.org/moon/dem/{z}/{x}/{y}.png',
-          heightFactor: 0.5, minHeight: -20000
+          heightFactor: 0.5
         });
-      } catch (e) { try { terrain = new EmptyTerrain(); } catch (e2) {} }
+      } catch (e) { terrain = new EmptyTerrain(); }
       opts.ellipsoid = moonEll;
       opts.atmosphereEnabled = false;
       opts.nightTextureSrc = null;
       opts.specularTextureSrc = null;
-      opts.maxAltitude = 5841727;
       if (quadTreeStrategyType && quadTreeStrategyType.equi) opts.quadTreeStrategyPrototype = quadTreeStrategyType.equi;
-    } else if (activePlanet === 'mars') {
+      opts.maxAltitude = 5e6;
+    } else {
       layers = [
-        new XYZ('Mars Viking (NASA lineage)', {
-          isBaseLayer: true,
-          url: 'https://terrain.openglobus.org/mars/sat/{z}/{x}/{y}.png',
-          visibility: true, attribution: 'Mars Viking MDIM'
-        }),
-        new XYZ('ArcGIS OnMars (NASA MDIM)', {
+        new XYZ('OnMars MDIM', {
           isBaseLayer: true,
           url: 'https://astro.arcgis.com/arcgis/rest/services/OnMars/MDIM/MapServer/tile/{z}/{y}/{x}?blankTile=false',
-          visibility: false, attribution: 'ArcGIS OnMars / NASA'
+          visibility: true, attribution: 'ArcGIS OnMars / NASA'
+        }),
+        new XYZ('Mars Viking', {
+          isBaseLayer: true,
+          url: 'https://terrain.openglobus.org/mars/sat/{z}/{x}/{y}.png',
+          visibility: false, attribution: 'Viking'
         })
       ];
       try {
         terrain = new RgbTerrain('Mars', {
-          geoidSrc: null, maxZoom: 8, maxNativeZoom: 8,
+          geoidSrc: null, maxZoom: 8,
           url: 'https://{s}.terrain.openglobus.org/mars/dem/{z}/{x}/{y}.png',
           heightFactor: 1.1
         });
-      } catch (e) { try { terrain = new EmptyTerrain(); } catch (e2) {} }
-      opts.ellipsoid = marsEll;
-      opts.atmosphereEnabled = true;
+      } catch (e) {
+        try { terrain = new EmptyTerrain(); } catch (e2) { terrain = null; }
+      }
+      if (marsEll) opts.ellipsoid = marsEll;
+      opts.atmosphereEnabled = false;
       opts.nightTextureSrc = null;
       opts.specularTextureSrc = null;
-      opts.maxAltitude = 8100000;
       if (quadTreeStrategyType && quadTreeStrategyType.equi) opts.quadTreeStrategyPrototype = quadTreeStrategyType.equi;
-    } else {
-      layers = [
-        new XYZ('Earth Satellite', {
-          isBaseLayer: true,
-          url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
-          visibility: true, attribution: 'Esri'
-        }),
-        new XYZ('Earth Dark', {
-          isBaseLayer: true,
-          url: 'https://services.arcgisonline.com/ArcGIS/rest/services/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}',
-          visibility: false
-        })
-      ];
-      try { terrain = new GlobusTerrain(); } catch (e) { try { terrain = new EmptyTerrain(); } catch (e2) {} }
-      opts.atmosphereEnabled = true;
-      opts.maxAltitude = 50000000;
+      opts.maxAltitude = 8e6;
     }
 
-    opts.terrain = terrain;
     opts.layers = layers;
+    opts.terrain = terrain || new EmptyTerrain();
     globe = new Globe(opts);
     window.globe = globe;
-
     try {
-      const cam = globe.planet.camera;
-      if (cam) { cam.minAltitude = 50; cam.maxAltitude = opts.maxAltitude || 5e7; }
+      if (globe.planet.camera) {
+        globe.planet.camera.minAltitude = 50;
+        globe.planet.camera.maxAltitude = opts.maxAltitude || 1e7;
+      }
     } catch (e) {}
     try {
       if (control && control.ZoomControl) globe.planet.addControl(new control.ZoomControl());
       if (control && control.LayerSwitcher) globe.planet.addControl(new control.LayerSwitcher());
     } catch (e) {}
     try {
-      const alt = activePlanet === 'earth' ? 12000000 : activePlanet === 'mars' ? 6000000 : 2500000;
-      if (globe.planet.camera.flyLonLat) globe.planet.camera.flyLonLat(new LonLat(0, 15, alt));
-      else if (globe.planet.camera.setLonLat) globe.planet.camera.setLonLat(new LonLat(0, 15, alt));
+      const alt = planetId === 'mars' ? 5e6 : 2.5e6;
+      if (globe.planet.camera.flyLonLat) globe.planet.camera.flyLonLat(new LonLat(0, 10, alt));
     } catch (e) {}
-
-    setStatus('NASA · ' + activePlanet.toUpperCase() + ' · real mosaic · zoom +/-', true);
-    return globe;
-  }
-
-  function zoomPlanetAltitude(alt) {
-    if (!globe || !og) return;
-    try {
-      const cam = globe.planet.camera;
-      const LonLat = og.LonLat;
-      let lon = 0, lat = 15;
-      try { const ll = cam.getLonLat && cam.getLonLat(); if (ll) { lon = ll.lon; lat = ll.lat; } } catch (e) {}
-      if (cam.flyLonLat) cam.flyLonLat(new LonLat(lon, lat, alt));
-      else if (cam.setLonLat) cam.setLonLat(new LonLat(lon, lat, alt));
-    } catch (e) {}
-  }
-
-  function getPlanetAltitude() {
-    try {
-      const ll = globe.planet.camera.getLonLat();
-      return ll && ll.height != null ? ll.height : 1e7;
-    } catch (e) { return 1e7; }
+    setStatus(planetId.toUpperCase() + ' · NASA mosaic · zoom +/-', true);
   }
 
   function zoomBy(dir) {
     if (scale === 'universe' || scale === 'solar') {
       solarZoom = Math.max(0.25, Math.min(4.5, solarZoom * (dir > 0 ? 1.18 : 0.85)));
       if (scale === 'universe' && solarZoom > 0.7) { setScale('solar'); return; }
-      if (scale === 'solar' && solarZoom > 2.8) { activePlanet = 'earth'; setScale('planet'); return; }
+      if (scale === 'solar' && solarZoom > 2.8) { setScale('earth'); return; }
       if (scale === 'solar' && solarZoom < 0.35) { setScale('universe'); return; }
-      setStatus((scale === 'universe' ? 'UNIVERSE' : 'SOLAR SYSTEM') + ' · zoom ' + solarZoom.toFixed(2), true);
+      setStatus(scale.toUpperCase() + ' · z ' + solarZoom.toFixed(2), true);
       return;
     }
-    if (scale === 'planet' && globe) {
-      const alt = getPlanetAltitude();
-      const clamped = Math.max(80, Math.min(4.5e7, dir > 0 ? alt * 0.55 : alt * 1.85));
-      zoomPlanetAltitude(clamped);
-      if (clamped > 3.5e7) { setScale('solar'); solarZoom = 1.2; return; }
-      setStatus('NASA · ' + activePlanet.toUpperCase() + ' · alt ' + Math.round(clamped) + ' m', true);
+    if (maplibre) {
+      const z = maplibre.getZoom();
+      maplibre.easeTo({ zoom: Math.max(0.5, Math.min(18, z + (dir > 0 ? 0.8 : -0.8))), duration: 250 });
+      return;
+    }
+    if (globe && og) {
+      try {
+        const cam = globe.planet.camera;
+        const LonLat = og.LonLat;
+        const ll = cam.getLonLat && cam.getLonLat();
+        const alt = (ll && ll.height) || 5e6;
+        const next = Math.max(80, Math.min(2e7, dir > 0 ? alt * 0.55 : alt * 1.85));
+        cam.flyLonLat(new LonLat(ll ? ll.lon : 0, ll ? ll.lat : 10, next));
+      } catch (e) {}
     }
   }
 
   function zoomHome() {
-    if (scale === 'planet') zoomPlanetAltitude(activePlanet === 'earth' ? 1.2e7 : 5e6);
-    else { solarZoom = 1; if (solarCanvas && solarCanvas._setPan) solarCanvas._setPan(0, 0); }
-    setStatus('RESET · ' + scale.toUpperCase(), true);
+    if (maplibre) maplibre.easeTo({ center: [20, 15], zoom: 1.8, pitch: 0, duration: 600 });
+    else if (scale === 'solar' || scale === 'universe') {
+      solarZoom = 1;
+      if (solarCanvas && solarCanvas._setPan) solarCanvas._setPan(0, 0);
+    }
   }
 
   async function setScale(next) {
     scale = next;
+    if (next === 'earth' || next === 'moon' || next === 'mars') activePlanet = next;
     markChrome();
-    try { localStorage.setItem('tm-scale', scale); localStorage.setItem('tm-planet', activePlanet); } catch (e) {}
+    try { localStorage.setItem('tm-scale', scale); } catch (e) {}
+
     if (scale === 'universe' || scale === 'solar') {
-      try { if (globe && globe.destroy) globe.destroy(); } catch (e) {}
-      globe = null;
+      destroyGlobe();
       showSolar(true);
-      showPlanetInfo(scale === 'solar' ? 'sun' : 'earth');
-      setStatus(scale === 'universe' ? 'UNIVERSE · approach Sol' : 'SOLAR SYSTEM · NASA colors · click Earth/Moon/Mars', true);
+      setStatus(scale === 'universe' ? 'UNIVERSE' : 'SOLAR SYSTEM · click Earth/Moon/Mars', true);
       return;
     }
     showSolar(false);
-    setStatus('ENTERING ' + activePlanet.toUpperCase() + ' (NASA mosaic)…', true);
+    setStatus('LOADING ' + scale.toUpperCase() + '…', true);
     try {
-      await enterPlanet(activePlanet);
+      if (scale === 'earth') await enterEarthLive();
+      else await enterOgPlanet(scale);
       closeSplash();
     } catch (err) {
       console.error(err);
-      setStatus('PLANET FAILED · ' + (err.message || err), false);
-      setScale('solar');
+      setStatus('FAILED · ' + (err.message || err), false);
+      if (scale !== 'earth') {
+        try { await enterEarthLive(); scale = 'earth'; markChrome(); } catch (e2) {}
+      }
     }
   }
 
   injectChrome();
-  try {
-    scale = localStorage.getItem('tm-scale') || 'solar';
-    activePlanet = localStorage.getItem('tm-planet') || 'earth';
-  } catch (e) {}
-  setStatus('STARTING NASA-LINKED PLANETARY ENGINE…', true);
-  setScale(scale === 'planet' ? 'planet' : 'solar').then(closeSplash).catch(function () { setScale('solar'); closeSplash(); });
-  setTimeout(closeSplash, 5000);
+  try { scale = localStorage.getItem('tm-scale') || 'earth'; } catch (e) {}
+  if (scale === 'planet') scale = 'earth';
+  setStatus('STARTING LIVE EARTH ENGINE…', true);
+  setScale(scale === 'moon' || scale === 'mars' || scale === 'solar' || scale === 'universe' ? scale : 'earth')
+    .then(closeSplash)
+    .catch(function () { setScale('earth'); closeSplash(); });
+  setTimeout(closeSplash, 6000);
 
   window.TrackMeNowEngine = {
-    name: 'TrackMeNow NASA Planetary Engine',
+    name: 'TrackMeNow Live Earth + NASA Planets',
     setScale: setScale,
     zoomBy: zoomBy,
-    get scale() { return scale; },
-    get planet() { return activePlanet; },
-    catalog: PLANETS
+    get scale() { return scale; }
   };
 })();
