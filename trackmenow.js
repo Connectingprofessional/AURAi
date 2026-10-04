@@ -25,7 +25,7 @@ const BASES=[
 ];
 const MAP_STYLE={version:8,
   projection:{type:'globe'},
-  fog:{color:'#08131a',high-color:'#0a2230',space-color:'#02050b',horizon-blend:.16,range:[.5,10]},
+  fog:{color:'#08131a','high-color':'#0a2230','space-color':'#02050b','horizon-blend':.16,range:[.5,10]},
   sources:{
     ocean:{type:'geojson',data:'https://d2ad6b4ur7yvpq.cloudfront.net/naturalearth-3.3.0/ne_110m_ocean.geojson'},
     land:{type:'geojson',data:'https://raw.githubusercontent.com/nvkelso/natural-earth-vector/master/geojson/ne_110m_land.geojson'},
