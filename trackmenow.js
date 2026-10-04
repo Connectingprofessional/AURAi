@@ -47,35 +47,81 @@ const MAP_STYLE={version:8,
     {id:'solar-terminator-line',type:'line',source:'solar-terminator',paint:{'line-color':'#8fd9ff','line-width':1.15,'line-opacity':.7}}
   ]};
 function solarTerminatorGeoJSON(date=new Date()){
-  const dayMs=86400000, y=date.getUTCFullYear(), start=Date.UTC(y,0,1);
-  const n=(date.getTime()-start)/dayMs;
+  // Astronomical day/night overlay. The sub-solar longitude is derived from UTC
+  // plus the equation of time, so the terminator follows the real Sun/Earth
+  // geometry instead of a fixed CSS-style night mode.
+  const dayMs=86400000;
+  const y=date.getUTCFullYear(), startOfYear=Date.UTC(y,0,1);
+  const n=(date.getTime()-startOfYear)/dayMs+1;
   const g=2*Math.PI/365.2422*(n-1);
   const decl=0.006918-0.399912*Math.cos(g)+0.070257*Math.sin(g)-0.006758*Math.cos(2*g)+0.000907*Math.sin(2*g)-0.002697*Math.cos(3*g)+0.00148*Math.sin(3*g);
-  const utc=date.getUTCHours()+date.getUTCMinutes()/60+date.getUTCSeconds()/3600;
-  let subLon=((12-utc)*15+540)%360-180;
+  const eotMin=229.18*(0.000075+0.001868*Math.cos(g)-0.032077*Math.sin(g)-0.014615*Math.cos(2*g)-0.040849*Math.sin(2*g));
+  const utcHours=date.getUTCHours()+date.getUTCMinutes()/60+date.getUTCSeconds()/3600+date.getUTCMilliseconds()/3600000;
+  const solarMinutes=utcHours*60+eotMin;
+  const subLon=((720-solarMinutes)/4+540)%360-180;
+  const rad=Math.PI/180;
+  const normLon=v=>((v+540)%360)-180;
+  const nightFeatures=[];
   const east=[],west=[];
-  for(let lat=-90;lat<=90;lat+=2){
-    const phi=lat*Math.PI/180, t=-Math.tan(phi)*Math.tan(decl);
+
+  // Build the night side as latitude bands. This avoids the dateline/polygon
+  // winding problems of a single giant polygon and keeps the overlay stable
+  // while the Earth rotates beneath it.
+  for(let lat=-89;lat<=89;lat+=1){
+    const lat0=lat, lat1=lat+1;
+    const addBand=(lo0,lo1)=>{
+      if(lo1<=lo0)return;
+      nightFeatures.push({type:'Feature',geometry:{type:'Polygon',coordinates:[[[lo0,lat0],[lo1,lat0],[lo1,lat1],[lo0,lat1],[lo0,lat0]]]},properties:{}});
+    };
+    const phi=((lat+0.5)*rad);
+    const t=-Math.tan(phi)*Math.tan(decl);
     const h=Math.abs(t)>=1?(t>0?Math.PI:0):Math.acos(t);
-    const d=h*180/Math.PI;
-    east.push([((subLon+d+540)%360)-180,lat]);
-    west.push([((subLon-d+540)%360)-180,lat]);
+    const halfDay=h/rad;
+    const dayA=subLon-halfDay, dayB=subLon+halfDay;
+    // Add the two night intervals after splitting them at the antimeridian.
+    const daySegments=[];
+    let a=dayA,b=dayB;
+    while(a< -180)a+=360; while(a>=180)a-=360;
+    while(b< -180)b+=360; while(b>=180)b-=360;
+    if(halfDay>=180){
+      // Polar day: no night at this latitude.
+    }else if(dayA<-180 || dayB>=180 || a>b){
+      const d0=dayA, d1=dayB;
+      const leftEnd=Math.min(180,d1);
+      const rightStart=Math.max(-180,d0);
+      if(d0<-180)addBand(-180,Math.min(180,d1+360));
+      else addBand(-180,d0);
+      if(d1>=180)addBand(Math.max(-180,d0),180);
+      else addBand(d1,180);
+    }else{
+      addBand(-180,a); addBand(b,180);
+    }
   }
-  const ring=[...east,...west.reverse()];
-  return {type:'FeatureCollection',features:[{type:'Feature',geometry:{type:'Polygon',coordinates:[[[-180,-90],...ring,[-180,90],[-180,-90]]]},properties:{}},{type:'Feature',geometry:{type:'LineString',coordinates:east},properties:{}}]};
+
+  for(let lat=-90;lat<=90;lat+=1){
+    const phi=lat*rad, t=-Math.tan(phi)*Math.tan(decl);
+    const h=Math.abs(t)>=1?(t>0?Math.PI:0):Math.acos(t);
+    const d=h/rad;
+    east.push([normLon(subLon+d),lat]);
+    west.push([normLon(subLon-d),lat]);
+  }
+  nightFeatures.push({type:'Feature',geometry:{type:'LineString',coordinates:east},properties:{terminator:true}});
+  nightFeatures.push({type:'Feature',geometry:{type:'LineString',coordinates:west},properties:{terminator:true}});
+  return {type:'FeatureCollection',features:nightFeatures};
 }
 function updateSolarTerminator(){
   if(!mapReady)return;
-  const src=map.getSource('solar-terminator');if(src)src.setData(solarTerminatorGeoJSON());
+  const src=map.getSource('solar-terminator');
+  if(src)src.setData(solarTerminatorGeoJSON(new Date()));
 }
 let solarTimer=null;
-function setSolarTerminator(on){
+function setSolarTerminator(on=true){
   if(!mapReady)return;
   const vis=on?'visible':'none';
   if(map.getLayer('solar-night'))map.setLayoutProperty('solar-night','visibility',vis);
   if(map.getLayer('solar-terminator-line'))map.setLayoutProperty('solar-terminator-line','visibility',vis);
-  if(on){updateSolarTerminator();clearInterval(solarTimer);solarTimer=setInterval(updateSolarTerminator,60000)}
-  else clearInterval(solarTimer);
+  clearInterval(solarTimer);
+  if(on){updateSolarTerminator();solarTimer=setInterval(updateSolarTerminator,15000)}
 }
 function mapUnavailable(msg){
   const el=$('map');if(el)el.innerHTML='<div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;padding:24px;text-align:center;color:#cfe9ec;font:13px/1.5 system-ui,sans-serif">'+safe(msg)+'</div>';
