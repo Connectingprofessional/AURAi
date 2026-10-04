@@ -111,7 +111,7 @@ function applyProjection(resetView=false){if(!mapReady)return;try{map.setProject
 let globeSpin=true,globeBearing=0,globeLast=performance.now();
 function spinGlobe(now){
   if(globeOn&&globeSpin&&mapReady){
-    const dt=Math.min(80,now-globeLast); globeBearing=(globeBearing+dt*.0045)%360;
+    const dt=Math.min(80,now-globeLast); globeBearing=(globeBearing-dt*.0045+360)%360;
     try{map.setBearing(globeBearing);map.triggerRepaint()}catch(e){}
   }
   globeLast=now;requestAnimationFrame(spinGlobe);
