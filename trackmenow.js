@@ -1,1 +1,2 @@
-PLACEHOLDER_WILL_FAIL
+/* TrackMeNow realtime — see index for load */
+console.error('TEMP');
