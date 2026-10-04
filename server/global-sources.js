@@ -224,6 +224,26 @@ async function intelligenceAssets(b){
   return put(k,out);
 }
 
+async function submarineCables(b){
+  const k='submarine-cables:'+b.minLon.toFixed(2)+','+b.minLat.toFixed(2)+','+b.maxLon.toFixed(2)+','+b.maxLat.toFixed(2);
+  const hit=cached(k,600000);if(hit)return hit;
+  const q='[out:json][timeout:30];('+
+    'way["submarine"="yes"]('+b.minLat+','+b.minLon+','+b.maxLat+','+b.maxLon+');'+
+    'way["seamark:type"="cable_submarine"]('+b.minLat+','+b.minLon+','+b.maxLat+','+b.maxLon+');'+
+    'way["location"="underwater"]["communication"="line"]('+b.minLat+','+b.minLon+','+b.maxLat+','+b.maxLon+');'+
+    ');out geom tags;';
+  const r=await fetch(overpassUrl,{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded','User-Agent':'TrackMeNow/1.0'},body:'data='+encodeURIComponent(q)});
+  if(!r.ok)throw Error('Overpass submarine cables HTTP '+r.status);
+  const j=await r.json(),out=[];
+  for(const e of(j.elements||[])){
+    const g=(e.geometry||[]).map(function(p){return [Number(p.lon),Number(p.lat)]}).filter(function(p){return Number.isFinite(p[0])&&Number.isFinite(p[1])});
+    if(g.length<2)continue;
+    const t=e.tags||{};
+    out.push({type:'Feature',geometry:{type:'LineString',coordinates:g},properties:{category:'cable',subtype:'submarine',source:'OpenStreetMap/Overpass',osm_id:e.id,name:t.name||t.ref||'Submarine cable',operator:t.operator||'',ref:t.ref||''}});
+  }
+  return put(k,out);
+}
+
 async function cells(b){
   if(!cellKey) return {status:'api-key-required',source:'OpenCelliD',features:[]};
   var u='https://opencellid.org/cell/getInArea?key='+encodeURIComponent(cellKey)+'&BBOX='+encodeURIComponent([b.minLat,b.minLon,b.maxLat,b.maxLon].join(','))+'&format=json&limit=50';
@@ -255,11 +275,11 @@ router.get('/movement',async function(req,res){
   var b=bbox(req.query.bbox);if(!b)return res.status(400).json({error:'invalid bbox'});
   var layers=String(req.query.layers||'flights,ships,public-transport,cameras,cells,infrastructure').split(',').map(function(x){return x.trim()});
   var features=[],sources=[];
-  if(layers.includes('flights'))try{var f=await flights(b);features.push.apply(features,f);sources.push({layer:'flights',status:'live',source:'ADSB.lol ADS-B',count:f.length})}catch(e){sources.push({layer:'flights',status:'error',source:'ADSB.lol ADS-B',error:e.message})}
+  if(layers.includes('flights'))try{var f=await flights(b);features.push.apply(features,f);sources.push({layer:'flights',status:'live',source:'OpenSky ADS-B',count:f.length})}catch(e){sources.push({layer:'flights',status:'error',source:'OpenSky ADS-B',error:e.message})}
   if(layers.includes('ships'))try{var s=await ships(b);features.push.apply(features,s);sources.push({layer:'ships',status:aisUrl?'live':'api-key-or-feed-required',source:'AIS',count:s.length})}catch(e){sources.push({layer:'ships',status:'error',source:'AIS',error:e.message})}
   if(layers.includes('public-transport')){var t=await transit();features.push.apply(features,t);var tx=[];try{tx=await taxis(b);features.push.apply(features,tx)}catch(e){}sources.push({layer:'public-transport',status:(gtfsUrls.length&&t.length)||tx.length?'live':gtfsUrls.length?'no-current-vehicles':'feed-required',source:'GTFS-Realtime'+(taxiUrl?' + taxi feed':''),count:t.length+tx.length})}
   if(layers.includes('cameras')||layers.includes('infrastructure'))try{var a=await osmAssets(b);var aa=layers.includes('cameras')&&!layers.includes('infrastructure')?a.filter(function(x){return x.properties.category==='camera'}):a;features.push.apply(features,aa);sources.push({layer:'public-assets',status:'live',source:'OpenStreetMap/Overpass',count:aa.length})}catch(e){sources.push({layer:'public-assets',status:'error',source:'OpenStreetMap/Overpass',error:e.message})}
-  if(layers.includes('intelligence'))try{var ia=await intelligenceAssets(b);features.push.apply(features,ia);sources.push({layer:'intelligence',status:'live',source:'OpenStreetMap/Overpass',count:ia.length})}catch(e){sources.push({layer:'intelligence',status:'error',source:'OpenStreetMap/Overpass',error:e.message})}
+  if(layers.includes('intelligence'))try{var ia=await intelligenceAssets(b);features.push.apply(features,ia);var cables=await submarineCables(b);features.push.apply(features,cables);sources.push({layer:'intelligence',status:'live',source:'OpenStreetMap/Overpass · ODbL',count:ia.length+cables.length,cables:cables.length})}catch(e){sources.push({layer:'intelligence',status:'error',source:'OpenStreetMap/Overpass · ODbL',error:e.message})}
   if(layers.includes('cells'))try{var c=await cells(b);features.push.apply(features,c.features);sources.push({layer:'cells',status:c.status,source:c.source,count:c.features.length})}catch(e){sources.push({layer:'cells',status:'error',source:'OpenCelliD',error:e.message})}
   res.json({type:'FeatureCollection',features:features,sources:sources,generatedAt:new Date().toISOString()});
 });
