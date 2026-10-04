@@ -298,6 +298,14 @@ body.tm-panel-open #panel{right:8px}
  };
  window.addEventListener("keydown",e=>{if(e.key==="Escape")document.getElementById("trackmenow-ad-close")?.click()});
 })();
-</script><script src="./trackmenow.js"></script>
+</script><script src="./trackmenow-icons.js"></script>
+<script src="./trackmenow.js"></script>
+<script>
+(function(){
+ const I=window.TrackMeNowIcon||{};
+ const map={"argos-sat":"sat","argos-map":"globe","argos-globe":"globe3d","argos-night":"sun","argos-fence":"fence","argos-search":"search","argos-alerts":"bell"};
+ Object.keys(map).forEach(id=>{const b=document.getElementById(id),svg=I[map[id]];if(b&&svg){const small=b.querySelector("small");b.innerHTML=svg+(small?small.outerHTML:"")}});
+})();
+</script>
 </body>
 </html>
