@@ -604,7 +604,7 @@ let booted=false;
 function boot(){
   if(booted)return;booted=true;
   initOverlays();mapReady=true;
-  setBase(baseIndex);applyProjection(true);setSolarTerminator(false);
+  setBase(baseIndex);applyProjection(true);setSolarTerminator(true);$('argos-night')?.classList.add('on');
   $('argos-map')?.classList.toggle('on',!globeOn&&baseIndex===1);
   $('argos-sat')?.classList.toggle('on',!globeOn&&baseIndex===0);
   $('argos-globe')?.classList.toggle('on',globeOn);
