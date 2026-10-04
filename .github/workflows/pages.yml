@@ -4,6 +4,8 @@ on:
   push:
     branches: [main]
   workflow_dispatch:
+  schedule:
+    - cron: '23 */3 * * *'   # refresh the NASA data every 3 hours
 
 permissions:
   contents: read
@@ -37,6 +39,14 @@ jobs:
           # Exclude Node server & secrets from static publish
           echo "Static artifact ready"
           find _site -type f | head -40
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Fetch NASA data (Horizons, Small-Body DB, CNEOS, Exoplanet Archive)
+        continue-on-error: true
+        run: node scripts/fetch-nasa-data.mjs _site/data/nasa.json
 
       - uses: actions/configure-pages@v5
 
