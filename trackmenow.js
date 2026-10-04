@@ -20,7 +20,7 @@ try{globeOn=localStorage.getItem('tm-globe')==='1'||globeOn}catch(e){}
 /* ───────────────────────── map ───────────────────────── */
 const BASES=[
   {name:'Satellite',layers:['base-satellite','base-labels']},
-  {name:'Streets',layers:['base-streets']},
+  {name:'Dark',layers:['base-dark','base-labels']},
   {name:'Terrain',layers:['base-terrain']}
 ];
 const MAP_STYLE={version:8,
@@ -32,6 +32,7 @@ const MAP_STYLE={version:8,
     'solar-terminator':{type:'geojson',data:{type:'FeatureCollection',features:[]}},
     satellite:{type:'raster',tileSize:256,maxzoom:19,tiles:['https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}'],attribution:'Esri World Imagery'},
     labels:{type:'raster',tileSize:256,maxzoom:19,tiles:['https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}'],attribution:'Esri'},
+    dark:{type:'raster',tileSize:256,maxzoom:19,tiles:['https://services.arcgisonline.com/ArcGIS/rest/services/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}'],attribution:'Esri World Dark Gray Base'},
     streets:{type:'raster',tileSize:256,maxzoom:19,tiles:['https://tile.openstreetmap.org/{z}/{x}/{y}.png'],attribution:'© OpenStreetMap contributors'},
     terrain:{type:'raster',tileSize:256,maxzoom:17,tiles:['https://a.tile.opentopomap.org/{z}/{y}/{x}.png','https://b.tile.opentopomap.org/{z}/{y}/{x}.png','https://c.tile.opentopomap.org/{z}/{y}/{x}.png'],attribution:'© OpenTopoMap (CC-BY-SA)'}
   },
@@ -41,7 +42,8 @@ const MAP_STYLE={version:8,
     {id:'globe-land',type:'fill',source:'land',paint:{'fill-color':'#c7cfbd','fill-opacity':.86}},
     {id:'globe-borders',type:'line',source:'countries',paint:{'line-color':'#18262a','line-width':1.15,'line-opacity':.96}},
     {id:'base-satellite',type:'raster',source:'satellite',paint:{'raster-opacity':.24}},
-    {id:'base-labels',type:'raster',source:'labels'},
+    {id:'base-dark',type:'raster',source:'dark',layout:{visibility:'none'},paint:{'raster-opacity':.96}},
+    {id:'base-labels',type:'raster',source:'labels',paint:{'raster-opacity':.92}},
     {id:'base-streets',type:'raster',source:'streets',layout:{visibility:'none'}},
     {id:'base-terrain',type:'raster',source:'terrain',layout:{visibility:'none'}},
     {id:'solar-night',type:'fill',source:'solar-terminator',paint:{'fill-color':'#02050b','fill-opacity':.38}},
