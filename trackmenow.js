@@ -1,4 +1,4 @@
-/* TrackMeNow — dense weather fields + local clock */
+/* TrackMeNow — single zoom + NASA Eyes-style solar system */
 (function () {
   'use strict';
   const $ = (id) => document.getElementById(id);
@@ -7,16 +7,36 @@
   const OG_CSS = 'https://cdn.jsdelivr.net/npm/@openglobus/og@' + OG_VER + '/lib/og.css';
 
   const PLANETS = [
-    { id: 'sun', name: 'Sun', color: '#FDB813', r: 28, au: 0, engine: null },
-    { id: 'mercury', name: 'Mercury', color: '#B5B5B5', r: 5, au: 0.39, engine: null },
-    { id: 'venus', name: 'Venus', color: '#E8CDA0', r: 7, au: 0.72, engine: null },
-    { id: 'earth', name: 'Earth', color: '#3D8BFF', r: 8, au: 1.0, engine: 'earth' },
-    { id: 'moon', name: 'Moon', color: '#C8C8C8', r: 3, au: 1.05, engine: 'moon' },
-    { id: 'mars', name: 'Mars', color: '#C1440E', r: 6, au: 1.52, engine: 'mars' },
-    { id: 'jupiter', name: 'Jupiter', color: '#C88B3A', r: 16, au: 5.2, engine: null },
-    { id: 'saturn', name: 'Saturn', color: '#E6D3A3', r: 14, au: 9.5, engine: null },
-    { id: 'uranus', name: 'Uranus', color: '#7EC8E3', r: 10, au: 19.2, engine: null },
-    { id: 'neptune', name: 'Neptune', color: '#3F54BA', r: 9, au: 30.1, engine: null }
+    { id: 'sun', name: 'Sun', color: '#FDB813', r: 28, au: 0, engine: null, type: 'star' },
+    { id: 'mercury', name: 'Mercury', color: '#B5B5B5', r: 5, au: 0.39, engine: null, type: 'planet', period: 0.24 },
+    { id: 'venus', name: 'Venus', color: '#E8CDA0', r: 7, au: 0.72, engine: null, type: 'planet', period: 0.62 },
+    { id: 'earth', name: 'Earth', color: '#3D8BFF', r: 8, au: 1.0, engine: 'earth', type: 'planet', period: 1 },
+    { id: 'moon', name: 'Moon', color: '#C8C8C8', r: 3, au: 1.05, engine: 'moon', type: 'moon', period: 0.075 },
+    { id: 'mars', name: 'Mars', color: '#C1440E', r: 6, au: 1.52, engine: 'mars', type: 'planet', period: 1.88 },
+    { id: 'ceres', name: 'Ceres', color: '#A0A0A0', r: 3, au: 2.77, engine: null, type: 'dwarf', period: 4.6 },
+    { id: 'jupiter', name: 'Jupiter', color: '#C88B3A', r: 16, au: 5.2, engine: null, type: 'planet', period: 11.86 },
+    { id: 'saturn', name: 'Saturn', color: '#E6D3A3', r: 14, au: 9.5, engine: null, type: 'planet', period: 29.46 },
+    { id: 'uranus', name: 'Uranus', color: '#7EC8E3', r: 10, au: 19.2, engine: null, type: 'planet', period: 84 },
+    { id: 'neptune', name: 'Neptune', color: '#3F54BA', r: 9, au: 30.1, engine: null, type: 'planet', period: 165 },
+    { id: 'pluto', name: 'Pluto', color: '#C9B8A8', r: 3, au: 39.5, engine: null, type: 'dwarf', period: 248 }
+  ];
+  const ASTEROIDS = [];
+  for (let i = 0; i < 120; i++) {
+    const au = 2.1 + Math.random() * 1.4;
+    ASTEROIDS.push({ au: au, ang0: Math.random() * Math.PI * 2, period: Math.sqrt(au * au * au), size: 0.6 + Math.random() * 1.2, neo: Math.random() < 0.08 });
+  }
+  const COMETS = [
+    { name: 'Halley', au: 17.8, period: 76, ang0: 1.2, color: '#aaf0ff' },
+    { name: 'Encke', au: 2.2, period: 3.3, ang0: 2.4, color: '#dff' },
+    { name: '67P', au: 3.5, period: 6.4, ang0: 0.6, color: '#cfe' },
+    { name: 'NEOWISE', au: 1.4, period: 6800, ang0: 4.1, color: '#9ef' }
+  ];
+  const SPACECRAFT = [
+    { name: 'Voyager 1', au: 162, ang0: 0.3, color: '#ffcc00' },
+    { name: 'Voyager 2', au: 136, ang0: 1.1, color: '#ffaa00' },
+    { name: 'Parker', au: 0.25, ang0: 2.0, color: '#ff6666' },
+    { name: 'JWST', au: 1.01, ang0: 0.05, color: '#88ccff' },
+    { name: 'ISS', au: 1.0, ang0: 0.02, color: '#ffffff' }
   ];
 
   let scale = 'earth';
@@ -115,29 +135,22 @@
       return;
     }
     const now = new Date();
-    const local = now.toLocaleString(undefined, {
-      month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit'
-    });
-    el.textContent = local + ' · ' + gibsDateStr();
+    el.textContent = now.toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit' }) + ' · ' + gibsDateStr();
   }
 
   function applyGibsDay() {
     updateTimeLabel();
     if (!maplibre || scale !== 'earth') return;
     const date = gibsDateStr();
-    const gibsUrl = 'https://gibs.earthdata.nasa.gov/wmts/epsg3857/best/VIIRS_SNPP_CorrectedReflectance_TrueColor/default/' +
-      date + '/GoogleMapsCompatible_Level9/{z}/{y}/{x}.jpg';
-    const fireUrl = 'https://gibs.earthdata.nasa.gov/wmts/epsg3857/best/VIIRS_SNPP_Thermal_Anomalies_375m_Day/default/' +
-      date + '/GoogleMapsCompatible_Level8/{z}/{y}/{x}.png';
+    const gibsUrl = 'https://gibs.earthdata.nasa.gov/wmts/epsg3857/best/VIIRS_SNPP_CorrectedReflectance_TrueColor/default/' + date + '/GoogleMapsCompatible_Level9/{z}/{y}/{x}.jpg';
+    const fireUrl = 'https://gibs.earthdata.nasa.gov/wmts/epsg3857/best/VIIRS_SNPP_Thermal_Anomalies_375m_Day/default/' + date + '/GoogleMapsCompatible_Level8/{z}/{y}/{x}.png';
     try {
       if (maplibre.getSource('gibs')) {
         maplibre.getSource('gibs').setTiles([gibsUrl]);
         if (maplibre.getLayer('gibs-live')) {
           const vis = activeWx.live && !activeWx.dark ? 'visible' : 'none';
           maplibre.setLayoutProperty('gibs-live', 'visibility', 'none');
-          setTimeout(function () {
-            try { maplibre.setLayoutProperty('gibs-live', 'visibility', vis); } catch (e) {}
-          }, 30);
+          setTimeout(function () { try { maplibre.setLayoutProperty('gibs-live', 'visibility', vis); } catch (e) {} }, 30);
         }
       }
       if (maplibre.getSource('fires')) maplibre.getSource('fires').setTiles([fireUrl]);
@@ -159,11 +172,7 @@
           const cats = (ev.categories || []).map(function (c) { return c.title; }).join(', ');
           (ev.geometry || []).forEach(function (g) {
             if (g.type === 'Point' && g.coordinates) {
-              feats.push({
-                type: 'Feature',
-                geometry: { type: 'Point', coordinates: [g.coordinates[0], g.coordinates[1]] },
-                properties: { title: ev.title, category: cats }
-              });
+              feats.push({ type: 'Feature', geometry: { type: 'Point', coordinates: [g.coordinates[0], g.coordinates[1]] }, properties: { title: ev.title, category: cats } });
             }
           });
         });
@@ -194,6 +203,7 @@
       '  <button data-scale="earth" class="tm-scale-btn">Earth Live</button>',
       '  <button data-scale="moon" class="tm-scale-btn">Moon</button>',
       '  <button data-scale="mars" class="tm-scale-btn">Mars</button>',
+      '  <a href="https://eyes.nasa.gov/apps/solar-system/" target="_blank" rel="noopener" class="tm-scale-btn" style="text-decoration:none;display:inline-flex;align-items:center">NASA Eyes ↗</a>',
       '</div>',
       '<div id="tm-drawer-live" class="tm-drawer" style="display:none">',
       '  <div class="tm-drawer-title">LIVE MAPS</div>',
@@ -232,9 +242,9 @@
       '<div id="tm-wx-readout" style="display:none"></div>',
       '<div id="tm-wx-legend" style="display:none;position:fixed;z-index:2280;left:14px;bottom:78px;padding:6px 12px;border-radius:8px;background:rgba(8,12,18,.92);border:1px solid rgba(255,255,255,.14);font:11px system-ui;color:#e8f0f6"></div>',
       '<div id="tm-zoom-stack">',
-      '  <button id="tm-zoom-in" class="tm-z">+</button>',
-      '  <button id="tm-zoom-out" class="tm-z">−</button>',
-      '  <button id="tm-zoom-home" class="tm-z" style="font-size:12px">⌂</button>',
+      '  <button id="tm-zoom-in" class="tm-z" title="Zoom in">+</button>',
+      '  <button id="tm-zoom-out" class="tm-z" title="Zoom out">−</button>',
+      '  <button id="tm-zoom-home" class="tm-z" style="font-size:12px" title="Home">⌂</button>',
       '</div>',
       '<style>',
       '.tm-scale-btn,.tm-z,.tm-tbtn,.tm-bar-btn,.tm-drawer-item{border:1px solid rgba(255,255,255,.18);border-radius:8px;background:rgba(6,12,18,.92);color:#eaf4fa;cursor:pointer;font:700 11px system-ui}',
@@ -255,6 +265,7 @@
       '.tm-tbtn{width:auto;min-width:32px;height:32px;padding:0 8px}',
       '#tm-wx-readout{position:fixed;z-index:2200;left:12px;bottom:90px;padding:10px 12px;border-radius:10px;background:rgba(8,14,20,.9);border:1px solid rgba(255,255,255,.15);color:#e8f0f6;font:11px ui-monospace;max-width:240px}',
       '#tm-zoom-stack{position:fixed;z-index:2200;right:14px;bottom:100px;display:flex;flex-direction:column;gap:6px}',
+      '.maplibregl-ctrl-bottom-right,.maplibregl-ctrl-top-right{display:none!important}',
       '.tm-z{width:40px;height:40px;font-size:20px;font-weight:900;padding:0}',
       '#tm-solar-canvas{position:absolute;inset:0;width:100%;height:100%;display:block;background:#010208;cursor:grab;z-index:2}',
       '</style>'
@@ -283,13 +294,9 @@
         if (k === 'live' && activeWx.live) activeWx.dark = false;
         if (['temp', 'humidity', 'pressure', 'wind', 'precip'].indexOf(k) >= 0) {
           ['temp','humidity','pressure','wind','precip'].forEach(function(m){ if(m!==k) activeWx[m]=false; });
-          syncDrawerItems();
-          applyLayers();
-          refreshForecast();
-          return;
+          syncDrawerItems(); applyLayers(); refreshForecast(); return;
         }
-        syncDrawerItems();
-        applyLayers();
+        syncDrawerItems(); applyLayers();
         if (k === 'events' || k === 'quakes') loadActivity();
       };
     });
@@ -297,23 +304,16 @@
     $('tm-zoom-out').onclick = function () { zoomBy(-1); };
     $('tm-zoom-home').onclick = function () {
       if (maplibre) maplibre.flyTo({ center: [20, 15], zoom: earthMode === 'globe' ? 1.5 : 2, duration: 800 });
+      else if (scale === 'solar' || scale === 'universe') { solarZoom = 1; }
     };
     $('tm-play').onclick = togglePlay;
     $('tm-prev').onclick = function () { stepFrame(-1); };
     $('tm-next').onclick = function () { stepFrame(1); };
     $('tm-time-slider').oninput = function () {
-      rvIndex = parseInt(this.value, 10) || 0;
-      applyRadar();
-      updateTime();
+      rvIndex = parseInt(this.value, 10) || 0; applyRadar(); updateTime();
     };
-    if ($('tm-day-prev')) $('tm-day-prev').onclick = function () {
-      gibsDayOffset = Math.max(-14, gibsDayOffset - 1);
-      applyGibsDay();
-    };
-    if ($('tm-day-next')) $('tm-day-next').onclick = function () {
-      gibsDayOffset = Math.min(0, gibsDayOffset + 1);
-      applyGibsDay();
-    };
+    if ($('tm-day-prev')) $('tm-day-prev').onclick = function () { gibsDayOffset = Math.max(-14, gibsDayOffset - 1); applyGibsDay(); };
+    if ($('tm-day-next')) $('tm-day-next').onclick = function () { gibsDayOffset = Math.min(0, gibsDayOffset + 1); applyGibsDay(); };
     document.addEventListener('click', function (e) {
       if (!openDrawer) return;
       const t = e.target;
@@ -324,8 +324,7 @@
 
   function toggleDrawer(which) {
     openDrawer = which;
-    const live = $('tm-drawer-live');
-    const wx = $('tm-drawer-weather');
+    const live = $('tm-drawer-live'); const wx = $('tm-drawer-weather');
     if (live) live.style.display = which === 'live' ? 'block' : 'none';
     if (wx) wx.style.display = which === 'weather' ? 'block' : 'none';
     syncBar();
@@ -397,7 +396,8 @@
     const cy = h / 2 + (solarCanvas && solarCanvas._pan ? solarCanvas._pan().y : 0);
     const scalePx = Math.min(w, h) * 0.035 * solarZoom;
     return PLANETS.map(function (p) {
-      const ang = (p.au || 0) * 0.85 + (performance.now() / 50000) * (p.au ? 1 / Math.sqrt(Math.max(p.au, 0.1)) : 0);
+      const period = p.period || 1;
+      const ang = (p.au || 0) * 0.85 + (performance.now() / 50000) * (p.au ? 1 / Math.sqrt(Math.max(period, 0.1)) : 0);
       const dist = p.au * scalePx * 28;
       return { p: p, x: cx + Math.cos(ang) * dist, y: cy + Math.sin(ang) * dist * 0.55, rad: Math.max(3, p.r * solarZoom * (scale === 'universe' ? 0.55 : 1)) };
     });
@@ -424,21 +424,72 @@
     if (c.width !== (w * dpr | 0) || c.height !== (h * dpr | 0)) { c.width = w * dpr | 0; c.height = h * dpr | 0; }
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     ctx.fillStyle = '#010208'; ctx.fillRect(0, 0, w, h);
+    ctx.fillStyle = 'rgba(220,230,255,0.55)';
+    for (let i = 0; i < 80; i++) {
+      const sx = (Math.sin(i * 12.9898) * 0.5 + 0.5) * w;
+      const sy = (Math.sin(i * 78.233) * 0.5 + 0.5) * h;
+      ctx.fillRect(sx, sy, 1.2, 1.2);
+    }
     const laid = layoutPlanets(w, h);
     const cx = w / 2 + (c._pan ? c._pan().x : 0), cy = h / 2 + (c._pan ? c._pan().y : 0);
     const scalePx = Math.min(w, h) * 0.035 * solarZoom;
-    ctx.strokeStyle = 'rgba(100,140,180,0.25)';
+    const t = performance.now() / 1000;
+
+    ctx.strokeStyle = 'rgba(100,140,180,0.22)'; ctx.lineWidth = 1;
     PLANETS.forEach(function (p) {
       if (!p.au) return;
       const dist = p.au * scalePx * 28;
       ctx.beginPath(); ctx.ellipse(cx, cy, dist, dist * 0.55, 0, 0, Math.PI * 2); ctx.stroke();
     });
+
+    ASTEROIDS.forEach(function (a) {
+      const ang = a.ang0 + t * 0.02 / Math.max(a.period, 0.5);
+      const dist = a.au * scalePx * 28;
+      const x = cx + Math.cos(ang) * dist, y = cy + Math.sin(ang) * dist * 0.55;
+      ctx.fillStyle = a.neo ? 'rgba(255,180,80,0.9)' : 'rgba(120,160,220,0.55)';
+      ctx.beginPath(); ctx.arc(x, y, a.size * Math.max(0.6, solarZoom * 0.5), 0, Math.PI * 2); ctx.fill();
+    });
+
+    COMETS.forEach(function (co) {
+      const ang = co.ang0 + t * 0.015 / Math.max(co.period, 1);
+      const dist = co.au * scalePx * 28;
+      const x = cx + Math.cos(ang) * dist, y = cy + Math.sin(ang) * dist * 0.55;
+      const tx = x - Math.cos(ang) * 18 * solarZoom, ty = y - Math.sin(ang) * 10 * solarZoom;
+      const g = ctx.createLinearGradient(x, y, tx, ty);
+      g.addColorStop(0, co.color); g.addColorStop(1, 'rgba(0,0,0,0)');
+      ctx.strokeStyle = g; ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(tx, ty); ctx.stroke();
+      ctx.fillStyle = co.color; ctx.beginPath(); ctx.arc(x, y, 2.5 * solarZoom, 0, Math.PI * 2); ctx.fill();
+      if (solarZoom > 0.7) { ctx.fillStyle = 'rgba(200,230,255,0.7)'; ctx.font = '9px ui-monospace'; ctx.fillText(co.name, x + 6, y - 4); }
+    });
+
+    if (scale === 'solar') {
+      SPACECRAFT.forEach(function (sc) {
+        const ang = sc.ang0 + t * 0.01;
+        const dist = Math.min(sc.au, 40) * scalePx * 28 * (sc.au > 50 ? 0.15 : 1);
+        const x = cx + Math.cos(ang) * dist, y = cy + Math.sin(ang) * dist * 0.55;
+        ctx.fillStyle = sc.color; ctx.fillRect(x - 2, y - 2, 4, 4);
+        ctx.fillStyle = 'rgba(255,255,200,0.8)'; ctx.font = '8px ui-monospace'; ctx.fillText(sc.name, x + 5, y + 3);
+      });
+    }
+
     laid.forEach(function (o) {
-      ctx.fillStyle = o.p.color;
-      ctx.beginPath(); ctx.arc(o.x, o.y, o.rad, 0, Math.PI * 2); ctx.fill();
-      ctx.fillStyle = '#dce9f0'; ctx.font = '10px ui-monospace';
+      if (o.p.id === 'sun') {
+        const grd = ctx.createRadialGradient(o.x, o.y, 0, o.x, o.y, o.rad * 1.8);
+        grd.addColorStop(0, '#fff6c0'); grd.addColorStop(0.4, '#FDB813'); grd.addColorStop(1, 'rgba(253,184,19,0)');
+        ctx.fillStyle = grd; ctx.beginPath(); ctx.arc(o.x, o.y, o.rad * 1.8, 0, Math.PI * 2); ctx.fill();
+      }
+      ctx.fillStyle = o.p.color; ctx.beginPath(); ctx.arc(o.x, o.y, o.rad, 0, Math.PI * 2); ctx.fill();
+      if (o.p.id === 'saturn') {
+        ctx.strokeStyle = 'rgba(230,211,163,0.6)'; ctx.lineWidth = 2;
+        ctx.beginPath(); ctx.ellipse(o.x, o.y, o.rad * 1.8, o.rad * 0.45, -0.3, 0, Math.PI * 2); ctx.stroke();
+      }
+      ctx.fillStyle = '#dce9f0'; ctx.font = (o.p.type === 'dwarf' ? '9px' : '10px') + ' ui-monospace';
       ctx.fillText(o.p.name, o.x + o.rad + 4, o.y + 3);
     });
+
+    ctx.fillStyle = 'rgba(180,200,220,0.45)'; ctx.font = '10px system-ui';
+    ctx.fillText('Inspired by NASA Eyes · click planet to enter · scroll to zoom', 12, h - 14);
     animId = requestAnimationFrame(drawSolar);
   }
 
@@ -460,11 +511,7 @@
     try { if (maplibre) maplibre.remove(); } catch (e) {}
     maplibre = null;
     const target = $('map');
-    if (target) {
-      Array.from(target.children).forEach(function (ch) {
-        if (ch.id !== 'tm-solar-canvas') ch.remove();
-      });
-    }
+    if (target) Array.from(target.children).forEach(function (ch) { if (ch.id !== 'tm-solar-canvas') ch.remove(); });
   }
 
   async function loadRV() {
@@ -485,36 +532,27 @@
   function applyRadar() {
     if (!maplibre || !rvFrames.length) return;
     const path = rvHost + rvFrames[rvIndex].path + '/256/{z}/{x}/{y}/2/1_1.png';
-    try {
-      if (maplibre.getSource('radar')) maplibre.getSource('radar').setTiles([path]);
-    } catch (e) {}
+    try { if (maplibre.getSource('radar')) maplibre.getSource('radar').setTiles([path]); } catch (e) {}
   }
 
   function stepFrame(d) {
     if (!rvFrames.length) return;
     rvIndex = Math.max(0, Math.min(rvFrames.length - 1, rvIndex + d));
-    const s = $('tm-time-slider');
-    if (s) s.value = rvIndex;
-    applyRadar();
-    updateTime();
+    const s = $('tm-time-slider'); if (s) s.value = rvIndex;
+    applyRadar(); updateTime();
   }
 
   function togglePlay() {
     if (playing) {
-      playing = false;
-      if (playTimer) clearInterval(playTimer);
-      playTimer = null;
-      if ($('tm-play')) $('tm-play').textContent = '▶';
-      return;
+      playing = false; if (playTimer) clearInterval(playTimer); playTimer = null;
+      if ($('tm-play')) $('tm-play').textContent = '▶'; return;
     }
     if (!rvFrames.length) return;
-    playing = true;
-    if ($('tm-play')) $('tm-play').textContent = '⏸';
+    playing = true; if ($('tm-play')) $('tm-play').textContent = '⏸';
     playTimer = setInterval(function () {
       rvIndex = rvIndex >= rvFrames.length - 1 ? 0 : rvIndex + 1;
       if ($('tm-time-slider')) $('tm-time-slider').value = rvIndex;
-      applyRadar();
-      updateTime();
+      applyRadar(); updateTime();
     }, 600);
   }
 
@@ -525,8 +563,7 @@
         maplibre.getSource('terminator').setData(dayNight ? terminatorFeatures(new Date()) : { type: 'FeatureCollection', features: [] });
       }
       ['night-0', 'night-1', 'night-2'].forEach(function (id) {
-        if (maplibre.getLayer(id))
-          maplibre.setLayoutProperty(id, 'visibility', dayNight ? 'visible' : 'none');
+        if (maplibre.getLayer(id)) maplibre.setLayoutProperty(id, 'visibility', dayNight ? 'visible' : 'none');
       });
     } catch (e) {}
   }
@@ -542,10 +579,10 @@
 
   function forecastScale(mode) {
     if (mode === 'precip') return { prop: 'precip', stops: [0, 'rgba(0,0,0,0)', 0.2, '#7ec8ff', 1, '#3D8BFF', 4, '#7b5cff', 12, '#ff4d6d', 30, '#ffffff'], label: 'Rain · Light → Heavy' };
-    if (mode === 'wind') return { prop: 'wind', stops: [0, '#0a1f3d', 20, '#1a6b9a', 45, '#2ecc71', 80, '#f1c40f', 120, '#e67e22', 180, '#c0392b'], label: 'Wind km/h · 0 → 180+' };
-    if (mode === 'temp') return { prop: 'temp', stops: [-30, '#3b0a7a', -15, '#3d5a9e', 0, '#5b9bd5', 10, '#7dcea0', 20, '#f4d03f', 30, '#e67e22', 42, '#c0392b'], label: 'Temperature °C · −30 → 42' };
-    if (mode === 'humidity') return { prop: 'humidity', stops: [0, '#c9a66b', 25, '#d4c06a', 45, '#7dcea0', 65, '#5dade2', 85, '#3498db', 100, '#1a4a8a'], label: 'Humidity % · 0 → 100' };
-    if (mode === 'pressure') return { prop: 'pressure', stops: [970, '#1a5fb4', 990, '#5dade2', 1005, '#a8d5e5', 1013, '#f5e6c8', 1025, '#e8a090', 1040, '#c0392b'], label: 'Pressure hPa · 970 → 1040' };
+    if (mode === 'wind') return { prop: 'wind', stops: [0, '#0a1f3d', 20, '#1a6b9a', 45, '#2ecc71', 80, '#f1c40f', 120, '#e67e22', 180, '#c0392b'], label: 'Wind km/h' };
+    if (mode === 'temp') return { prop: 'temp', stops: [-30, '#3b0a7a', -15, '#3d5a9e', 0, '#5b9bd5', 10, '#7dcea0', 20, '#f4d03f', 30, '#e67e22', 42, '#c0392b'], label: 'Temperature °C' };
+    if (mode === 'humidity') return { prop: 'humidity', stops: [0, '#c9a66b', 25, '#d4c06a', 45, '#7dcea0', 65, '#5dade2', 85, '#3498db', 100, '#1a4a8a'], label: 'Humidity %' };
+    if (mode === 'pressure') return { prop: 'pressure', stops: [970, '#1a5fb4', 990, '#5dade2', 1005, '#a8d5e5', 1013, '#f5e6c8', 1025, '#e8a090', 1040, '#c0392b'], label: 'Pressure hPa' };
     return { prop: 'temp', stops: [0, '#888', 40, '#fff'], label: '' };
   }
 
@@ -554,7 +591,6 @@
     try {
       if (maplibre.getLayer('sat')) maplibre.setPaintProperty('sat', 'raster-opacity', on ? 0.3 : 1);
       if (maplibre.getLayer('gibs-live')) maplibre.setPaintProperty('gibs-live', 'raster-opacity', on ? 0.15 : 0.55);
-      if (maplibre.getLayer('labels')) maplibre.setPaintProperty('labels', 'raster-opacity', on ? 0.95 : 0.85);
     } catch (e) {}
   }
 
@@ -569,19 +605,16 @@
         if (maplibre.getSource('forecast')) maplibre.getSource('forecast').setData({ type: 'FeatureCollection', features: [] });
       } catch (e) {}
       if (leg) leg.style.display = 'none';
-      setWeatherBaseDim(false);
-      return;
+      setWeatherBaseDim(false); return;
     }
     setWeatherBaseDim(true);
     const sc = forecastScale(mode);
     if (!window._fcGrid || !window._fcGrid.points || !window._fcGrid.points.length) {
-      if (leg) { leg.style.display = 'block'; leg.textContent = sc.label + ' · loading…'; }
-      return;
+      if (leg) { leg.style.display = 'block'; leg.textContent = sc.label + ' · loading…'; } return;
     }
     const features = [];
     window._fcGrid.points.forEach(function (p) {
-      const v = p[sc.prop];
-      if (v == null || isNaN(v)) return;
+      const v = p[sc.prop]; if (v == null || isNaN(v)) return;
       features.push({ type: 'Feature', geometry: { type: 'Point', coordinates: [p.lon, p.lat] }, properties: { v: +v } });
     });
     try {
@@ -599,14 +632,8 @@
         maplibre.setPaintProperty('forecast-heat', 'heatmap-radius', ['interpolate', ['linear'], ['zoom'], 1, 40, 3, 55, 5, 75]);
         maplibre.setPaintProperty('forecast-heat', 'heatmap-intensity', 1.8);
         maplibre.setPaintProperty('forecast-heat', 'heatmap-opacity', 0.9);
-        const dens = ['interpolate', ['linear'], ['heatmap-density'], 0, 'rgba(0,0,0,0)'];
-        const cols = [];
-        for (let i = 1; i < sc.stops.length; i += 2) cols.push(sc.stops[i]);
-        const steps = [0.08, 0.2, 0.35, 0.5, 0.65, 0.8, 1];
-        for (let i = 0; i < cols.length && i < steps.length; i++) dens.push(steps[i], cols[i]);
-        maplibre.setPaintProperty('forecast-heat', 'heatmap-color', dens);
       }
-    } catch (e) { console.warn('paintForecast', e); }
+    } catch (e) {}
     if (leg) { leg.style.display = 'block'; leg.innerHTML = '<b>' + sc.label + '</b>'; }
   }
 
@@ -617,10 +644,8 @@
     if (mode === 'precip' && maplibre.getLayer('radar')) {
       try { maplibre.setLayoutProperty('radar', 'visibility', 'visible'); activeWx.radar = true; } catch (e) {}
     }
-    setStatus('Loading ' + mode + ' map…', true);
-    setWeatherBaseDim(true);
-    const c = maplibre.getCenter();
-    const z = maplibre.getZoom();
+    setStatus('Loading ' + mode + ' map…', true); setWeatherBaseDim(true);
+    const c = maplibre.getCenter(); const z = maplibre.getZoom();
     const step = z < 1.5 ? 12 : z < 2.5 ? 8 : z < 4 ? 5 : 3.5;
     const pts = [];
     for (let lat = Math.max(-60, c.lat - step * 3); lat <= Math.min(75, c.lat + step * 3); lat += step) {
@@ -629,23 +654,14 @@
         pts.push({ lat: +lat.toFixed(2), lon: +L.toFixed(2) });
       }
     }
-    const limited = pts.slice(0, 60);
-    const results = await Promise.all(limited.map(async function (p) {
+    const results = await Promise.all(pts.slice(0, 60).map(async function (p) {
       try {
-        const u = 'https://api.open-meteo.com/v1/forecast?latitude=' + p.lat + '&longitude=' + p.lon +
-          '&current=temperature_2m,relative_humidity_2m,surface_pressure,wind_speed_10m,wind_gusts_10m,precipitation';
-        const j = await (await fetch(u)).json();
-        const cur = j.current || {};
-        return {
-          lat: p.lat, lon: p.lon,
-          temp: cur.temperature_2m, humidity: cur.relative_humidity_2m, pressure: cur.surface_pressure,
-          wind: cur.wind_gusts_10m != null ? cur.wind_gusts_10m : cur.wind_speed_10m,
-          precip: cur.precipitation
-        };
+        const u = 'https://api.open-meteo.com/v1/forecast?latitude=' + p.lat + '&longitude=' + p.lon + '&current=temperature_2m,relative_humidity_2m,surface_pressure,wind_speed_10m,wind_gusts_10m,precipitation';
+        const j = await (await fetch(u)).json(); const cur = j.current || {};
+        return { lat: p.lat, lon: p.lon, temp: cur.temperature_2m, humidity: cur.relative_humidity_2m, pressure: cur.surface_pressure, wind: cur.wind_gusts_10m != null ? cur.wind_gusts_10m : cur.wind_speed_10m, precip: cur.precipitation };
       } catch (e) { return null; }
     }));
-    window._fcGrid = { points: results.filter(Boolean) };
-    paintForecast();
+    window._fcGrid = { points: results.filter(Boolean) }; paintForecast();
     setStatus('Weather · ' + mode, true);
   }
 
@@ -660,43 +676,34 @@
       if (maplibre.getLayer('eonet-pts')) maplibre.setLayoutProperty('eonet-pts', 'visibility', activeWx.events ? 'visible' : 'none');
       if (maplibre.getLayer('quakes-pts')) maplibre.setLayoutProperty('quakes-pts', 'visibility', activeWx.quakes ? 'visible' : 'none');
     } catch (e) {}
-    applyDayNight();
-    paintForecast();
-    refreshWx();
-    syncBar();
-    syncDrawerItems();
+    applyDayNight(); paintForecast(); refreshWx(); syncBar(); syncDrawerItems();
   }
 
   function refreshWx() {
     const el = $('tm-wx-readout');
     if (!el || !maplibre) return;
     const c = maplibre.getCenter();
-    el.innerHTML = 'CENTER · ' + c.lat.toFixed(2) + ', ' + c.lng.toFixed(2) + '<br>…';
-    fetch('https://api.open-meteo.com/v1/forecast?latitude=' + c.lat.toFixed(3) + '&longitude=' + c.lng.toFixed(3) +
-      '&current=temperature_2m,relative_humidity_2m,surface_pressure,wind_speed_10m,precipitation')
+    el.innerHTML = 'CENTER · ' + c.lat.toFixed(2) + ', ' + c.lng.toFixed(2);
+    fetch('https://api.open-meteo.com/v1/forecast?latitude=' + c.lat.toFixed(3) + '&longitude=' + c.lng.toFixed(3) + '&current=temperature_2m,relative_humidity_2m,surface_pressure,wind_speed_10m,precipitation')
       .then(function (r) { return r.json(); })
       .then(function (j) {
         const cur = j.current || {};
-        el.innerHTML = [
-          'CENTER · ' + c.lat.toFixed(2) + '°, ' + c.lng.toFixed(2) + '°',
+        el.innerHTML = ['CENTER · ' + c.lat.toFixed(2) + '°, ' + c.lng.toFixed(2) + '°',
           '<b>Temp</b> ' + (cur.temperature_2m != null ? cur.temperature_2m + ' °C' : '—'),
           '<b>Humidity</b> ' + (cur.relative_humidity_2m != null ? cur.relative_humidity_2m + ' %' : '—'),
           '<b>Pressure</b> ' + (cur.surface_pressure != null ? Math.round(cur.surface_pressure) + ' hPa' : '—'),
           '<b>Wind</b> ' + (cur.wind_speed_10m != null ? cur.wind_speed_10m + ' km/h' : '—'),
-          '<b>Precip</b> ' + (cur.precipitation != null ? cur.precipitation + ' mm' : '—')
-        ].join('<br>');
+          '<b>Precip</b> ' + (cur.precipitation != null ? cur.precipitation + ' mm' : '—')].join('<br>');
       }).catch(function () {});
   }
 
   async function enterEarth() {
-    destroyViews();
-    showSolar(false);
+    destroyViews(); showSolar(false);
     if (!window.maplibregl) throw new Error('MapLibre missing');
     await loadRV();
     const radarPath = rvFrames.length ? rvHost + rvFrames[rvIndex].path + '/256/{z}/{x}/{y}/2/1_1.png' : null;
     const useGlobe = earthMode === 'globe';
-    const date = gibsDateStr();
-    updateTimeLabel();
+    const date = gibsDateStr(); updateTimeLabel();
 
     const style = {
       version: 8,
@@ -715,9 +722,9 @@
         { id: 'sat', type: 'raster', source: 'sat' },
         { id: 'dark', type: 'raster', source: 'dark', layout: { visibility: 'none' } },
         { id: 'gibs-live', type: 'raster', source: 'gibs', layout: { visibility: activeWx.live ? 'visible' : 'none' }, paint: { 'raster-opacity': 0.55 } },
-        { id: 'night-0', type: 'fill', source: 'terminator', filter: ['==', ['get', 'soft'], 0], layout: { visibility: dayNight ? 'visible' : 'none' }, paint: { 'fill-color': '#00060f', 'fill-opacity': 0.22 } },
-        { id: 'night-1', type: 'fill', source: 'terminator', filter: ['==', ['get', 'soft'], 1], layout: { visibility: dayNight ? 'visible' : 'none' }, paint: { 'fill-color': '#00060f', 'fill-opacity': 0.28 } },
-        { id: 'night-2', type: 'fill', source: 'terminator', filter: ['==', ['get', 'soft'], 2], layout: { visibility: dayNight ? 'visible' : 'none' }, paint: { 'fill-color': '#00060f', 'fill-opacity': 0.35 } },
+        { id: 'night-0', type: 'fill', source: 'terminator', filter: ['==', ['get', 'soft'], 0], layout: { visibility: dayNight ? 'visible' : 'none' }, paint: { 'fill-color': '#00060f', 'fill-opacity': 0.12 } },
+        { id: 'night-1', type: 'fill', source: 'terminator', filter: ['==', ['get', 'soft'], 1], layout: { visibility: dayNight ? 'visible' : 'none' }, paint: { 'fill-color': '#00060f', 'fill-opacity': 0.16 } },
+        { id: 'night-2', type: 'fill', source: 'terminator', filter: ['==', ['get', 'soft'], 2], layout: { visibility: dayNight ? 'visible' : 'none' }, paint: { 'fill-color': '#00060f', 'fill-opacity': 0.22 } },
         { id: 'labels', type: 'raster', source: 'labels', paint: { 'raster-opacity': 0.85 } },
         { id: 'forecast-heat', type: 'heatmap', source: 'forecast', layout: { visibility: 'none' }, paint: { 'heatmap-radius': 55, 'heatmap-intensity': 1.8, 'heatmap-opacity': 0.9, 'heatmap-color': ['interpolate', ['linear'], ['heatmap-density'], 0, 'rgba(0,0,0,0)', 0.15, '#2980b9', 0.35, '#2ecc71', 0.55, '#f1c40f', 0.75, '#e67e22', 1, '#c0392b'] } },
         { id: 'forecast-circles', type: 'circle', source: 'forecast', layout: { visibility: 'none' }, paint: { 'circle-radius': 36, 'circle-color': '#4fd0a0', 'circle-opacity': 0.55, 'circle-blur': 0.9, 'circle-stroke-width': 0 } },
@@ -726,7 +733,6 @@
         { id: 'quakes-pts', type: 'circle', source: 'quakes', paint: { 'circle-radius': ['interpolate', ['linear'], ['get', 'mag'], 2.5, 4, 5, 8, 7, 14], 'circle-color': ['interpolate', ['linear'], ['get', 'mag'], 2.5, '#f0d060', 4.5, '#ff9a3c', 6, '#e04040'], 'circle-stroke-width': 1, 'circle-stroke-color': '#fff', 'circle-opacity': 0.85 } }
       ]
     };
-
     if (useGlobe) {
       style.projection = { type: 'globe' };
       style.fog = { color: 'rgb(8, 16, 32)', 'high-color': 'rgb(25, 45, 75)', 'space-color': 'rgb(1, 2, 6)', 'horizon-blend': 0.1, range: [0.5, 12] };
@@ -736,14 +742,17 @@
       style.layers.splice(3, 0, { id: 'radar', type: 'raster', source: 'radar', layout: { visibility: 'none' }, paint: { 'raster-opacity': 0.75 } });
     }
 
-    maplibre = new maplibregl.Map({ container: 'map', style: style, center: [20, 15], zoom: useGlobe ? 1.4 : 2, minZoom: useGlobe ? 0.5 : 1, maxZoom: 18, maxPitch: useGlobe ? 85 : 60, attributionControl: false, failIfMajorPerformanceCaveat: false });
+    maplibre = new maplibregl.Map({
+      container: 'map', style: style, center: [20, 15],
+      zoom: useGlobe ? 1.4 : 2, minZoom: useGlobe ? 0.5 : 1, maxZoom: 20,
+      maxPitch: useGlobe ? 85 : 60, attributionControl: false, failIfMajorPerformanceCaveat: false
+    });
     window.map = maplibre;
-    maplibre.addControl(new maplibregl.NavigationControl({ visualizePitch: useGlobe }), 'bottom-right');
+    /* single zoom stack only — MapLibre nav removed */
 
     maplibre.on('load', function () {
       try { maplibre.resize(); } catch (e) {}
-      applyLayers();
-      loadActivity();
+      applyLayers(); loadActivity();
       setStatus('EARTH · ' + (useGlobe ? '3D' : 'FLAT') + ' · live feeds', true);
       if (dayNight) terminatorTimer = setInterval(function () { applyDayNight(); }, 60000);
     });
@@ -765,8 +774,7 @@
   }
 
   async function enterPlanet(planetId) {
-    destroyViews();
-    showSolar(false);
+    destroyViews(); showSolar(false);
     const mod = await loadOg();
     const Globe = mod.Globe, XYZ = mod.XYZ, LonLat = mod.LonLat, control = mod.control;
     const EmptyTerrain = mod.EmptyTerrain, RgbTerrain = mod.RgbTerrain;
@@ -789,7 +797,7 @@
     opts.layers = layers; opts.terrain = terrain || new EmptyTerrain();
     globe = new Globe(opts); window.globe = globe;
     try {
-      if (globe.planet.camera) { globe.planet.camera.minAltitude = 50; globe.planet.camera.maxAltitude = 8e6; }
+      if (globe.planet.camera) { globe.planet.camera.minAltitude = 5; globe.planet.camera.maxAltitude = 8e6; }
       if (control && control.ZoomControl) globe.planet.addControl(new control.ZoomControl());
       const alt = planetId === 'mars' ? 5e6 : 2.5e6;
       if (globe.planet.camera.flyLonLat) globe.planet.camera.flyLonLat(new LonLat(0, 10, alt));
@@ -799,21 +807,21 @@
 
   function zoomBy(dir) {
     if (scale === 'universe' || scale === 'solar') {
-      solarZoom = Math.max(0.25, Math.min(4.5, solarZoom * (dir > 0 ? 1.18 : 0.85)));
+      solarZoom = Math.max(0.2, Math.min(5, solarZoom * (dir > 0 ? 1.2 : 0.83)));
       if (scale === 'universe' && solarZoom > 0.7) setScale('solar');
       else if (scale === 'solar' && solarZoom > 2.8) setScale('earth');
       else if (scale === 'solar' && solarZoom < 0.35) setScale('universe');
       return;
     }
     if (maplibre) {
-      maplibre.easeTo({ zoom: Math.max(0.5, Math.min(18, maplibre.getZoom() + (dir > 0 ? 0.8 : -0.8))), duration: 250 });
+      maplibre.easeTo({ zoom: Math.max(0.5, Math.min(20, maplibre.getZoom() + (dir > 0 ? 1.0 : -1.0))), duration: 250 });
       return;
     }
     if (globe && og) {
       try {
         const cam = globe.planet.camera; const LonLat = og.LonLat;
         const ll = cam.getLonLat && cam.getLonLat(); const alt = (ll && ll.height) || 5e6;
-        cam.flyLonLat(new LonLat(ll ? ll.lon : 0, ll ? ll.lat : 10, Math.max(80, Math.min(2e7, dir > 0 ? alt * 0.55 : alt * 1.85))));
+        cam.flyLonLat(new LonLat(ll ? ll.lon : 0, ll ? ll.lat : 10, Math.max(5, Math.min(2e7, dir > 0 ? alt * 0.5 : alt * 2))));
       } catch (e) {}
     }
   }
@@ -821,7 +829,7 @@
   async function setScale(next) {
     scale = next; markChrome();
     try { localStorage.setItem('tm-scale', scale); } catch (e) {}
-    if (scale === 'universe' || scale === 'solar') { destroyViews(); showSolar(true); setStatus(scale.toUpperCase(), true); return; }
+    if (scale === 'universe' || scale === 'solar') { destroyViews(); showSolar(true); setStatus(scale.toUpperCase() + ' · NASA Eyes style', true); return; }
     showSolar(false); setStatus('LOADING ' + scale.toUpperCase() + '…', true);
     try {
       if (scale === 'earth') await enterEarth();
