@@ -14,7 +14,7 @@ const MOVING=new Set(['flights','ships','public-transport']);
 let lastData=null, searchMarker=null, gpsMarker=null, sessionId=null, watchId=null;
 let mapReady=false, baseIndex=0, globeOn=false, selKey=null;
 const gpsTrack=[], fences=[];
-try{globeOn=localStorage.getItem('tm-globe')==='1'}catch(e){}
+try{globeOn=localStorage.getItem('tm-globe')!=='0'}catch(e){globeOn=true}
 
 /* ───────────────────────── map ───────────────────────── */
 const BASES=[
@@ -23,6 +23,7 @@ const BASES=[
   {name:'Terrain',layers:['base-terrain']}
 ];
 const MAP_STYLE={version:8,
+  sky:{'atmosphere-blend':['interpolate',['linear'],['zoom'],0,1,3,0.85,6,0]},
   sources:{
     satellite:{type:'raster',tileSize:256,maxzoom:19,tiles:['https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}'],attribution:'Esri World Imagery'},
     labels:{type:'raster',tileSize:256,maxzoom:19,tiles:['https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}'],attribution:'Esri'},
@@ -104,7 +105,20 @@ function applyNight(on){
     map.setPaintProperty(id,'raster-contrast',on?.1:0);
   });
 }
-function applyProjection(){if(mapReady)map.setProjection({type:globeOn?'globe':'mercator'})}
+function applyProjection(){if(mapReady){map.setProjection({type:globeOn?'globe':'mercator'});if(globeOn){try{map.setCenter([18,22]);map.setZoom(1.65);map.setPitch(0)}catch(e){}}}}
+let globeSpin=true,globeBearing=0,globeLast=performance.now();
+function spinGlobe(now){
+  if(globeOn&&globeSpin&&mapReady){
+    const dt=Math.min(80,now-globeLast); globeBearing=(globeBearing+dt*.0045)%360;
+    try{map.setBearing(globeBearing);map.triggerRepaint()}catch(e){}
+  }
+  globeLast=now;requestAnimationFrame(spinGlobe);
+}
+requestAnimationFrame(spinGlobe);
+map.on('dragstart',()=>{globeSpin=false});
+map.on('dragend',()=>{setTimeout(()=>{globeSpin=globeOn},1800)});
+map.on('zoomstart',()=>{globeSpin=false});
+map.on('zoomend',()=>{setTimeout(()=>{globeSpin=globeOn},1800)});
 function toggleGlobe(){
   globeOn=!globeOn;try{localStorage.setItem('tm-globe',globeOn?'1':'0')}catch(e){}
   applyProjection();$('argos-globe')?.classList.toggle('on',globeOn);
