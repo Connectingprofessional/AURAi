@@ -1,4 +1,4 @@
-/* TrackMeNow — Earth: Flat / 3D Globe / Day-Night terminator + Moon + Mars + Universe */
+/* TrackMeNow — Zoom.Earth-style bottom bar + natural day/night + Live/Weather drawers */
 (function () {
   'use strict';
   const $ = (id) => document.getElementById(id);
@@ -21,11 +21,16 @@
 
   let scale = 'earth';
   let earthMode = 'flat';
+  let dayNight = false;
+  let openDrawer = null;
   let globe = null, og = null, maplibre = null;
   let solarZoom = 1, solarCanvas = null, solarCtx = null, animId = 0;
-  let activeWx = { satellite: true, dark: false, radar: false };
+  let activeWx = {
+    satellite: true, live: false, radar: false, dark: false,
+    precip: false, wind: false, temp: false, humidity: false, pressure: false
+  };
   let rvHost = '', rvFrames = [], rvIndex = 0, playTimer = null, playing = false;
-  let terminatorTimer = null;
+  let terminatorTimer = null, forecastTimer = null;
 
   function setStatus(msg, ok) {
     const el = $('status');
@@ -56,36 +61,41 @@
     return lon;
   }
 
-  function terminatorGeoJSON(date) {
+  function terminatorFeatures(date) {
     const sun = sunLonLat(date);
-    const coords = [];
-    const steps = 72;
-    for (let i = 0; i <= steps; i++) {
-      const lat = -90 + (180 * i) / steps;
-      const latRad = lat * Math.PI / 180;
-      const sunLatRad = sun.lat * Math.PI / 180;
-      let cosHA = -Math.tan(latRad) * Math.tan(sunLatRad);
-      cosHA = Math.max(-1, Math.min(1, cosHA));
-      const ha = Math.acos(cosHA) * 180 / Math.PI;
-      coords.push([normalizeLon(sun.lon - ha), lat]);
+    const steps = 90;
+    function offsetRing(deltaHa) {
+      const r = [];
+      for (let i = 0; i <= steps; i++) {
+        const lat = -90 + (180 * i) / steps;
+        const latRad = lat * Math.PI / 180;
+        const sunLatRad = sun.lat * Math.PI / 180;
+        let cosHA = -Math.tan(latRad) * Math.tan(sunLatRad);
+        if (!isFinite(cosHA)) cosHA = 0;
+        cosHA = Math.max(-1, Math.min(1, cosHA));
+        const ha = Math.acos(cosHA) * 180 / Math.PI + deltaHa;
+        r.push([normalizeLon(sun.lon + ha), lat]);
+      }
+      for (let i = steps; i >= 0; i--) {
+        const lat = -90 + (180 * i) / steps;
+        const latRad = lat * Math.PI / 180;
+        const sunLatRad = sun.lat * Math.PI / 180;
+        let cosHA = -Math.tan(latRad) * Math.tan(sunLatRad);
+        if (!isFinite(cosHA)) cosHA = 0;
+        cosHA = Math.max(-1, Math.min(1, cosHA));
+        const ha = Math.acos(cosHA) * 180 / Math.PI + deltaHa;
+        r.push([normalizeLon(sun.lon - ha), lat]);
+      }
+      r.push(r[0]);
+      return r;
     }
-    for (let i = steps; i >= 0; i--) {
-      const lat = -90 + (180 * i) / steps;
-      const latRad = lat * Math.PI / 180;
-      const sunLatRad = sun.lat * Math.PI / 180;
-      let cosHA = -Math.tan(latRad) * Math.tan(sunLatRad);
-      cosHA = Math.max(-1, Math.min(1, cosHA));
-      const ha = Math.acos(cosHA) * 180 / Math.PI;
-      coords.push([normalizeLon(sun.lon + ha), lat]);
-    }
-    coords.push(coords[0]);
     return {
       type: 'FeatureCollection',
-      features: [{
-        type: 'Feature',
-        properties: { name: 'night' },
-        geometry: { type: 'Polygon', coordinates: [coords] }
-      }]
+      features: [
+        { type: 'Feature', properties: { soft: 0 }, geometry: { type: 'Polygon', coordinates: [offsetRing(0)] } },
+        { type: 'Feature', properties: { soft: 1 }, geometry: { type: 'Polygon', coordinates: [offsetRing(-4)] } },
+        { type: 'Feature', properties: { soft: 2 }, geometry: { type: 'Polygon', coordinates: [offsetRing(-8)] } }
+      ]
     };
   }
 
@@ -101,39 +111,61 @@
       '  <button data-scale="moon" class="tm-scale-btn">Moon</button>',
       '  <button data-scale="mars" class="tm-scale-btn">Mars</button>',
       '</div>',
-      '<div id="tm-earth-modes" style="display:none;position:fixed;z-index:2200;left:50%;top:100px;transform:translateX(-50%);gap:6px;flex-wrap:wrap;justify-content:center">',
-      '  <button data-emode="flat" class="tm-emode on">Flat</button>',
-      '  <button data-emode="globe" class="tm-emode">3D Globe</button>',
-      '  <button data-emode="terminator" class="tm-emode">Day / Night</button>',
+      '<div id="tm-drawer-live" class="tm-drawer" style="display:none">',
+      '  <div class="tm-drawer-title">LIVE MAPS</div>',
+      '  <button data-wx="live" class="tm-drawer-item">Live clouds</button>',
+      '  <button data-wx="radar" class="tm-drawer-item">Radar</button>',
+      '  <button data-wx="dark" class="tm-drawer-item">Dark base</button>',
       '</div>',
-      '<div id="tm-ze-menu" style="display:none;position:fixed;z-index:2200;left:12px;top:140px;width:200px;padding:10px 0;border-radius:12px;background:rgba(28,20,18,.92);border:1px solid rgba(255,255,255,.12);color:#f0e8e0;font:12px system-ui">',
-      '  <div style="padding:4px 14px;font-weight:800;opacity:.7;font-size:10px">LIVE MAPS</div>',
-      '  <button data-wx="satellite" class="tm-ze-item on">Satellite</button>',
-      '  <button data-wx="dark" class="tm-ze-item">Dark</button>',
-      '  <button data-wx="radar" class="tm-ze-item">Radar</button>',
+      '<div id="tm-drawer-weather" class="tm-drawer" style="display:none">',
+      '  <div class="tm-drawer-title">FORECAST MAPS</div>',
+      '  <button data-wx="precip" class="tm-drawer-item">Precipitation</button>',
+      '  <button data-wx="wind" class="tm-drawer-item">Wind</button>',
+      '  <button data-wx="temp" class="tm-drawer-item">Temperature</button>',
+      '  <button data-wx="humidity" class="tm-drawer-item">Humidity</button>',
+      '  <button data-wx="pressure" class="tm-drawer-item">Pressure</button>',
       '</div>',
-      '<div id="tm-timebar" style="display:none;position:fixed;z-index:2200;left:50%;bottom:52px;transform:translateX(-50%);min-width:260px;padding:8px 12px;border-radius:12px;background:rgba(8,12,18,.92);border:1px solid rgba(255,255,255,.15);color:#e8f0f6;font:11px ui-monospace">',
-      '  <div style="display:flex;align-items:center;gap:8px;justify-content:center">',
-      '    <button id="tm-play" type="button" style="width:36px;height:36px;border-radius:50%;border:1px solid rgba(255,255,255,.2);background:rgba(69,168,255,.25);color:#fff;cursor:pointer">▶</button>',
-      '    <button id="tm-prev" type="button" class="tm-tbtn">◀</button>',
-      '    <div id="tm-time-label" style="min-width:110px;text-align:center;font-weight:700">—</div>',
-      '    <button id="tm-next" type="button" class="tm-tbtn">▶</button>',
-      '  </div>',
-      '  <input id="tm-time-slider" type="range" min="0" max="0" value="0" style="width:100%;margin-top:6px">',
+      '<div id="tm-bottom-bar">',
+      '  <button data-bar="satellite" class="tm-bar-btn on">Satellite</button>',
+      '  <button data-bar="live" class="tm-bar-btn">Live</button>',
+      '  <button data-bar="flat" class="tm-bar-btn on">Flat</button>',
+      '  <button data-bar="globe" class="tm-bar-btn">3D</button>',
+      '  <button data-bar="weather" class="tm-bar-btn">Weather</button>',
+      '  <button data-bar="daynight" class="tm-bar-btn">Day/Night</button>',
       '</div>',
-      '<div id="tm-wx-readout" style="display:none;position:fixed;z-index:2200;left:12px;bottom:56px;padding:10px 12px;border-radius:10px;background:rgba(8,14,20,.9);border:1px solid rgba(255,255,255,.15);color:#e8f0f6;font:11px ui-monospace"></div>',
-      '<div style="position:fixed;z-index:2200;right:14px;bottom:120px;display:flex;flex-direction:column;gap:6px">',
+      '<div id="tm-timebar" style="display:none">',
+      '  <button id="tm-play" type="button" class="tm-play">▶</button>',
+      '  <button id="tm-prev" type="button" class="tm-tbtn">◀</button>',
+      '  <div id="tm-time-label">—</div>',
+      '  <button id="tm-next" type="button" class="tm-tbtn">▶</button>',
+      '  <input id="tm-time-slider" type="range" min="0" max="0" value="0">',
+      '</div>',
+      '<div id="tm-wx-readout" style="display:none"></div>',
+      '<div id="tm-zoom-stack">',
       '  <button id="tm-zoom-in" class="tm-z">+</button>',
       '  <button id="tm-zoom-out" class="tm-z">−</button>',
       '  <button id="tm-zoom-home" class="tm-z" style="font-size:12px">⌂</button>',
       '</div>',
       '<style>',
-      '.tm-scale-btn,.tm-emode,.tm-z,.tm-tbtn{border:1px solid rgba(255,255,255,.2);border-radius:8px;background:rgba(6,12,18,.92);color:#eaf4fa;cursor:pointer;font:700 11px system-ui;padding:8px 12px}',
-      '.tm-scale-btn.on,.tm-emode.on{border-color:#4fd0a0;color:#4fd0a0;box-shadow:0 0 12px #4fd0a044}',
-      '.tm-z{width:40px;height:40px;font-size:20px;font-weight:900;padding:0}',
+      '.tm-scale-btn,.tm-z,.tm-tbtn,.tm-bar-btn,.tm-drawer-item{border:1px solid rgba(255,255,255,.18);border-radius:8px;background:rgba(6,12,18,.92);color:#eaf4fa;cursor:pointer;font:700 11px system-ui}',
+      '.tm-scale-btn{padding:8px 12px}',
+      '.tm-scale-btn.on{border-color:#4fd0a0;color:#4fd0a0;box-shadow:0 0 12px #4fd0a044}',
+      '#tm-bottom-bar{position:fixed;z-index:2300;left:50%;bottom:14px;transform:translateX(-50%);display:none;gap:6px;padding:8px 10px;border-radius:14px;background:rgba(8,12,18,.94);border:1px solid rgba(255,255,255,.14);backdrop-filter:blur(14px);flex-wrap:wrap;justify-content:center;max-width:96vw}',
+      '.tm-bar-btn{padding:10px 14px;border-radius:10px;white-space:nowrap}',
+      '.tm-bar-btn.on{border-color:#4fd0a0;color:#4fd0a0;background:rgba(79,208,160,.12)}',
+      '.tm-drawer{position:fixed;z-index:2290;left:50%;bottom:70px;transform:translateX(-50%);min-width:200px;max-width:90vw;padding:8px 0;border-radius:12px;background:rgba(18,14,12,.96);border:1px solid rgba(255,255,255,.14);backdrop-filter:blur(14px);color:#f0e8e0}',
+      '.tm-drawer-title{padding:4px 14px 6px;font:800 10px system-ui;letter-spacing:.6px;opacity:.65}',
+      '.tm-drawer-item{display:block;width:100%;text-align:left;border:0;background:transparent;color:#f0e8e0;padding:10px 14px;font:600 13px system-ui;border-radius:0}',
+      '.tm-drawer-item:hover{background:rgba(255,255,255,.08)}',
+      '.tm-drawer-item.on{background:rgba(255,255,255,.1);box-shadow:inset 3px 0 0 #4fd0a0}',
+      '#tm-timebar{position:fixed;z-index:2280;left:50%;bottom:72px;transform:translateX(-50%);display:flex;align-items:center;gap:8px;padding:8px 12px;border-radius:12px;background:rgba(8,12,18,.92);border:1px solid rgba(255,255,255,.15);color:#e8f0f6;font:11px ui-monospace}',
+      '#tm-time-label{min-width:110px;text-align:center;font-weight:700}',
+      '#tm-time-slider{width:140px}',
+      '.tm-play{width:36px;height:36px;border-radius:50%;border:1px solid rgba(255,255,255,.2);background:rgba(69,168,255,.25);color:#fff;cursor:pointer}',
       '.tm-tbtn{width:32px;height:32px;padding:0}',
-      '.tm-ze-item{display:block;width:100%;text-align:left;border:0;background:transparent;color:#f0e8e0;padding:9px 14px;cursor:pointer;font:600 13px system-ui}',
-      '.tm-ze-item.on{background:rgba(255,255,255,.12);box-shadow:inset 3px 0 0 #4fd0a0}',
+      '#tm-wx-readout{position:fixed;z-index:2200;left:12px;bottom:90px;padding:10px 12px;border-radius:10px;background:rgba(8,14,20,.9);border:1px solid rgba(255,255,255,.15);color:#e8f0f6;font:11px ui-monospace;max-width:240px}',
+      '#tm-zoom-stack{position:fixed;z-index:2200;right:14px;bottom:100px;display:flex;flex-direction:column;gap:6px}',
+      '.tm-z{width:40px;height:40px;font-size:20px;font-weight:900;padding:0}',
       '#tm-solar-canvas{position:absolute;inset:0;width:100%;height:100%;display:block;background:#010208;cursor:grab;z-index:2}',
       '</style>'
     ].join('');
@@ -142,27 +174,47 @@
     box.querySelectorAll('[data-scale]').forEach(function (b) {
       b.onclick = function () { setScale(b.getAttribute('data-scale')); };
     });
-    box.querySelectorAll('[data-emode]').forEach(function (b) {
+
+    box.querySelectorAll('[data-bar]').forEach(function (b) {
       b.onclick = function () {
-        earthMode = b.getAttribute('data-emode');
-        document.querySelectorAll('[data-emode]').forEach(function (x) {
-          x.classList.toggle('on', x.getAttribute('data-emode') === earthMode);
-        });
-        if (scale === 'earth') enterEarth();
+        const k = b.getAttribute('data-bar');
+        if (k === 'satellite') {
+          activeWx.satellite = true;
+          activeWx.dark = false;
+          applyLayers();
+          syncBar();
+        } else if (k === 'live') {
+          toggleDrawer(openDrawer === 'live' ? null : 'live');
+        } else if (k === 'weather') {
+          toggleDrawer(openDrawer === 'weather' ? null : 'weather');
+        } else if (k === 'flat') {
+          earthMode = 'flat';
+          if (scale === 'earth') enterEarth();
+          syncBar();
+        } else if (k === 'globe') {
+          earthMode = 'globe';
+          if (scale === 'earth') enterEarth();
+          syncBar();
+        } else if (k === 'daynight') {
+          dayNight = !dayNight;
+          if (scale === 'earth') applyDayNight();
+          syncBar();
+        }
       };
     });
+
     box.querySelectorAll('[data-wx]').forEach(function (b) {
       b.onclick = function () {
         const k = b.getAttribute('data-wx');
         activeWx[k] = !activeWx[k];
         if (k === 'dark' && activeWx.dark) activeWx.satellite = true;
-        if (k === 'satellite' && activeWx.satellite) activeWx.dark = false;
-        document.querySelectorAll('[data-wx]').forEach(function (x) {
-          x.classList.toggle('on', !!activeWx[x.getAttribute('data-wx')]);
-        });
+        if (k === 'live' && activeWx.live) activeWx.dark = false;
+        syncDrawerItems();
         applyLayers();
+        if (['temp', 'humidity', 'pressure', 'wind', 'precip'].indexOf(k) >= 0) refreshForecast();
       };
     });
+
     $('tm-zoom-in').onclick = function () { zoomBy(1); };
     $('tm-zoom-out').onclick = function () { zoomBy(-1); };
     $('tm-zoom-home').onclick = function () {
@@ -176,6 +228,42 @@
       applyRadar();
       updateTime();
     };
+
+    document.addEventListener('click', function (e) {
+      if (!openDrawer) return;
+      const t = e.target;
+      if (t.closest && (t.closest('.tm-drawer') || t.closest('[data-bar="live"]') || t.closest('[data-bar="weather"]'))) return;
+      toggleDrawer(null);
+    });
+  }
+
+  function toggleDrawer(which) {
+    openDrawer = which;
+    const live = $('tm-drawer-live');
+    const wx = $('tm-drawer-weather');
+    if (live) live.style.display = which === 'live' ? 'block' : 'none';
+    if (wx) wx.style.display = which === 'weather' ? 'block' : 'none';
+    syncBar();
+  }
+
+  function syncBar() {
+    document.querySelectorAll('[data-bar]').forEach(function (b) {
+      const k = b.getAttribute('data-bar');
+      let on = false;
+      if (k === 'satellite') on = activeWx.satellite && !activeWx.dark;
+      if (k === 'live') on = openDrawer === 'live' || activeWx.live || activeWx.radar;
+      if (k === 'flat') on = earthMode === 'flat';
+      if (k === 'globe') on = earthMode === 'globe';
+      if (k === 'weather') on = openDrawer === 'weather' || activeWx.temp || activeWx.wind || activeWx.precip || activeWx.humidity || activeWx.pressure;
+      if (k === 'daynight') on = dayNight;
+      b.classList.toggle('on', on);
+    });
+  }
+
+  function syncDrawerItems() {
+    document.querySelectorAll('[data-wx]').forEach(function (b) {
+      b.classList.toggle('on', !!activeWx[b.getAttribute('data-wx')]);
+    });
   }
 
   function markChrome() {
@@ -183,12 +271,13 @@
       b.classList.toggle('on', b.getAttribute('data-scale') === scale);
     });
     const show = scale === 'earth';
-    const modes = $('tm-earth-modes');
-    if (modes) modes.style.display = show ? 'flex' : 'none';
-    ['tm-ze-menu', 'tm-timebar', 'tm-wx-readout'].forEach(function (id) {
+    const bar = $('tm-bottom-bar');
+    if (bar) bar.style.display = show ? 'flex' : 'none';
+    ['tm-timebar', 'tm-wx-readout'].forEach(function (id) {
       const el = $(id);
-      if (el) el.style.display = show ? 'block' : 'none';
+      if (el) el.style.display = show ? (id === 'tm-timebar' ? 'flex' : 'block') : 'none';
     });
+    if (!show) toggleDrawer(null);
   }
 
   function ensureSolarCanvas() {
@@ -199,10 +288,7 @@
       c = document.createElement('canvas');
       c.id = 'tm-solar-canvas';
       map.appendChild(c);
-      c.addEventListener('wheel', function (e) {
-        e.preventDefault();
-        zoomBy(e.deltaY > 0 ? -1 : 1);
-      }, { passive: false });
+      c.addEventListener('wheel', function (e) { e.preventDefault(); zoomBy(e.deltaY > 0 ? -1 : 1); }, { passive: false });
       let dragging = false, lx = 0, ly = 0, panX = 0, panY = 0;
       c._pan = function () { return { x: panX, y: panY }; };
       c.addEventListener('mousedown', function (e) { dragging = true; lx = e.clientX; ly = e.clientY; });
@@ -228,12 +314,7 @@
     return PLANETS.map(function (p) {
       const ang = (p.au || 0) * 0.85 + (performance.now() / 50000) * (p.au ? 1 / Math.sqrt(Math.max(p.au, 0.1)) : 0);
       const dist = p.au * scalePx * 28;
-      return {
-        p: p,
-        x: cx + Math.cos(ang) * dist,
-        y: cy + Math.sin(ang) * dist * 0.55,
-        rad: Math.max(3, p.r * solarZoom * (scale === 'universe' ? 0.55 : 1))
-      };
+      return { p: p, x: cx + Math.cos(ang) * dist, y: cy + Math.sin(ang) * dist * 0.55, rad: Math.max(3, p.r * solarZoom * (scale === 'universe' ? 0.55 : 1)) };
     });
   }
 
@@ -255,31 +336,22 @@
     const c = solarCanvas, ctx = solarCtx;
     const dpr = Math.min(2, window.devicePixelRatio || 1);
     const w = c.clientWidth, h = c.clientHeight;
-    if (c.width !== (w * dpr | 0) || c.height !== (h * dpr | 0)) {
-      c.width = w * dpr | 0; c.height = h * dpr | 0;
-    }
+    if (c.width !== (w * dpr | 0) || c.height !== (h * dpr | 0)) { c.width = w * dpr | 0; c.height = h * dpr | 0; }
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-    ctx.fillStyle = '#010208';
-    ctx.fillRect(0, 0, w, h);
+    ctx.fillStyle = '#010208'; ctx.fillRect(0, 0, w, h);
     const laid = layoutPlanets(w, h);
-    const cx = w / 2 + (c._pan ? c._pan().x : 0);
-    const cy = h / 2 + (c._pan ? c._pan().y : 0);
+    const cx = w / 2 + (c._pan ? c._pan().x : 0), cy = h / 2 + (c._pan ? c._pan().y : 0);
     const scalePx = Math.min(w, h) * 0.035 * solarZoom;
     ctx.strokeStyle = 'rgba(100,140,180,0.25)';
     PLANETS.forEach(function (p) {
       if (!p.au) return;
       const dist = p.au * scalePx * 28;
-      ctx.beginPath();
-      ctx.ellipse(cx, cy, dist, dist * 0.55, 0, 0, Math.PI * 2);
-      ctx.stroke();
+      ctx.beginPath(); ctx.ellipse(cx, cy, dist, dist * 0.55, 0, 0, Math.PI * 2); ctx.stroke();
     });
     laid.forEach(function (o) {
       ctx.fillStyle = o.p.color;
-      ctx.beginPath();
-      ctx.arc(o.x, o.y, o.rad, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.fillStyle = '#dce9f0';
-      ctx.font = '10px ui-monospace';
+      ctx.beginPath(); ctx.arc(o.x, o.y, o.rad, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = '#dce9f0'; ctx.font = '10px ui-monospace';
       ctx.fillText(o.p.name, o.x + o.rad + 4, o.y + 3);
     });
     animId = requestAnimationFrame(drawSolar);
@@ -288,8 +360,7 @@
   function showSolar(show) {
     const c = ensureSolarCanvas();
     if (!c) return;
-    solarCanvas = c;
-    solarCtx = c.getContext('2d');
+    solarCanvas = c; solarCtx = c.getContext('2d');
     c.style.display = show ? 'block' : 'none';
     if (show) { cancelAnimationFrame(animId); drawSolar(); }
     else cancelAnimationFrame(animId);
@@ -298,6 +369,7 @@
   function destroyViews() {
     if (playing) { playing = false; if (playTimer) clearInterval(playTimer); playTimer = null; }
     if (terminatorTimer) { clearInterval(terminatorTimer); terminatorTimer = null; }
+    if (forecastTimer) { clearTimeout(forecastTimer); forecastTimer = null; }
     try { if (globe && globe.destroy) globe.destroy(); } catch (e) {}
     globe = null;
     try { if (maplibre) maplibre.remove(); } catch (e) {}
@@ -370,6 +442,19 @@
     }, 600);
   }
 
+  function applyDayNight() {
+    if (!maplibre) return;
+    try {
+      if (maplibre.getSource('terminator')) {
+        maplibre.getSource('terminator').setData(dayNight ? terminatorFeatures(new Date()) : { type: 'FeatureCollection', features: [] });
+      }
+      ['night-0', 'night-1', 'night-2'].forEach(function (id) {
+        if (maplibre.getLayer(id))
+          maplibre.setLayoutProperty(id, 'visibility', dayNight ? 'visible' : 'none');
+      });
+    } catch (e) {}
+  }
+
   function applyLayers() {
     if (!maplibre) return;
     try {
@@ -377,12 +462,89 @@
         maplibre.setLayoutProperty('sat', 'visibility', activeWx.dark ? 'none' : 'visible');
       if (maplibre.getLayer('dark'))
         maplibre.setLayoutProperty('dark', 'visibility', activeWx.dark ? 'visible' : 'none');
+      if (maplibre.getLayer('gibs-live'))
+        maplibre.setLayoutProperty('gibs-live', 'visibility', activeWx.live && !activeWx.dark ? 'visible' : 'none');
       if (maplibre.getLayer('radar'))
         maplibre.setLayoutProperty('radar', 'visibility', activeWx.radar ? 'visible' : 'none');
-      if (maplibre.getLayer('night-shade'))
-        maplibre.setLayoutProperty('night-shade', 'visibility', earthMode === 'terminator' ? 'visible' : 'none');
+      if (maplibre.getLayer('forecast-circles')) {
+        const any = activeWx.temp || activeWx.humidity || activeWx.pressure || activeWx.wind || activeWx.precip;
+        maplibre.setLayoutProperty('forecast-circles', 'visibility', any ? 'visible' : 'none');
+      }
     } catch (e) {}
+    applyDayNight();
     refreshWx();
+    syncBar();
+    syncDrawerItems();
+  }
+
+  function gibsDate() {
+    const d = new Date();
+    d.setUTCDate(d.getUTCDate() - 1);
+    return d.toISOString().slice(0, 10);
+  }
+
+  function paintForecast() {
+    if (!maplibre || !maplibre.getLayer('forecast-circles')) return;
+    let prop = 'temp';
+    if (activeWx.temp) prop = 'temp';
+    else if (activeWx.humidity) prop = 'humidity';
+    else if (activeWx.pressure) prop = 'pressure';
+    else if (activeWx.wind) prop = 'wind';
+    else if (activeWx.precip) prop = 'precip';
+    try {
+      maplibre.setPaintProperty('forecast-circles', 'circle-color', [
+        'case',
+        ['==', prop, 'temp'], ['interpolate', ['linear'], ['get', 'temp'], -20, '#4b6cb7', 0, '#6a9bd1', 15, '#f0d060', 35, '#e04040'],
+        ['==', prop, 'humidity'], ['interpolate', ['linear'], ['get', 'humidity'], 0, '#d4a574', 50, '#7ec8e3', 100, '#3F54BA'],
+        ['==', prop, 'pressure'], ['interpolate', ['linear'], ['get', 'pressure'], 980, '#e07040', 1013, '#90b0c0', 1040, '#4b6cb7'],
+        ['==', prop, 'wind'], ['interpolate', ['linear'], ['get', 'wind'], 0, '#7ec8a0', 15, '#f0d060', 40, '#e04040'],
+        ['interpolate', ['linear'], ['get', 'precip'], 0, '#334455', 2, '#4fd0a0', 10, '#3D8BFF', 30, '#9b59b6']
+      ]);
+    } catch (e) {}
+  }
+
+  async function refreshForecast() {
+    if (!maplibre || scale !== 'earth') return;
+    const any = activeWx.temp || activeWx.humidity || activeWx.pressure || activeWx.wind || activeWx.precip;
+    if (!any) {
+      if (maplibre.getSource('forecast')) maplibre.getSource('forecast').setData({ type: 'FeatureCollection', features: [] });
+      return;
+    }
+    const c = maplibre.getCenter();
+    const z = maplibre.getZoom();
+    const step = z < 2 ? 25 : z < 4 ? 12 : 6;
+    const points = [];
+    for (let lat = Math.max(-55, c.lat - step * 2); lat <= Math.min(55, c.lat + step * 2); lat += step) {
+      for (let lon = c.lng - step * 2; lon <= c.lng + step * 2; lon += step) {
+        let L = lon;
+        while (L > 180) L -= 360;
+        while (L < -180) L += 360;
+        points.push({ lat: lat, lon: L });
+      }
+    }
+    const features = [];
+    await Promise.all(points.slice(0, 16).map(async function (p) {
+      try {
+        const u = 'https://api.open-meteo.com/v1/forecast?latitude=' + p.lat.toFixed(2) +
+          '&longitude=' + p.lon.toFixed(2) +
+          '&current=temperature_2m,relative_humidity_2m,surface_pressure,wind_speed_10m,precipitation';
+        const res = await fetch(u);
+        const j = await res.json();
+        const cur = j.current || {};
+        features.push({
+          type: 'Feature',
+          geometry: { type: 'Point', coordinates: [p.lon, p.lat] },
+          properties: {
+            temp: cur.temperature_2m, humidity: cur.relative_humidity_2m,
+            pressure: cur.surface_pressure, wind: cur.wind_speed_10m, precip: cur.precipitation
+          }
+        });
+      } catch (e) {}
+    }));
+    if (maplibre.getSource('forecast')) {
+      maplibre.getSource('forecast').setData({ type: 'FeatureCollection', features: features });
+    }
+    paintForecast();
   }
 
   function refreshWx() {
@@ -407,13 +569,6 @@
       }).catch(function () {});
   }
 
-  function updateTerminator() {
-    if (!maplibre || !maplibre.getSource('terminator')) return;
-    try {
-      maplibre.getSource('terminator').setData(terminatorGeoJSON(new Date()));
-    } catch (e) {}
-  }
-
   async function enterEarth() {
     destroyViews();
     showSolar(false);
@@ -423,9 +578,8 @@
     const radarPath = rvFrames.length
       ? rvHost + rvFrames[rvIndex].path + '/256/{z}/{x}/{y}/2/1_1.png'
       : null;
-
     const useGlobe = earthMode === 'globe';
-    const useTerm = earthMode === 'terminator';
+    const date = gibsDate();
 
     const style = {
       version: 8,
@@ -433,12 +587,19 @@
         sat: {
           type: 'raster', tileSize: 256, maxzoom: 19,
           tiles: ['https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}'],
-          attribution: 'Esri World Imagery'
+          attribution: 'Esri'
         },
         dark: {
           type: 'raster', tileSize: 256, maxzoom: 19,
-          tiles: ['https://services.arcgisonline.com/ArcGIS/rest/services/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}'],
-          attribution: 'Esri Dark'
+          tiles: ['https://services.arcgisonline.com/ArcGIS/rest/services/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}']
+        },
+        gibs: {
+          type: 'raster', tileSize: 256, maxzoom: 9,
+          tiles: [
+            'https://gibs.earthdata.nasa.gov/wmts/epsg3857/best/VIIRS_SNPP_CorrectedReflectance_TrueColor/default/' +
+              date + '/GoogleMapsCompatible_Level9/{z}/{y}/{x}.jpg'
+          ],
+          attribution: 'NASA GIBS'
         },
         labels: {
           type: 'raster', tileSize: 256, maxzoom: 19,
@@ -446,35 +607,52 @@
         },
         terminator: {
           type: 'geojson',
-          data: useTerm ? terminatorGeoJSON(new Date()) : { type: 'FeatureCollection', features: [] }
-        }
+          data: dayNight ? terminatorFeatures(new Date()) : { type: 'FeatureCollection', features: [] }
+        },
+        forecast: { type: 'geojson', data: { type: 'FeatureCollection', features: [] } }
       },
       layers: [
         { id: 'sat', type: 'raster', source: 'sat' },
         { id: 'dark', type: 'raster', source: 'dark', layout: { visibility: 'none' } },
+        { id: 'gibs-live', type: 'raster', source: 'gibs', layout: { visibility: 'none' }, paint: { 'raster-opacity': 0.55 } },
         {
-          id: 'night-shade',
-          type: 'fill',
-          source: 'terminator',
-          layout: { visibility: useTerm ? 'visible' : 'none' },
-          paint: {
-            'fill-color': '#000818',
-            'fill-opacity': 0.55,
-            'fill-outline-color': '#4fd0a088'
-          }
+          id: 'night-0', type: 'fill', source: 'terminator',
+          filter: ['==', ['get', 'soft'], 0],
+          layout: { visibility: dayNight ? 'visible' : 'none' },
+          paint: { 'fill-color': '#00060f', 'fill-opacity': 0.22 }
         },
-        { id: 'labels', type: 'raster', source: 'labels', paint: { 'raster-opacity': 0.85 } }
+        {
+          id: 'night-1', type: 'fill', source: 'terminator',
+          filter: ['==', ['get', 'soft'], 1],
+          layout: { visibility: dayNight ? 'visible' : 'none' },
+          paint: { 'fill-color': '#00060f', 'fill-opacity': 0.28 }
+        },
+        {
+          id: 'night-2', type: 'fill', source: 'terminator',
+          filter: ['==', ['get', 'soft'], 2],
+          layout: { visibility: dayNight ? 'visible' : 'none' },
+          paint: { 'fill-color': '#00060f', 'fill-opacity': 0.35 }
+        },
+        { id: 'labels', type: 'raster', source: 'labels', paint: { 'raster-opacity': 0.85 } },
+        {
+          id: 'forecast-circles', type: 'circle', source: 'forecast',
+          layout: { visibility: 'none' },
+          paint: {
+            'circle-radius': 11, 'circle-color': '#4fd0a0', 'circle-opacity': 0.75,
+            'circle-stroke-width': 1, 'circle-stroke-color': '#ffffff88'
+          }
+        }
       ]
     };
 
     if (useGlobe) {
       style.projection = { type: 'globe' };
       style.fog = {
-        color: 'rgb(10, 20, 40)',
-        'high-color': 'rgb(30, 50, 80)',
-        'space-color': 'rgb(1, 3, 8)',
-        'horizon-blend': 0.08,
-        range: [0.5, 10]
+        color: 'rgb(8, 16, 32)',
+        'high-color': 'rgb(25, 45, 75)',
+        'space-color': 'rgb(1, 2, 6)',
+        'horizon-blend': 0.1,
+        range: [0.5, 12]
       };
     }
 
@@ -483,44 +661,42 @@
         type: 'raster', tileSize: 256,
         tiles: [radarPath], attribution: 'RainViewer'
       };
-      style.layers.splice(2, 0, {
+      style.layers.splice(3, 0, {
         id: 'radar', type: 'raster', source: 'radar',
         layout: { visibility: 'none' },
         paint: { 'raster-opacity': 0.7 }
       });
     }
 
-    const mapOpts = {
+    maplibre = new maplibregl.Map({
       container: 'map',
       style: style,
       center: [20, 15],
       zoom: useGlobe ? 1.4 : 2,
       minZoom: useGlobe ? 0.5 : 1,
       maxZoom: 18,
+      maxPitch: useGlobe ? 85 : 60,
       attributionControl: false,
       failIfMajorPerformanceCaveat: false
-    };
-    if (useGlobe) {
-      mapOpts.pitch = 0;
-      mapOpts.maxPitch = 85;
-    }
-
-    maplibre = new maplibregl.Map(mapOpts);
+    });
     window.map = maplibre;
     maplibre.addControl(new maplibregl.NavigationControl({ visualizePitch: useGlobe }), 'bottom-right');
 
     maplibre.on('load', function () {
       try { maplibre.resize(); } catch (e) {}
       applyLayers();
-      const modeLabel = earthMode === 'globe' ? '3D GLOBE' : (earthMode === 'terminator' ? 'DAY / NIGHT' : 'FLAT');
-      setStatus('EARTH · ' + modeLabel + ' · satellite', true);
-      if (useTerm) {
-        terminatorTimer = setInterval(updateTerminator, 60000);
+      setStatus('EARTH · ' + (useGlobe ? '3D' : 'FLAT') + (dayNight ? ' · DAY/NIGHT' : '') + ' · satellite', true);
+      if (dayNight) {
+        terminatorTimer = setInterval(function () { applyDayNight(); }, 60000);
       }
     });
-    maplibre.on('moveend', function () { refreshWx(); });
-    maplibre.on('error', function (e) {
-      console.warn('maplibre', e && e.error);
+    maplibre.on('moveend', function () {
+      if (forecastTimer) clearTimeout(forecastTimer);
+      forecastTimer = setTimeout(function () {
+        refreshWx();
+        if (activeWx.temp || activeWx.humidity || activeWx.pressure || activeWx.wind || activeWx.precip)
+          refreshForecast();
+      }, 400);
     });
     setTimeout(function () { try { maplibre.resize(); } catch (e) {} }, 300);
   }
@@ -553,16 +729,13 @@
       try {
         terrain = new RgbTerrain(null, {
           geoidSrc: null, maxZoom: 7,
-          url: 'https://{s}.terrain.openglobus.org/moon/dem/{z}/{x}/{y}.png',
-          heightFactor: 0.5
+          url: 'https://{s}.terrain.openglobus.org/moon/dem/{z}/{x}/{y}.png', heightFactor: 0.5
         });
       } catch (e) { terrain = new EmptyTerrain(); }
       opts.ellipsoid = moonEll;
       opts.atmosphereEnabled = false;
-      opts.nightTextureSrc = null;
-      opts.specularTextureSrc = null;
-      if (quadTreeStrategyType && quadTreeStrategyType.equi)
-        opts.quadTreeStrategyPrototype = quadTreeStrategyType.equi;
+      opts.nightTextureSrc = null; opts.specularTextureSrc = null;
+      if (quadTreeStrategyType && quadTreeStrategyType.equi) opts.quadTreeStrategyPrototype = quadTreeStrategyType.equi;
     } else {
       layers = [new XYZ('OnMars', {
         isBaseLayer: true,
@@ -572,18 +745,13 @@
       try {
         terrain = new RgbTerrain('Mars', {
           geoidSrc: null, maxZoom: 8,
-          url: 'https://{s}.terrain.openglobus.org/mars/dem/{z}/{x}/{y}.png',
-          heightFactor: 1.1
+          url: 'https://{s}.terrain.openglobus.org/mars/dem/{z}/{x}/{y}.png', heightFactor: 1.1
         });
-      } catch (e) {
-        try { terrain = new EmptyTerrain(); } catch (e2) { terrain = null; }
-      }
+      } catch (e) { try { terrain = new EmptyTerrain(); } catch (e2) { terrain = null; } }
       if (marsEll) opts.ellipsoid = marsEll;
       opts.atmosphereEnabled = false;
-      opts.nightTextureSrc = null;
-      opts.specularTextureSrc = null;
-      if (quadTreeStrategyType && quadTreeStrategyType.equi)
-        opts.quadTreeStrategyPrototype = quadTreeStrategyType.equi;
+      opts.nightTextureSrc = null; opts.specularTextureSrc = null;
+      if (quadTreeStrategyType && quadTreeStrategyType.equi) opts.quadTreeStrategyPrototype = quadTreeStrategyType.equi;
     }
     opts.layers = layers;
     opts.terrain = terrain || new EmptyTerrain();
@@ -596,8 +764,7 @@
       }
       if (control && control.ZoomControl) globe.planet.addControl(new control.ZoomControl());
       const alt = planetId === 'mars' ? 5e6 : 2.5e6;
-      if (globe.planet.camera.flyLonLat)
-        globe.planet.camera.flyLonLat(new LonLat(0, 10, alt));
+      if (globe.planet.camera.flyLonLat) globe.planet.camera.flyLonLat(new LonLat(0, 10, alt));
     } catch (e) {}
     setStatus(planetId.toUpperCase() + ' · NASA mosaic', true);
   }
@@ -623,11 +790,7 @@
         const LonLat = og.LonLat;
         const ll = cam.getLonLat && cam.getLonLat();
         const alt = (ll && ll.height) || 5e6;
-        cam.flyLonLat(new LonLat(
-          ll ? ll.lon : 0,
-          ll ? ll.lat : 10,
-          Math.max(80, Math.min(2e7, dir > 0 ? alt * 0.55 : alt * 1.85))
-        ));
+        cam.flyLonLat(new LonLat(ll ? ll.lon : 0, ll ? ll.lat : 10, Math.max(80, Math.min(2e7, dir > 0 ? alt * 0.55 : alt * 1.85))));
       } catch (e) {}
     }
   }
@@ -636,14 +799,12 @@
     scale = next;
     markChrome();
     try { localStorage.setItem('tm-scale', scale); } catch (e) {}
-
     if (scale === 'universe' || scale === 'solar') {
       destroyViews();
       showSolar(true);
       setStatus(scale.toUpperCase(), true);
       return;
     }
-
     showSolar(false);
     setStatus('LOADING ' + scale.toUpperCase() + '…', true);
     try {
@@ -663,10 +824,9 @@
   setScale(scale);
 
   window.TrackMeNowEngine = {
-    name: 'TrackMeNow Earth modes',
+    name: 'TrackMeNow Zoom.Earth UI',
     setScale: setScale,
     zoomBy: zoomBy,
-    get scale() { return scale; },
-    get earthMode() { return earthMode; }
+    get scale() { return scale; }
   };
 })();
