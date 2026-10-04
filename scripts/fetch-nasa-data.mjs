@@ -11,6 +11,9 @@ const UA = { 'User-Agent': 'TrackMeNow-site-build/1.0 (+https://github.com/conne
 const now = new Date();
 const jdNow = now.getTime() / 86400000 + 2440587.5;
 const status = {};
+const writeOut = async (o) => { await mkdir(dirname(OUT), { recursive: true }); await writeFile(OUT, JSON.stringify(o)); };
+process.on('uncaughtException', async (e) => { try { await writeOut({ meta: { generated: now.toISOString(), status, error: String((e && e.stack) || e).slice(0, 800) } }); } catch (x) {} console.error(e); process.exit(0); });
+process.on('unhandledRejection', (e) => { throw e; });
 const r = (v, d) => (Number.isFinite(+v) ? +(+v).toFixed(d) : null);
 
 async function getJSON(url, tries = 3) {
@@ -133,6 +136,5 @@ const out = {
     sources: { spacecraft: 'NASA/JPL Horizons', smallBodies: 'NASA/JPL Small-Body Database', closeApproaches: 'NASA/JPL CNEOS', exoplanetHosts: 'NASA Exoplanet Archive (Caltech/IPAC)' } },
   spacecraft, neo, mainBelt: mba, trojans, tno, comets, closeApproaches: approaches, exoplanetHosts: hosts
 };
-await mkdir(dirname(OUT), { recursive: true });
-await writeFile(OUT, JSON.stringify(out));
+await writeOut(out);
 console.log('wrote', OUT, JSON.stringify(status));

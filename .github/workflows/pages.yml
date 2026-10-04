@@ -46,7 +46,11 @@ jobs:
 
       - name: Fetch NASA data (Horizons, Small-Body DB, CNEOS, Exoplanet Archive)
         continue-on-error: true
-        run: node scripts/fetch-nasa-data.mjs _site/data/nasa.json
+        run: |
+          node scripts/fetch-nasa-data.mjs _site/data/nasa.json || true
+          mkdir -p _site/data
+          [ -s _site/data/nasa.json ] || echo '{"meta":{"error":"fetch script did not run"}}' > _site/data/nasa.json
+          ls -la _site/data
 
       - uses: actions/configure-pages@v5
 
