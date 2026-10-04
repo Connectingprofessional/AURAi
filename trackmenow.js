@@ -1,4 +1,4 @@
-/* TrackMeNow — day scrubber + continuous weather heatmaps */
+/* TrackMeNow — dense weather fields + local clock */
 (function () {
   'use strict';
   const $ = (id) => document.getElementById(id);
@@ -111,10 +111,14 @@
     if (!el) return;
     if (rvFrames.length && activeWx.radar) {
       const d = new Date((rvFrames[rvIndex].time || 0) * 1000);
-      el.textContent = d.toISOString().slice(0, 16).replace('T', ' ');
+      el.textContent = d.toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
       return;
     }
-    el.textContent = gibsDateStr();
+    const now = new Date();
+    const local = now.toLocaleString(undefined, {
+      month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit'
+    });
+    el.textContent = local + ' · ' + gibsDateStr();
   }
 
   function applyGibsDay() {
@@ -220,7 +224,7 @@
       '  <button id="tm-play" type="button" class="tm-play" title="Play">▶</button>',
       '  <button id="tm-day-prev" type="button" class="tm-tbtn" title="Previous day">◀ day</button>',
       '  <button id="tm-prev" type="button" class="tm-tbtn" title="Previous frame">◀</button>',
-      '  <div id="tm-time-label" style="min-width:130px;text-align:center;font-weight:700">—</div>',
+      '  <div id="tm-time-label" style="min-width:150px;text-align:center;font-weight:700">—</div>',
       '  <button id="tm-next" type="button" class="tm-tbtn" title="Next frame">▶</button>',
       '  <button id="tm-day-next" type="button" class="tm-tbtn" title="Next day">day ▶</button>',
       '  <input id="tm-time-slider" type="range" min="0" max="0" value="0" style="width:160px">',
@@ -245,7 +249,7 @@
       '.tm-drawer-item:hover{background:rgba(255,255,255,.08)}',
       '.tm-drawer-item.on{background:rgba(255,255,255,.1);box-shadow:inset 3px 0 0 #4fd0a0}',
       '#tm-timebar{position:fixed;z-index:2280;left:50%;bottom:72px;transform:translateX(-50%);display:flex;align-items:center;gap:8px;padding:8px 12px;border-radius:12px;background:rgba(8,12,18,.92);border:1px solid rgba(255,255,255,.15);color:#e8f0f6;font:11px ui-monospace}',
-      '#tm-time-label{min-width:130px;text-align:center;font-weight:700;font-variant-numeric:tabular-nums}',
+      '#tm-time-label{min-width:150px;text-align:center;font-weight:700;font-variant-numeric:tabular-nums}',
       '#tm-time-slider{width:160px}',
       '.tm-play{width:36px;height:36px;border-radius:50%;border:1px solid rgba(255,255,255,.2);background:rgba(69,168,255,.25);color:#fff;cursor:pointer}',
       '.tm-tbtn{width:auto;min-width:32px;height:32px;padding:0 8px}',
@@ -537,12 +541,21 @@
   }
 
   function forecastScale(mode) {
-    if (mode === 'precip') return { prop: 'precip', stops: [0, '#1a2332', 0.5, '#2ecc71', 2, '#3498db', 8, '#9b59b6', 20, '#e74c3c', 40, '#ffffff'], label: 'Precipitation mm' };
-    if (mode === 'wind') return { prop: 'wind', stops: [0, '#0d2137', 15, '#1a6b8a', 40, '#2ecc71', 70, '#f1c40f', 110, '#e67e22', 160, '#c0392b'], label: 'Wind km/h' };
-    if (mode === 'temp') return { prop: 'temp', stops: [-30, '#2c0a6b', -10, '#3d5a9e', 0, '#5b9bd5', 12, '#7dcea0', 22, '#f4d03f', 32, '#e67e22', 42, '#c0392b'], label: 'Temperature °C' };
-    if (mode === 'humidity') return { prop: 'humidity', stops: [0, '#c9a66b', 30, '#a8c686', 55, '#5dade2', 80, '#3498db', 100, '#1a3a8a'], label: 'Humidity %' };
-    if (mode === 'pressure') return { prop: 'pressure', stops: [970, '#2980b9', 990, '#5dade2', 1013, '#f5e6c8', 1030, '#e74c3c', 1045, '#922b21'], label: 'Pressure hPa' };
+    if (mode === 'precip') return { prop: 'precip', stops: [0, 'rgba(0,0,0,0)', 0.2, '#7ec8ff', 1, '#3D8BFF', 4, '#7b5cff', 12, '#ff4d6d', 30, '#ffffff'], label: 'Rain · Light → Heavy' };
+    if (mode === 'wind') return { prop: 'wind', stops: [0, '#0a1f3d', 20, '#1a6b9a', 45, '#2ecc71', 80, '#f1c40f', 120, '#e67e22', 180, '#c0392b'], label: 'Wind km/h · 0 → 180+' };
+    if (mode === 'temp') return { prop: 'temp', stops: [-30, '#3b0a7a', -15, '#3d5a9e', 0, '#5b9bd5', 10, '#7dcea0', 20, '#f4d03f', 30, '#e67e22', 42, '#c0392b'], label: 'Temperature °C · −30 → 42' };
+    if (mode === 'humidity') return { prop: 'humidity', stops: [0, '#c9a66b', 25, '#d4c06a', 45, '#7dcea0', 65, '#5dade2', 85, '#3498db', 100, '#1a4a8a'], label: 'Humidity % · 0 → 100' };
+    if (mode === 'pressure') return { prop: 'pressure', stops: [970, '#1a5fb4', 990, '#5dade2', 1005, '#a8d5e5', 1013, '#f5e6c8', 1025, '#e8a090', 1040, '#c0392b'], label: 'Pressure hPa · 970 → 1040' };
     return { prop: 'temp', stops: [0, '#888', 40, '#fff'], label: '' };
+  }
+
+  function setWeatherBaseDim(on) {
+    if (!maplibre) return;
+    try {
+      if (maplibre.getLayer('sat')) maplibre.setPaintProperty('sat', 'raster-opacity', on ? 0.3 : 1);
+      if (maplibre.getLayer('gibs-live')) maplibre.setPaintProperty('gibs-live', 'raster-opacity', on ? 0.15 : 0.55);
+      if (maplibre.getLayer('labels')) maplibre.setPaintProperty('labels', 'raster-opacity', on ? 0.95 : 0.85);
+    } catch (e) {}
   }
 
   function paintForecast() {
@@ -556,84 +569,76 @@
         if (maplibre.getSource('forecast')) maplibre.getSource('forecast').setData({ type: 'FeatureCollection', features: [] });
       } catch (e) {}
       if (leg) leg.style.display = 'none';
+      setWeatherBaseDim(false);
       return;
     }
+    setWeatherBaseDim(true);
     const sc = forecastScale(mode);
-    if (!window._fcGrid || !window._fcGrid.points) return;
+    if (!window._fcGrid || !window._fcGrid.points || !window._fcGrid.points.length) {
+      if (leg) { leg.style.display = 'block'; leg.textContent = sc.label + ' · loading…'; }
+      return;
+    }
     const features = [];
     window._fcGrid.points.forEach(function (p) {
       const v = p[sc.prop];
       if (v == null || isNaN(v)) return;
-      features.push({
-        type: 'Feature',
-        geometry: { type: 'Point', coordinates: [p.lon, p.lat] },
-        properties: { v: v }
-      });
+      features.push({ type: 'Feature', geometry: { type: 'Point', coordinates: [p.lon, p.lat] }, properties: { v: +v } });
     });
     try {
       if (maplibre.getSource('forecast')) maplibre.getSource('forecast').setData({ type: 'FeatureCollection', features: features });
+      if (maplibre.getLayer('forecast-circles')) {
+        maplibre.setLayoutProperty('forecast-circles', 'visibility', 'visible');
+        maplibre.setPaintProperty('forecast-circles', 'circle-color', ['interpolate', ['linear'], ['get', 'v']].concat(sc.stops));
+        maplibre.setPaintProperty('forecast-circles', 'circle-opacity', 0.6);
+        maplibre.setPaintProperty('forecast-circles', 'circle-radius', ['interpolate', ['linear'], ['zoom'], 1, 30, 3, 40, 5, 55, 8, 70]);
+        maplibre.setPaintProperty('forecast-circles', 'circle-blur', 0.9);
+      }
       if (maplibre.getLayer('forecast-heat')) {
         maplibre.setLayoutProperty('forecast-heat', 'visibility', 'visible');
-        maplibre.setPaintProperty('forecast-heat', 'heatmap-weight', [
-          'interpolate', ['linear'], ['get', 'v'],
-          sc.stops[0], 0.05,
-          sc.stops[sc.stops.length - 2], 1
-        ]);
+        maplibre.setPaintProperty('forecast-heat', 'heatmap-weight', ['interpolate', ['linear'], ['get', 'v'], sc.stops[0], 0.2, sc.stops[sc.stops.length - 2], 1]);
+        maplibre.setPaintProperty('forecast-heat', 'heatmap-radius', ['interpolate', ['linear'], ['zoom'], 1, 40, 3, 55, 5, 75]);
+        maplibre.setPaintProperty('forecast-heat', 'heatmap-intensity', 1.8);
+        maplibre.setPaintProperty('forecast-heat', 'heatmap-opacity', 0.9);
         const dens = ['interpolate', ['linear'], ['heatmap-density'], 0, 'rgba(0,0,0,0)'];
         const cols = [];
         for (let i = 1; i < sc.stops.length; i += 2) cols.push(sc.stops[i]);
-        const steps = [0.1, 0.25, 0.4, 0.55, 0.7, 0.85, 1];
+        const steps = [0.08, 0.2, 0.35, 0.5, 0.65, 0.8, 1];
         for (let i = 0; i < cols.length && i < steps.length; i++) dens.push(steps[i], cols[i]);
         maplibre.setPaintProperty('forecast-heat', 'heatmap-color', dens);
       }
-      if (maplibre.getLayer('forecast-circles')) {
-        maplibre.setLayoutProperty('forecast-circles', 'visibility', 'visible');
-        maplibre.setPaintProperty('forecast-circles', 'circle-color',
-          ['interpolate', ['linear'], ['get', 'v']].concat(sc.stops));
-        maplibre.setPaintProperty('forecast-circles', 'circle-opacity', 0.4);
-        maplibre.setPaintProperty('forecast-circles', 'circle-radius', 16);
-      }
-    } catch (e) { console.warn(e); }
-    if (leg) {
-      leg.style.display = 'block';
-      leg.textContent = sc.label + ' · Open-Meteo';
-    }
+    } catch (e) { console.warn('paintForecast', e); }
+    if (leg) { leg.style.display = 'block'; leg.innerHTML = '<b>' + sc.label + '</b>'; }
   }
 
   async function refreshForecast() {
     if (!maplibre || scale !== 'earth') return;
     const mode = activeForecastMode();
-    if (!mode) {
-      window._fcGrid = null;
-      paintForecast();
-      return;
+    if (!mode) { window._fcGrid = null; paintForecast(); return; }
+    if (mode === 'precip' && maplibre.getLayer('radar')) {
+      try { maplibre.setLayoutProperty('radar', 'visibility', 'visible'); activeWx.radar = true; } catch (e) {}
     }
     setStatus('Loading ' + mode + ' map…', true);
+    setWeatherBaseDim(true);
     const c = maplibre.getCenter();
     const z = maplibre.getZoom();
-    const step = z < 2 ? 14 : z < 3.5 ? 9 : z < 5 ? 6 : 4;
+    const step = z < 1.5 ? 12 : z < 2.5 ? 8 : z < 4 ? 5 : 3.5;
     const pts = [];
-    for (let lat = Math.max(-55, c.lat - step * 2.2); lat <= Math.min(70, c.lat + step * 2.2); lat += step) {
-      for (let lon = c.lng - step * 3; lon <= c.lng + step * 3; lon += step) {
-        let L = lon;
-        while (L > 180) L -= 360;
-        while (L < -180) L += 360;
+    for (let lat = Math.max(-60, c.lat - step * 3); lat <= Math.min(75, c.lat + step * 3); lat += step) {
+      for (let lon = c.lng - step * 4; lon <= c.lng + step * 4; lon += step) {
+        let L = lon; while (L > 180) L -= 360; while (L < -180) L += 360;
         pts.push({ lat: +lat.toFixed(2), lon: +L.toFixed(2) });
       }
     }
-    const limited = pts.slice(0, 48);
+    const limited = pts.slice(0, 60);
     const results = await Promise.all(limited.map(async function (p) {
       try {
-        const u = 'https://api.open-meteo.com/v1/forecast?latitude=' + p.lat +
-          '&longitude=' + p.lon +
+        const u = 'https://api.open-meteo.com/v1/forecast?latitude=' + p.lat + '&longitude=' + p.lon +
           '&current=temperature_2m,relative_humidity_2m,surface_pressure,wind_speed_10m,wind_gusts_10m,precipitation';
         const j = await (await fetch(u)).json();
         const cur = j.current || {};
         return {
           lat: p.lat, lon: p.lon,
-          temp: cur.temperature_2m,
-          humidity: cur.relative_humidity_2m,
-          pressure: cur.surface_pressure,
+          temp: cur.temperature_2m, humidity: cur.relative_humidity_2m, pressure: cur.surface_pressure,
           wind: cur.wind_gusts_10m != null ? cur.wind_gusts_10m : cur.wind_speed_10m,
           precip: cur.precipitation
         };
@@ -647,20 +652,13 @@
   function applyLayers() {
     if (!maplibre) return;
     try {
-      if (maplibre.getLayer('sat'))
-        maplibre.setLayoutProperty('sat', 'visibility', activeWx.dark ? 'none' : 'visible');
-      if (maplibre.getLayer('dark'))
-        maplibre.setLayoutProperty('dark', 'visibility', activeWx.dark ? 'visible' : 'none');
-      if (maplibre.getLayer('gibs-live'))
-        maplibre.setLayoutProperty('gibs-live', 'visibility', activeWx.live && !activeWx.dark ? 'visible' : 'none');
-      if (maplibre.getLayer('radar'))
-        maplibre.setLayoutProperty('radar', 'visibility', activeWx.radar ? 'visible' : 'none');
-      if (maplibre.getLayer('fires-layer'))
-        maplibre.setLayoutProperty('fires-layer', 'visibility', activeWx.fires ? 'visible' : 'none');
-      if (maplibre.getLayer('eonet-pts'))
-        maplibre.setLayoutProperty('eonet-pts', 'visibility', activeWx.events ? 'visible' : 'none');
-      if (maplibre.getLayer('quakes-pts'))
-        maplibre.setLayoutProperty('quakes-pts', 'visibility', activeWx.quakes ? 'visible' : 'none');
+      if (maplibre.getLayer('sat')) maplibre.setLayoutProperty('sat', 'visibility', activeWx.dark ? 'none' : 'visible');
+      if (maplibre.getLayer('dark')) maplibre.setLayoutProperty('dark', 'visibility', activeWx.dark ? 'visible' : 'none');
+      if (maplibre.getLayer('gibs-live')) maplibre.setLayoutProperty('gibs-live', 'visibility', activeWx.live && !activeWx.dark ? 'visible' : 'none');
+      if (maplibre.getLayer('radar')) maplibre.setLayoutProperty('radar', 'visibility', activeWx.radar ? 'visible' : 'none');
+      if (maplibre.getLayer('fires-layer')) maplibre.setLayoutProperty('fires-layer', 'visibility', activeWx.fires ? 'visible' : 'none');
+      if (maplibre.getLayer('eonet-pts')) maplibre.setLayoutProperty('eonet-pts', 'visibility', activeWx.events ? 'visible' : 'none');
+      if (maplibre.getLayer('quakes-pts')) maplibre.setLayoutProperty('quakes-pts', 'visibility', activeWx.quakes ? 'visible' : 'none');
     } catch (e) {}
     applyDayNight();
     paintForecast();
@@ -674,8 +672,7 @@
     if (!el || !maplibre) return;
     const c = maplibre.getCenter();
     el.innerHTML = 'CENTER · ' + c.lat.toFixed(2) + ', ' + c.lng.toFixed(2) + '<br>…';
-    fetch('https://api.open-meteo.com/v1/forecast?latitude=' + c.lat.toFixed(3) +
-      '&longitude=' + c.lng.toFixed(3) +
+    fetch('https://api.open-meteo.com/v1/forecast?latitude=' + c.lat.toFixed(3) + '&longitude=' + c.lng.toFixed(3) +
       '&current=temperature_2m,relative_humidity_2m,surface_pressure,wind_speed_10m,precipitation')
       .then(function (r) { return r.json(); })
       .then(function (j) {
@@ -704,136 +701,42 @@
     const style = {
       version: 8,
       sources: {
-        sat: {
-          type: 'raster', tileSize: 256, maxzoom: 19,
-          tiles: ['https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}'],
-          attribution: 'Esri'
-        },
-        dark: {
-          type: 'raster', tileSize: 256, maxzoom: 19,
-          tiles: ['https://services.arcgisonline.com/ArcGIS/rest/services/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}']
-        },
-        gibs: {
-          type: 'raster', tileSize: 256, maxzoom: 9,
-          tiles: [
-            'https://gibs.earthdata.nasa.gov/wmts/epsg3857/best/VIIRS_SNPP_CorrectedReflectance_TrueColor/default/' +
-              date + '/GoogleMapsCompatible_Level9/{z}/{y}/{x}.jpg'
-          ],
-          attribution: 'NASA GIBS VIIRS'
-        },
-        labels: {
-          type: 'raster', tileSize: 256, maxzoom: 19,
-          tiles: ['https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}']
-        },
-        terminator: {
-          type: 'geojson',
-          data: dayNight ? terminatorFeatures(new Date()) : { type: 'FeatureCollection', features: [] }
-        },
+        sat: { type: 'raster', tileSize: 256, maxzoom: 19, tiles: ['https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}'], attribution: 'Esri' },
+        dark: { type: 'raster', tileSize: 256, maxzoom: 19, tiles: ['https://services.arcgisonline.com/ArcGIS/rest/services/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}'] },
+        gibs: { type: 'raster', tileSize: 256, maxzoom: 9, tiles: ['https://gibs.earthdata.nasa.gov/wmts/epsg3857/best/VIIRS_SNPP_CorrectedReflectance_TrueColor/default/' + date + '/GoogleMapsCompatible_Level9/{z}/{y}/{x}.jpg'], attribution: 'NASA GIBS' },
+        labels: { type: 'raster', tileSize: 256, maxzoom: 19, tiles: ['https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}'] },
+        terminator: { type: 'geojson', data: dayNight ? terminatorFeatures(new Date()) : { type: 'FeatureCollection', features: [] } },
         forecast: { type: 'geojson', data: { type: 'FeatureCollection', features: [] } },
         eonet: { type: 'geojson', data: { type: 'FeatureCollection', features: [] } },
         quakes: { type: 'geojson', data: { type: 'FeatureCollection', features: [] } },
-        fires: {
-          type: 'raster', tileSize: 256, maxzoom: 8,
-          tiles: [
-            'https://gibs.earthdata.nasa.gov/wmts/epsg3857/best/VIIRS_SNPP_Thermal_Anomalies_375m_Day/default/' +
-              date + '/GoogleMapsCompatible_Level8/{z}/{y}/{x}.png'
-          ],
-          attribution: 'NASA GIBS fires'
-        }
+        fires: { type: 'raster', tileSize: 256, maxzoom: 8, tiles: ['https://gibs.earthdata.nasa.gov/wmts/epsg3857/best/VIIRS_SNPP_Thermal_Anomalies_375m_Day/default/' + date + '/GoogleMapsCompatible_Level8/{z}/{y}/{x}.png'] }
       },
       layers: [
         { id: 'sat', type: 'raster', source: 'sat' },
         { id: 'dark', type: 'raster', source: 'dark', layout: { visibility: 'none' } },
         { id: 'gibs-live', type: 'raster', source: 'gibs', layout: { visibility: activeWx.live ? 'visible' : 'none' }, paint: { 'raster-opacity': 0.55 } },
-        {
-          id: 'night-0', type: 'fill', source: 'terminator',
-          filter: ['==', ['get', 'soft'], 0],
-          layout: { visibility: dayNight ? 'visible' : 'none' },
-          paint: { 'fill-color': '#00060f', 'fill-opacity': 0.22 }
-        },
-        {
-          id: 'night-1', type: 'fill', source: 'terminator',
-          filter: ['==', ['get', 'soft'], 1],
-          layout: { visibility: dayNight ? 'visible' : 'none' },
-          paint: { 'fill-color': '#00060f', 'fill-opacity': 0.28 }
-        },
-        {
-          id: 'night-2', type: 'fill', source: 'terminator',
-          filter: ['==', ['get', 'soft'], 2],
-          layout: { visibility: dayNight ? 'visible' : 'none' },
-          paint: { 'fill-color': '#00060f', 'fill-opacity': 0.35 }
-        },
+        { id: 'night-0', type: 'fill', source: 'terminator', filter: ['==', ['get', 'soft'], 0], layout: { visibility: dayNight ? 'visible' : 'none' }, paint: { 'fill-color': '#00060f', 'fill-opacity': 0.22 } },
+        { id: 'night-1', type: 'fill', source: 'terminator', filter: ['==', ['get', 'soft'], 1], layout: { visibility: dayNight ? 'visible' : 'none' }, paint: { 'fill-color': '#00060f', 'fill-opacity': 0.28 } },
+        { id: 'night-2', type: 'fill', source: 'terminator', filter: ['==', ['get', 'soft'], 2], layout: { visibility: dayNight ? 'visible' : 'none' }, paint: { 'fill-color': '#00060f', 'fill-opacity': 0.35 } },
         { id: 'labels', type: 'raster', source: 'labels', paint: { 'raster-opacity': 0.85 } },
-        {
-          id: 'forecast-heat', type: 'heatmap', source: 'forecast',
-          layout: { visibility: 'none' },
-          paint: {
-            'heatmap-radius': 42,
-            'heatmap-intensity': 1.4,
-            'heatmap-opacity': 0.85,
-            'heatmap-color': [
-              'interpolate', ['linear'], ['heatmap-density'],
-              0, 'rgba(0,0,0,0)',
-              0.15, '#2980b9',
-              0.35, '#2ecc71',
-              0.55, '#f1c40f',
-              0.75, '#e67e22',
-              1, '#c0392b'
-            ]
-          }
-        },
-        {
-          id: 'forecast-circles', type: 'circle', source: 'forecast',
-          layout: { visibility: 'none' },
-          paint: {
-            'circle-radius': 14, 'circle-color': '#4fd0a0', 'circle-opacity': 0.35,
-            'circle-stroke-width': 0
-          }
-        },
-        {
-          id: 'fires-layer', type: 'raster', source: 'fires',
-          layout: { visibility: 'none' },
-          paint: { 'raster-opacity': 0.85 }
-        },
-        {
-          id: 'eonet-pts', type: 'circle', source: 'eonet',
-          paint: {
-            'circle-radius': 7, 'circle-color': '#ff6b35',
-            'circle-stroke-width': 2, 'circle-stroke-color': '#fff', 'circle-opacity': 0.9
-          }
-        },
-        {
-          id: 'quakes-pts', type: 'circle', source: 'quakes',
-          paint: {
-            'circle-radius': ['interpolate', ['linear'], ['get', 'mag'], 2.5, 4, 5, 8, 7, 14],
-            'circle-color': ['interpolate', ['linear'], ['get', 'mag'], 2.5, '#f0d060', 4.5, '#ff9a3c', 6, '#e04040'],
-            'circle-stroke-width': 1, 'circle-stroke-color': '#fff', 'circle-opacity': 0.85
-          }
-        }
+        { id: 'forecast-heat', type: 'heatmap', source: 'forecast', layout: { visibility: 'none' }, paint: { 'heatmap-radius': 55, 'heatmap-intensity': 1.8, 'heatmap-opacity': 0.9, 'heatmap-color': ['interpolate', ['linear'], ['heatmap-density'], 0, 'rgba(0,0,0,0)', 0.15, '#2980b9', 0.35, '#2ecc71', 0.55, '#f1c40f', 0.75, '#e67e22', 1, '#c0392b'] } },
+        { id: 'forecast-circles', type: 'circle', source: 'forecast', layout: { visibility: 'none' }, paint: { 'circle-radius': 36, 'circle-color': '#4fd0a0', 'circle-opacity': 0.55, 'circle-blur': 0.9, 'circle-stroke-width': 0 } },
+        { id: 'fires-layer', type: 'raster', source: 'fires', layout: { visibility: 'none' }, paint: { 'raster-opacity': 0.85 } },
+        { id: 'eonet-pts', type: 'circle', source: 'eonet', paint: { 'circle-radius': 7, 'circle-color': '#ff6b35', 'circle-stroke-width': 2, 'circle-stroke-color': '#fff', 'circle-opacity': 0.9 } },
+        { id: 'quakes-pts', type: 'circle', source: 'quakes', paint: { 'circle-radius': ['interpolate', ['linear'], ['get', 'mag'], 2.5, 4, 5, 8, 7, 14], 'circle-color': ['interpolate', ['linear'], ['get', 'mag'], 2.5, '#f0d060', 4.5, '#ff9a3c', 6, '#e04040'], 'circle-stroke-width': 1, 'circle-stroke-color': '#fff', 'circle-opacity': 0.85 } }
       ]
     };
 
     if (useGlobe) {
       style.projection = { type: 'globe' };
-      style.fog = {
-        color: 'rgb(8, 16, 32)', 'high-color': 'rgb(25, 45, 75)',
-        'space-color': 'rgb(1, 2, 6)', 'horizon-blend': 0.1, range: [0.5, 12]
-      };
+      style.fog = { color: 'rgb(8, 16, 32)', 'high-color': 'rgb(25, 45, 75)', 'space-color': 'rgb(1, 2, 6)', 'horizon-blend': 0.1, range: [0.5, 12] };
     }
-
     if (radarPath) {
       style.sources.radar = { type: 'raster', tileSize: 256, tiles: [radarPath], attribution: 'RainViewer' };
-      style.layers.splice(3, 0, {
-        id: 'radar', type: 'raster', source: 'radar',
-        layout: { visibility: 'none' }, paint: { 'raster-opacity': 0.7 }
-      });
+      style.layers.splice(3, 0, { id: 'radar', type: 'raster', source: 'radar', layout: { visibility: 'none' }, paint: { 'raster-opacity': 0.75 } });
     }
 
-    maplibre = new maplibregl.Map({
-      container: 'map', style: style, center: [20, 15],
-      zoom: useGlobe ? 1.4 : 2, minZoom: useGlobe ? 0.5 : 1, maxZoom: 18,
-      maxPitch: useGlobe ? 85 : 60, attributionControl: false, failIfMajorPerformanceCaveat: false
-    });
+    maplibre = new maplibregl.Map({ container: 'map', style: style, center: [20, 15], zoom: useGlobe ? 1.4 : 2, minZoom: useGlobe ? 0.5 : 1, maxZoom: 18, maxPitch: useGlobe ? 85 : 60, attributionControl: false, failIfMajorPerformanceCaveat: false });
     window.map = maplibre;
     maplibre.addControl(new maplibregl.NavigationControl({ visualizePitch: useGlobe }), 'bottom-right');
 
@@ -841,7 +744,7 @@
       try { maplibre.resize(); } catch (e) {}
       applyLayers();
       loadActivity();
-      setStatus('EARTH · ' + (useGlobe ? '3D' : 'FLAT') + (dayNight ? ' · DAY/NIGHT' : '') + ' · live feeds', true);
+      setStatus('EARTH · ' + (useGlobe ? '3D' : 'FLAT') + ' · live feeds', true);
       if (dayNight) terminatorTimer = setInterval(function () { applyDayNight(); }, 60000);
     });
     maplibre.on('moveend', function () {
@@ -872,49 +775,21 @@
     const target = $('map');
     let layers = [], terrain = null;
     const opts = { target: target, name: planetId, autoActivate: true, maxGridSize: 128 };
-
     if (planetId === 'moon') {
-      layers = [new XYZ('LRO', {
-        isBaseLayer: true,
-        url: 'https://{s}.terrain.openglobus.org/moon/sat/{z}/{x}/{y}.png',
-        visibility: true, maxNativeZoom: 10, attribution: 'NASA LRO'
-      })];
-      try {
-        terrain = new RgbTerrain(null, {
-          geoidSrc: null, maxZoom: 7,
-          url: 'https://{s}.terrain.openglobus.org/moon/dem/{z}/{x}/{y}.png', heightFactor: 0.5
-        });
-      } catch (e) { terrain = new EmptyTerrain(); }
-      opts.ellipsoid = moonEll;
-      opts.atmosphereEnabled = false;
-      opts.nightTextureSrc = null; opts.specularTextureSrc = null;
+      layers = [new XYZ('LRO', { isBaseLayer: true, url: 'https://{s}.terrain.openglobus.org/moon/sat/{z}/{x}/{y}.png', visibility: true, maxNativeZoom: 10, attribution: 'NASA LRO' })];
+      try { terrain = new RgbTerrain(null, { geoidSrc: null, maxZoom: 7, url: 'https://{s}.terrain.openglobus.org/moon/dem/{z}/{x}/{y}.png', heightFactor: 0.5 }); } catch (e) { terrain = new EmptyTerrain(); }
+      opts.ellipsoid = moonEll; opts.atmosphereEnabled = false; opts.nightTextureSrc = null; opts.specularTextureSrc = null;
       if (quadTreeStrategyType && quadTreeStrategyType.equi) opts.quadTreeStrategyPrototype = quadTreeStrategyType.equi;
     } else {
-      layers = [new XYZ('OnMars', {
-        isBaseLayer: true,
-        url: 'https://astro.arcgis.com/arcgis/rest/services/OnMars/MDIM/MapServer/tile/{z}/{y}/{x}?blankTile=false',
-        visibility: true, attribution: 'NASA / ArcGIS OnMars'
-      })];
-      try {
-        terrain = new RgbTerrain('Mars', {
-          geoidSrc: null, maxZoom: 8,
-          url: 'https://{s}.terrain.openglobus.org/mars/dem/{z}/{x}/{y}.png', heightFactor: 1.1
-        });
-      } catch (e) { try { terrain = new EmptyTerrain(); } catch (e2) { terrain = null; } }
-      if (marsEll) opts.ellipsoid = marsEll;
-      opts.atmosphereEnabled = false;
-      opts.nightTextureSrc = null; opts.specularTextureSrc = null;
+      layers = [new XYZ('OnMars', { isBaseLayer: true, url: 'https://astro.arcgis.com/arcgis/rest/services/OnMars/MDIM/MapServer/tile/{z}/{y}/{x}?blankTile=false', visibility: true, attribution: 'NASA / ArcGIS OnMars' })];
+      try { terrain = new RgbTerrain('Mars', { geoidSrc: null, maxZoom: 8, url: 'https://{s}.terrain.openglobus.org/mars/dem/{z}/{x}/{y}.png', heightFactor: 1.1 }); } catch (e) { try { terrain = new EmptyTerrain(); } catch (e2) { terrain = null; } }
+      if (marsEll) opts.ellipsoid = marsEll; opts.atmosphereEnabled = false; opts.nightTextureSrc = null; opts.specularTextureSrc = null;
       if (quadTreeStrategyType && quadTreeStrategyType.equi) opts.quadTreeStrategyPrototype = quadTreeStrategyType.equi;
     }
-    opts.layers = layers;
-    opts.terrain = terrain || new EmptyTerrain();
-    globe = new Globe(opts);
-    window.globe = globe;
+    opts.layers = layers; opts.terrain = terrain || new EmptyTerrain();
+    globe = new Globe(opts); window.globe = globe;
     try {
-      if (globe.planet.camera) {
-        globe.planet.camera.minAltitude = 50;
-        globe.planet.camera.maxAltitude = 8e6;
-      }
+      if (globe.planet.camera) { globe.planet.camera.minAltitude = 50; globe.planet.camera.maxAltitude = 8e6; }
       if (control && control.ZoomControl) globe.planet.addControl(new control.ZoomControl());
       const alt = planetId === 'mars' ? 5e6 : 2.5e6;
       if (globe.planet.camera.flyLonLat) globe.planet.camera.flyLonLat(new LonLat(0, 10, alt));
@@ -931,43 +806,28 @@
       return;
     }
     if (maplibre) {
-      maplibre.easeTo({
-        zoom: Math.max(0.5, Math.min(18, maplibre.getZoom() + (dir > 0 ? 0.8 : -0.8))),
-        duration: 250
-      });
+      maplibre.easeTo({ zoom: Math.max(0.5, Math.min(18, maplibre.getZoom() + (dir > 0 ? 0.8 : -0.8))), duration: 250 });
       return;
     }
     if (globe && og) {
       try {
-        const cam = globe.planet.camera;
-        const LonLat = og.LonLat;
-        const ll = cam.getLonLat && cam.getLonLat();
-        const alt = (ll && ll.height) || 5e6;
+        const cam = globe.planet.camera; const LonLat = og.LonLat;
+        const ll = cam.getLonLat && cam.getLonLat(); const alt = (ll && ll.height) || 5e6;
         cam.flyLonLat(new LonLat(ll ? ll.lon : 0, ll ? ll.lat : 10, Math.max(80, Math.min(2e7, dir > 0 ? alt * 0.55 : alt * 1.85))));
       } catch (e) {}
     }
   }
 
   async function setScale(next) {
-    scale = next;
-    markChrome();
+    scale = next; markChrome();
     try { localStorage.setItem('tm-scale', scale); } catch (e) {}
-    if (scale === 'universe' || scale === 'solar') {
-      destroyViews();
-      showSolar(true);
-      setStatus(scale.toUpperCase(), true);
-      return;
-    }
-    showSolar(false);
-    setStatus('LOADING ' + scale.toUpperCase() + '…', true);
+    if (scale === 'universe' || scale === 'solar') { destroyViews(); showSolar(true); setStatus(scale.toUpperCase(), true); return; }
+    showSolar(false); setStatus('LOADING ' + scale.toUpperCase() + '…', true);
     try {
       if (scale === 'earth') await enterEarth();
       else if (scale === 'moon' || scale === 'mars') await enterPlanet(scale);
       else await enterEarth();
-    } catch (err) {
-      console.error(err);
-      setStatus('FAILED · ' + (err.message || err), false);
-    }
+    } catch (err) { console.error(err); setStatus('FAILED · ' + (err.message || err), false); }
   }
 
   injectChrome();
@@ -975,11 +835,7 @@
   if (['moon', 'mars', 'solar', 'universe'].indexOf(scale) < 0) scale = 'earth';
   setStatus('STARTING…', true);
   setScale(scale);
+  setInterval(function () { if (!activeWx.radar) updateTimeLabel(); }, 1000);
 
-  window.TrackMeNowEngine = {
-    name: 'TrackMeNow realtime',
-    setScale: setScale,
-    zoomBy: zoomBy,
-    get scale() { return scale; }
-  };
+  window.TrackMeNowEngine = { name: 'TrackMeNow realtime', setScale: setScale, zoomBy: zoomBy, get scale() { return scale; } };
 })();
