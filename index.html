@@ -214,17 +214,23 @@ body.tm-panel-open #panel{right:8px}
 <nav id="argos-dock" aria-label="Layers and filters">
   <div class="argos-dock-head"><b>☷ <span>Layers &amp; filters</span></b><span>Everything on the map</span><small>Click: show or hide · Hover: open panel</small></div>
   <button type="button" class="argos-bub ai" data-argos="ai"><span class="argos-ico">✦</span><span><b>TRACKMENOW AI</b><small>Ask me</small></span></button><i></i>
+  <button type="button" class="argos-bub" data-argos="people"><span class="argos-ico">●</span><span><b id="argos-people-count">—</b><small>VIP people</small></span></button>
+  <button type="button" class="argos-bub" data-argos="organizations"><span class="argos-ico">▦</span><span><b id="argos-org-count">—</b><small>organizations</small></span></button>
   <button type="button" class="argos-bub" data-argos="flights"><span class="argos-ico">✈</span><span><b id="argos-flight-count">—</b><small>flights</small></span></button>
   <button type="button" class="argos-bub" data-argos="ships"><span class="argos-ico">⚓</span><span><b id="argos-ship-count">—</b><small>ships</small></span></button>
-  <button type="button" class="argos-bub" data-argos="transport"><span class="argos-ico">▣</span><span><b id="argos-transport-count">—</b><small>transport</small></span></button>
+  <button type="button" class="argos-bub" data-argos="satellites"><span class="argos-ico">◌</span><span><b id="argos-sat-count">—</b><small>satellites</small></span></button>
   <button type="button" class="argos-bub" data-argos="cameras"><span class="argos-ico">▤</span><span><b id="argos-camera-count">—</b><small>cameras</small></span></button>
+  <button type="button" class="argos-bub" data-argos="transport"><span class="argos-ico">▣</span><span><b id="argos-transport-count">—</b><small>transport</small></span></button>
   <button type="button" class="argos-bub" data-argos="infrastructure"><span class="argos-ico">◇</span><span><b id="argos-infra-count">—</b><small>infrastructure</small></span></button>
+  <button type="button" class="argos-bub" data-argos="areas"><span class="argos-ico">⌂</span><span><b id="argos-area-count">—</b><small>areas</small></span></button>
   <button type="button" class="argos-bub" data-argos="intelligence"><span class="argos-ico">⬟</span><span><b id="argos-intel-count">—</b><small>intelligence</small></span></button>
+  <button type="button" class="argos-bub" data-argos="predictions"><span class="argos-ico">◈</span><span><b id="argos-pred-count">—</b><small>predictions</small></span></button>
   <i></i>
-  <button type="button" class="argos-util" id="argos-sat" title="Basemap: satellite / streets / terrain">▱</button>
-  <button type="button" class="argos-util" id="argos-globe" title="Flat map / 3D globe">◍</button>
+  <button type="button" class="argos-util" id="argos-sat" title="Satellite basemap">▱</button>
+  <button type="button" class="argos-util" id="argos-map" title="Normal map">▰</button>
+  <button type="button" class="argos-util" id="argos-globe" title="3D globe">◍</button>
   <button type="button" class="argos-util" id="argos-night" title="Day / night">☼</button>
-  <button type="button" class="argos-util" id="argos-alerts" title="Source alerts">⚠<span class="tm-badge" id="alertBadge">0</span></button>
+  <button type="button" class="argos-util" id="argos-alerts" title="Alerts · 24 h">⚠<span class="tm-badge" id="alertBadge">0</span></button>
 </nav>
 <div id="tm-zoom" role="group" aria-label="Zoom"><button type="button" id="zoomIn" aria-label="Zoom in" title="Zoom in">+</button><button type="button" id="zoomOut" aria-label="Zoom out" title="Zoom out">−</button><button type="button" id="zoomNorth" class="tm-compass" aria-label="Reset north and tilt" title="Reset north / tilt"><span>▲</span></button></div>
 <aside class="right" id="rightPanel">
