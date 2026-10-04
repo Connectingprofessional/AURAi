@@ -464,7 +464,9 @@ async function loadTrackMeNowEvents(){
 setInterval(loadTrackMeNowEvents,60000);
 
 /* ───────────────────────── boot ───────────────────────── */
-map.on('load',()=>{
+let booted=false;
+function boot(){
+  if(booted)return;booted=true;
   initOverlays();mapReady=true;
   setBase(baseIndex);applyProjection();
   $('argos-globe')?.classList.toggle('on',globeOn);
@@ -472,6 +474,21 @@ map.on('load',()=>{
   if(qp.has('lat')&&qp.has('lon')&&Number.isFinite(+qp.get('lat'))&&Number.isFinite(+qp.get('lon')))map.jumpTo({center:[+qp.get('lon'),+qp.get('lat')],zoom:11});
   window.selected=selected;window.loadMovement=loadMovement;
   syncLayerButtons();refreshEventTypes();loadMovement();scheduleMovement();updateCoords();
+}
+/* start on style.load, not 'load': 'load' waits for tiles and never fires if the tile server is blocked */
+if(map.isStyleLoaded())boot();else map.on('style.load',boot);
+map.on('load',boot);
+
+/* tile failures: tell the person and fall back to another basemap instead of showing a blank map */
+let tileErrors=0,fellBack=false;
+map.on('error',e=>{
+  const u=(e&&e.error&&e.error.url)||'';if(!u||!/\/\d+\/\d+\/\d+/.test(u))return;
+  if(++tileErrors===6&&!fellBack){
+    fellBack=true;
+    const next=(baseIndex+1)%BASES.length;
+    tmToast('Basemap tiles are not loading – switching to '+BASES[next].name,'warn');
+    setBase(next);
+  }
 });
 window.selected=selected;window.loadMovement=loadMovement;
 syncLayerButtons();
