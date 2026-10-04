@@ -159,7 +159,7 @@ const CLICKABLE=['live-flights','live-ships','live-transit','live-cams','live-ce
 const zoomSize=(a,b,c)=>['interpolate',['linear'],['zoom'],1,a,6,b,12,c];
 function initOverlays(){
   Object.keys(ICON_PATHS).forEach(addIcon);
-  ['still','moving','trails','sel','history','gpsfix','fences','quakes'].forEach(id=>map.addSource(id,{type:'geojson',data:EMPTY}));
+  ['still','moving','trails','sel','history','gpsfix','fences','quakes','cables'].forEach(id=>map.addSource(id,{type:'geojson',data:EMPTY}));
   const on=l=>['==',['get','lyr'],l];
   const dot=(id,src,filter,color,r)=>map.addLayer({id,type:'circle',source:src,filter,paint:{'circle-radius':r,'circle-color':color,'circle-stroke-color':'#05080c','circle-stroke-width':1,'circle-opacity':.92}});
   map.addLayer({id:'fences-fill',type:'fill',source:'fences',paint:{'fill-color':'#38a5ff','fill-opacity':.09}});
@@ -168,6 +168,7 @@ function initOverlays(){
   map.addLayer({id:'gpsfix-line',type:'line',source:'gpsfix',filter:['==',['geometry-type'],'LineString'],paint:{'line-color':'#43e0a0','line-width':2.5,'line-opacity':.85}});
   map.addLayer({id:'history-line',type:'line',source:'history',paint:{'line-color':'#45a8ff','line-width':3,'line-opacity':.85}});
   map.addLayer({id:'trails',type:'line',source:'trails',layout:{'line-cap':'round','line-join':'round'},paint:{'line-color':['match',['get','lyr'],'flights','#45a8ff','ships','#43e0c0','#ffc85a'],'line-width':1.6,'line-opacity':.45}});
+  map.addLayer({id:'live-cables',type:'line',source:'cables',filter:['==',['get','lyr'],'intelligence'],layout:{'line-cap':'round','line-join':'round'},paint:{'line-color':'#27d8c5','line-width':['interpolate',['linear'],['zoom'],1,.7,5,1.2,10,2.2,14,3.2],'line-opacity':.82,'line-blur':.15}});
   dot('live-infra','still',on('infrastructure'),'#dce7ee',zoomSize(2,3.5,6));
   dot('live-cells','still',on('cells'),'#c08bff',zoomSize(2.5,4,6.5));
   dot('live-cams','still',on('cameras'),'#b9d8ff',zoomSize(2.5,4,7));
@@ -197,7 +198,7 @@ function setBase(i){
 }
 function applyNight(on){
   if(!mapReady)return;
-  ['base-satellite','base-labels','base-streets','base-terrain'].forEach(id=>{
+  ['base-satellite','base-dark','base-labels','base-streets','base-terrain'].forEach(id=>{
     map.setPaintProperty(id,'raster-brightness-max',on?.45:1);
     map.setPaintProperty(id,'raster-saturation',on?-.3:0);
     map.setPaintProperty(id,'raster-contrast',on?.1:0);
@@ -344,12 +345,18 @@ const kick=()=>{if(!animRaf)animRaf=requestAnimationFrame(animLoop)};
 const setTxt=(id,v)=>{const e=$(id);if(e)e.textContent=v};
 function drawFeatures(fc){
   const counts={flights:0,ships:0,'public-transport':0,cameras:0,cells:0,infrastructure:0,intelligence:0};
-  const still=[],seen=new Set(),nowMs=Date.now(),nowPerf=performance.now(),animate=live.size<=MAX_ANIMATED;
+  const still=[],cableFeatures=[],seen=new Set(),nowMs=Date.now(),nowPerf=performance.now(),animate=live.size<=MAX_ANIMATED;
   for(const [k,st] of live)if(!selected.has(st.props.lyr))live.delete(k);
   for(const f of fc.features||[]){
-    const p=f.properties||{},c=f.geometry?.coordinates;if(!c||c.length<2)continue;
+    const p=f.properties||{},geom=f.geometry,c=geom?.coordinates;if(!c||c.length<2)continue;
+    const l=logical(p);
+    if((geom.type==='LineString'||geom.type==='MultiLineString') && l==='intelligence' && (String(p.category||'').toLowerCase()==='cable'||String(p.subtype||'').toLowerCase().includes('cable')||String(p.name||p.label||'').toLowerCase().includes('cable'))){
+      cableFeatures.push({type:'Feature',geometry:geom,properties:Object.assign({},p,{lyr:'intelligence',lbl:safe(p.name||p.label||'Submarine cable')})});
+      continue;
+    }
+    if(geom.type!=='Point')continue;
     const lng=Number(c[0]),lat=Number(c[1]);if(!Number.isFinite(lng)||!Number.isFinite(lat))continue;
-    const l=logical(p);if(!selected.has(l))continue;
+    if(!selected.has(l))continue;
     if(l==='intelligence'){const vals=String(p.subtype||'other').toLowerCase().split(/[;,]/).map(x=>x.trim());if(!vals.some(v=>intelFilters.has(String(p.category)+':'+v)))continue}
     counts[l]=(counts[l]||0)+1;
     const key=objectKey(p,c);
@@ -372,6 +379,7 @@ function drawFeatures(fc){
   const trails=[];
   for(const st of live.values())if(st.trail.length>1)trails.push({type:'Feature',geometry:{type:'LineString',coordinates:st.trail},properties:{lyr:st.props.lyr}});
   setSource('still',{type:'FeatureCollection',features:still});
+  setSource('cables',{type:'FeatureCollection',features:cableFeatures});
   setSource('trails',{type:'FeatureCollection',features:trails});
   paintMoving();kick();
   updateIntelCounts();
@@ -400,7 +408,7 @@ async function loadMovement(){
   finally{movementBusy=false}
 }
 let moveTimer,movementTimer;
-function scheduleMovement(){clearTimeout(movementTimer);movementTimer=setTimeout(async()=>{await loadMovement();scheduleMovement()},movementFailures?Math.min(15000,5000*Math.pow(2,movementFailures)):5000)}
+function scheduleMovement(){clearTimeout(movementTimer);movementTimer=setTimeout(async()=>{await loadMovement();scheduleMovement()},movementFailures?Math.min(15000,5000*Math.pow(2,movementFailures)):3000)}
 
 /* pointer: hover tooltip + click-to-inspect */
 const tip=new maplibregl.Popup({closeButton:false,closeOnClick:false,offset:14,className:'tm-tip'});
