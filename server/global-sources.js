@@ -271,16 +271,28 @@ async function liveEvents(){
   return {features:out,sources};
 }
 router.get('/events',async function(req,res){try{res.json(await liveEvents())}catch(e){res.status(502).json({error:e.message})}});
+router.get('/health',function(req,res){res.json({ok:true,service:'trackmenow-global',sources:{flights:'OpenSky ADS-B',ships:aisUrl?'configured':'feed-required',transport:gtfsUrls.length?'configured':'feed-required',osm:'available',cells:cellKey?'configured':'api-key-required'}})});
 router.get('/movement',async function(req,res){
   var b=bbox(req.query.bbox);if(!b)return res.status(400).json({error:'invalid bbox'});
   var layers=String(req.query.layers||'flights,ships,public-transport,cameras,cells,infrastructure').split(',').map(function(x){return x.trim()});
+  var zoom=Math.max(0,Math.min(22,Number(req.query.zoom||0)));
   var features=[],sources=[];
-  if(layers.includes('flights'))try{var f=await flights(b);features.push.apply(features,f);sources.push({layer:'flights',status:'live',source:'OpenSky ADS-B',count:f.length})}catch(e){sources.push({layer:'flights',status:'error',source:'OpenSky ADS-B',error:e.message})}
-  if(layers.includes('ships'))try{var s=await ships(b);features.push.apply(features,s);sources.push({layer:'ships',status:aisUrl?'live':'api-key-or-feed-required',source:'AIS',count:s.length})}catch(e){sources.push({layer:'ships',status:'error',source:'AIS',error:e.message})}
-  if(layers.includes('public-transport')){var t=await transit();features.push.apply(features,t);var tx=[];try{tx=await taxis(b);features.push.apply(features,tx)}catch(e){}sources.push({layer:'public-transport',status:(gtfsUrls.length&&t.length)||tx.length?'live':gtfsUrls.length?'no-current-vehicles':'feed-required',source:'GTFS-Realtime'+(taxiUrl?' + taxi feed':''),count:t.length+tx.length})}
-  if(layers.includes('cameras')||layers.includes('infrastructure'))try{var a=await osmAssets(b);var aa=layers.includes('cameras')&&!layers.includes('infrastructure')?a.filter(function(x){return x.properties.category==='camera'}):a;features.push.apply(features,aa);sources.push({layer:'public-assets',status:'live',source:'OpenStreetMap/Overpass',count:aa.length})}catch(e){sources.push({layer:'public-assets',status:'error',source:'OpenStreetMap/Overpass',error:e.message})}
-  if(layers.includes('intelligence'))try{var ia=await intelligenceAssets(b);features.push.apply(features,ia);var cables=await submarineCables(b);features.push.apply(features,cables);sources.push({layer:'intelligence',status:'live',source:'OpenStreetMap/Overpass · ODbL',count:ia.length+cables.length,cables:cables.length})}catch(e){sources.push({layer:'intelligence',status:'error',source:'OpenStreetMap/Overpass · ODbL',error:e.message})}
-  if(layers.includes('cells'))try{var c=await cells(b);features.push.apply(features,c.features);sources.push({layer:'cells',status:c.status,source:c.source,count:c.features.length})}catch(e){sources.push({layer:'cells',status:'error',source:'OpenCelliD',error:e.message})}
+  async function run(layer,fn,meta){
+    try{var v=await Promise.race([fn(),new Promise(function(_,rej){setTimeout(function(){rej(Error('source timeout'))},9000)})]);if(Array.isArray(v))features.push.apply(features,v);else if(v&&Array.isArray(v.features))features.push.apply(features,v.features);sources.push(Object.assign({},meta,{status:'live',count:Array.isArray(v)?v.length:(v&&v.features?v.features.length:0)}))}
+    catch(e){sources.push(Object.assign({},meta,{status:'error',error:e.message}))}
+  }
+  var tasks=[];
+  if(layers.includes('flights'))tasks.push(run('flights',function(){return flights(b)},{layer:'flights',source:'OpenSky ADS-B'}));
+  if(layers.includes('ships'))tasks.push(run('ships',function(){return ships(b)},{layer:'ships',source:'AIS',configured:!!aisUrl}));
+  if(layers.includes('public-transport'))tasks.push(run('public-transport',async function(){var t=await transit(),tx=[];try{tx=await taxis(b)}catch(e){}return {features:t.concat(tx),_count:t.length+tx.length,_status:(gtfsUrls.length&&t.length)||tx.length?'live':gtfsUrls.length?'no-current-vehicles':'feed-required'}},{layer:'public-transport',source:'GTFS-Realtime'+(taxiUrl?' + taxi feed':'')}));
+  // Expensive global OSM/Overpass queries are deliberately zoom-gated so a world view cannot block every live feed.
+  if((layers.includes('cameras')||layers.includes('infrastructure'))&&zoom>=4)tasks.push(run('public-assets',async function(){var a=await osmAssets(b);return layers.includes('cameras')&&!layers.includes('infrastructure')?a.filter(function(x){return x.properties.category==='camera'}):a},{layer:'public-assets',source:'OpenStreetMap/Overpass'}));
+  else if(layers.includes('cameras')||layers.includes('infrastructure'))sources.push({layer:'public-assets',status:'zoom-in-required',source:'OpenStreetMap/Overpass',count:0});
+  if(layers.includes('intelligence')&&zoom>=4)tasks.push(run('intelligence',async function(){var ia=await intelligenceAssets(b),cables=[];try{cables=await submarineCables(b)}catch(e){}return ia.concat(cables)},{layer:'intelligence',source:'OpenStreetMap/Overpass · ODbL'}));
+  else if(layers.includes('intelligence'))sources.push({layer:'intelligence',status:'zoom-in-required',source:'OpenStreetMap/Overpass · ODbL',count:0});
+  if(layers.includes('cells')&&zoom>=7)tasks.push(run('cells',async function(){var x=await cells(b);return x.features},{layer:'cells',source:'OpenCelliD'}));
+  else if(layers.includes('cells'))sources.push({layer:'cells',status:'zoom-in-required',source:'OpenCelliD',count:0});
+  await Promise.all(tasks);
   res.json({type:'FeatureCollection',features:features,sources:sources,generatedAt:new Date().toISOString()});
 });
 router.get('/search',async function(req,res){
