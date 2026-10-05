@@ -78,7 +78,7 @@ function drawSpace(p){
  p.append(status('Space uses the existing TrackMeNow 3D engine. Earth, Moon and Mars are rendered as interactive 3D planetary views; Universe and Solar System use the orbital view.'));
  const g=el('div',{class:'tm-stack'});items.forEach(k=>g.append(card(k,k==='EARTH'?'Return to live Earth map.':k==='MOON'?'Open 3D Moon.':k==='MARS'?'Open 3D Mars.':k==='SOLAR SYSTEM'?'Open the Solar System view.':'Open the Universe view.',()=>{const e=engine();if(e)e.setScale(k==='SOLAR SYSTEM'?'solar':k.toLowerCase())},'OPEN 3D'));p.append(g);
 }
-const transitMap={AIR:'air',SHIP:'ships',RAILWAY:'rail',BOAT:'ships', 'PERSONAL JET':'air',TAXI:null,METRO:null,CAR:null,BIKES:null};
+const transitMap={AIR:'air',SHIP:'ships',RAILWAY:'rail',BOAT:'ships', 'PERSONAL JET':'air',TAXI:null,METRO:'transit',CAR:null,BIKES:null};
 function drawTransit(p){
  p.append(status('TRANSIT is one umbrella. Moving feeds are toggled from the available live source; categories without a dedicated live feed are reported as source-required rather than simulated.'));
  const g=el('div',{class:'tm-stack'});
