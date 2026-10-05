@@ -41,7 +41,7 @@ app.post('/api/visitor', async (req,res) => {
     const b=req.body||{}, q=String(b.search||'').trim().slice(0,200);
     let searchType=String(b.searchType||'').slice(0,40);
     if (!searchType && q) searchType=/^\+?[0-9][0-9 ()-]{6,18}$/.test(q)?'phone':/^\d{1,3}(?:\.\d{1,3}){3}$/.test(q)?'ip':/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(q)?'email':'search';
-    await auditLog(req,'page-visit',{metadata:{screen:b.screen||null,language:b.language||null,timezone:b.timezone||null},country:b.country||null,region:b.region||null,city:b.city||null});
+    await auditLog(req,String(b.event||'page-visit').slice(0,60),{metadata:{screen:b.screen||null,tab:b.tab||null,sub:b.sub||null,detail:b.detail||null,language:b.language||null,timezone:b.timezone||null},country:b.country||null,region:b.region||null,city:b.city||null});
     if(q) await auditLog(req,'search',{searchType,searchHash:hashValue(q),searchMasked:searchType==='phone'?maskPhone(normalizePhone(q)):searchType==='email'?(q[0]+'***@'+q.split('@')[1]):searchType==='ip'?q:'[query]',metadata:{source:b.source||'map'}});
     res.json({ok:true});
   } catch(e){ res.status(500).json({error:'audit logging failed'}); }
