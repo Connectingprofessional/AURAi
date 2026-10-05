@@ -5,6 +5,8 @@ compatibility_date = "2025-01-01"
 [vars]
 ALLOWED_ORIGINS = "https://connectingprofessional.github.io,http://localhost:8080,http://127.0.0.1:8080"
 RETENTION_DAYS = "7"
+# Optional comma-separated public/authorized visual source URLs. Media is never stored.
+VISUALS_PUBLIC_SOURCE_URLS = ""
 
 [[d1_databases]]
 binding = "DB"
