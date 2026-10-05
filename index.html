@@ -6,179 +6,25 @@
 <title>TrackMeNow — Global Intelligence</title>
 <link rel="stylesheet" href="./vendor/maplibre-gl/maplibre-gl.css">
 <style>
-*{box-sizing:border-box}html,body,#map{height:100%;margin:0;width:100%}
+*{box-sizing:border-box}html,body{height:100%;margin:0;width:100%}
 body{overflow:hidden;background:#05090d;color:#edf4f8;font-family:system-ui,sans-serif}
 #map{position:fixed;inset:0;z-index:1;background:#0a1520}
-.topbar{position:fixed;z-index:1200;top:12px;left:14px;right:14px;height:46px;display:flex;align-items:center;gap:9px;pointer-events:none}
-.topbar>*{pointer-events:auto}
-.brand{height:38px;display:flex;align-items:center;padding:0 12px;border:1px solid rgba(255,255,255,.13);border-radius:8px;background:rgba(7,11,16,.78);font-size:12px;font-weight:950;letter-spacing:1.8px}
-.brand span{color:#45a8ff}
-.search{height:38px;display:flex;flex:1;max-width:520px;margin:auto;border:1px solid rgba(255,255,255,.13);border-radius:8px;background:rgba(7,11,16,.78);overflow:hidden}
-.search input{flex:1;border:0;outline:0;background:transparent;color:#fff;padding:0 13px;font-size:11px}
-.btn{height:38px;border:1px solid rgba(255,255,255,.13);border-radius:8px;background:rgba(7,11,16,.78);color:#eaf4fa;padding:0 12px;font-size:10px;font-weight:800;cursor:pointer}
-.search .btn{border:0;border-left:1px solid rgba(255,255,255,.13);border-radius:0;background:rgba(69,168,255,.13);color:#9fd2ff}.adminBtn{font-size:16px;width:38px;padding:0}
-.status{position:fixed;z-index:1150;left:14px;bottom:12px;padding:7px 9px;border:1px solid rgba(255,255,255,.13);border-radius:7px;background:rgba(7,11,16,.78);font-size:10px;color:#b9c9d2}
+#legacy-controls{display:none}
+#status{display:none}
 </style>
 </head>
 <body>
 <div id="map"></div>
-<div class="topbar">
-  <div class="brand">TRACK<span>ME</span>NOW</div>
-  <div class="search">
-    <input id="searchInput" placeholder="Search IP, place, device, Cell ID, MCC/MNC, mobile number…" />
-    <button class="btn" id="searchBtn" type="button">Search</button>
+<div id="legacy-controls">
+  <div class="topbar">
+    <div class="brand">TRACK<span>ME</span>NOW</div>
+    <div class="search"><input id="searchInput"><button id="searchBtn" type="button">Search</button></div>
+    <button id="gpsBtn" type="button">GPS</button><button id="adminBtn" type="button">Admin</button>
   </div>
-  <button class="btn" id="gpsBtn" type="button">GPS</button><button class="btn adminBtn" id="adminBtn" type="button" title="Admin visibility log" aria-label="Admin visibility log">◉</button>
 </div>
-<div id="status" class="status">Starting…</div>
+<div id="status">Starting…</div>
 <script src="./vendor/maplibre-gl/maplibre-gl.js"></script>
 <script src="./trackmenow.js?v=global-live-8"></script>
-<script>
-(function(){
-  var input=document.getElementById('searchInput');
-  var adminBtn=document.getElementById('adminBtn');
-  var btn=document.getElementById('searchBtn');
-  var gps=document.getElementById('gpsBtn');
-  function logVisit(search,searchType){try{fetch(apiBase()+'/api/visitor',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({search:search||'',searchType:searchType||'',screen:window.screen?window.screen.width+'x'+window.screen.height:'',language:navigator.language,timezone:Intl.DateTimeFormat().resolvedOptions().timeZone,source:'map'})}).catch(function(){});}catch(e){}}
-  logVisit('','page-visit');
-  function go(){
-    var q=(input&&input.value||'').trim();
-    if(q) logVisit(q,/^\+?[0-9][0-9 ()-]{6,18}$/.test(q)?'phone':/^\d{1,3}(?:\.\d{1,3}){3}$/.test(q)?'ip':/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(q)?'email':'search');
-    if(!q||!window.map||!window.map.flyTo) return;
-    if(/^\+?[0-9][0-9 ()-]{6,18}$/.test(q)){ mobileLookup(q); return; }
-    if(/^\d{1,3}(?:\.\d{1,3}){3}$/.test(q) || /^(my ip|myip)$/i.test(q)){ ipLookup(q); return; }
-    if(window.tmFindObject){ window.tmFindObject(q).then(function(found){ if(!found) geocode(q); }).catch(function(){ geocode(q); }); return; }
-    geocode(q);
-  }
-  function ipLookup(q){
-    var path=/^(my ip|myip)$/i.test(q) ? '/api/integrations/ip/my' : '/api/integrations/ip/lookup?ip='+encodeURIComponent(q);
-    setMobileStatus('IP GEOLOCATION: looking up '+q+'…');
-    fetch(apiBase()+path,{cache:'no-store'})
-      .then(function(r){ return r.json().catch(function(){return {};}).then(function(j){return {ok:r.ok,status:r.status,data:j};}); })
-      .then(function(x){
-        if(!x.ok){ setMobileStatus((x.data&&x.data.error)||'IP geolocation failed.'); return; }
-        var d=x.data||{}, lat=Number(d.latitude), lon=Number(d.longitude);
-        if(!Number.isFinite(lat)||!Number.isFinite(lon)){ setMobileStatus('IP found, but no approximate coordinates were returned.'); return; }
-        var label=[d.city,d.region_name,d.country_name].filter(Boolean).join(', ');
-        var isp=(d.connection&&d.connection.isp)||d.isp||'';
-        var asn=(d.connection&&d.connection.asn)||d.asn||'';
-        var radiusKm=Number(d.accuracy_radius);
-        if(!Number.isFinite(radiusKm)||radiusKm<=0) radiusKm=25;
-        radiusKm=Math.max(0.5,Math.min(radiusKm,1000));
-        window.map.flyTo({center:[lon,lat],zoom:Math.max(window.map.getZoom(),7),duration:1200});
-        if(window.maplibregl&&window.maplibregl.Marker){
-          if(window.tmIpMarker) window.tmIpMarker.remove();
-          window.tmIpMarker=new window.maplibregl.Marker({color:'#45a8ff'}).setLngLat([lon,lat]).addTo(window.map);
-        }
-        if(window.maplibregl&&window.maplibregl.Popup){
-          if(window.tmIpPopup) window.tmIpPopup.remove();
-          window.tmIpPopup=new window.maplibregl.Popup({closeButton:true,closeOnClick:false}).setLngLat([lon,lat])
-            .setHTML('<b>IP APPROXIMATE LOCATION</b><br>'+label+'<br>IP: '+(d.ip||q)+'<br>'+(isp?'ISP: '+isp+'<br>':'')+(asn?'ASN: '+asn+'<br>':'')+'Estimated radius: ±'+radiusKm.toFixed(1)+' km')
-            .addTo(window.map);
-        }
-        setMobileStatus('IP APPROXIMATE: '+label+' · '+(d.ip||q)+' · ±'+radiusKm.toFixed(1)+' km'+(isp?' · '+isp:''));
-      })
-      .catch(function(){ setMobileStatus('Could not reach the TrackMeNow IP geolocation backend.'); });
-  }
-
-  function geocode(q){
-    fetch('https://nominatim.openstreetmap.org/search?format=json&limit=1&q='+encodeURIComponent(q))
-      .then(function(r){return r.json()})
-      .then(function(j){
-        if(!j||!j[0]) return;
-        window.map.flyTo({center:[parseFloat(j[0].lon),parseFloat(j[0].lat)],zoom:10,duration:1200});
-      }).catch(function(){});
-  }
-  function apiBase(){
-    var host=String(window.location.hostname||'').toLowerCase();
-    return (host==='localhost'||host==='127.0.0.1') ? window.location.origin : 'https://wispy-bush-9aee.recreationeeraj.workers.dev';
-  }
-  function mobileLookup(q){
-    var base=apiBase();
-    var viewerKey='tmViewerToken:'+q.replace(/\D/g,'');
-    var viewerToken=localStorage.getItem(viewerKey)||sessionStorage.getItem('tmViewerToken')||'';
-    setMobileStatus('Searching the authorized device…');
-    fetch(base+'/api/devices/lookup?phone='+encodeURIComponent(q),{
-      headers:viewerToken?{'Authorization':'Bearer '+viewerToken}:{}
-    }).then(function(r){
-      return r.json().catch(function(){return {};}).then(function(j){return {ok:r.ok,status:r.status,data:j};});
-    }).then(function(x){
-      if(!x.ok){
-        if(x.status===401||x.status===403){
-          localStorage.removeItem(viewerKey);
-        sessionStorage.removeItem('tmViewerToken');
-          if(x.status===401){ askForCode(q,viewerKey); return; }
-          setMobileStatus('Access expired. Authorize this device once again to restore trusted access.');
-          return;
-        }
-        setMobileStatus((x.data&&x.data.error)||'Device lookup failed.');
-        return;
-      }
-      var d=x.data&&x.data.location;
-      if(!d || typeof d.lat!=='number' || typeof d.lon!=='number'){
-        setMobileStatus((x.data&&x.data.message)||'The device is authorized, but no GPS telemetry has been recorded yet.');
-        return;
-      }
-      window.map.flyTo({center:[d.lon,d.lat],zoom:15,duration:1400});
-      var when=d.recordedAt?new Date(d.recordedAt).toLocaleString():'unknown time';
-      setMobileStatus('LIVE GPS: '+q+' — '+d.lat.toFixed(6)+', '+d.lon.toFixed(6)+' · '+when);
-    }).catch(function(){
-      setMobileStatus('Could not reach the TrackMeNow device API.');
-    });
-  }
-  function setMobileStatus(msg){ var s=document.getElementById('status'); if(s) s.textContent=msg; }
-  if(btn) btn.onclick=go;
-  function askForCode(q,viewerKey){
-    var base=apiBase();
-    var value=window.prompt('Enter the 6-digit code shown on the phone you are searching (the device owner shares it):','');
-    if(value===null){ setMobileStatus('Search cancelled.'); return; }
-    value=value.trim();
-    if(!/^\d{6}$/.test(value)){ setMobileStatus('The code is 6 digits. Search the number again to retry.'); return; }
-    setMobileStatus('Authorizing device…');
-    fetch(base+'/api/devices/pair',{
-      method:'POST',
-      headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({pairingCode:value})
-    }).then(function(r){
-      return r.json().catch(function(){return {};}).then(function(j){return {ok:r.ok,data:j};});
-    }).then(function(x){
-      if(!x.ok||!x.data||!x.data.viewerToken){ setMobileStatus((x.data&&x.data.error)||'Pairing failed.'); return; }
-      localStorage.setItem(viewerKey,x.data.viewerToken);
-      sessionStorage.setItem('tmViewerToken',x.data.viewerToken);
-      setMobileStatus('Trusted access enabled for '+q+'. Loading location…');
-      mobileLookup(q);
-    }).catch(function(){ setMobileStatus('Could not reach the TrackMeNow pairing API.'); });
-  }
-  if(input) input.addEventListener('keydown',function(e){if(e.key==='Enter')go();});
-  var gpsWatchId=null, gpsMarker=null;
-  function stopGpsWatch(){
-    if(gpsWatchId!==null && navigator.geolocation){ navigator.geolocation.clearWatch(gpsWatchId); gpsWatchId=null; }
-    if(gpsMarker){ gpsMarker.remove(); gpsMarker=null; }
-  }
-  function startGpsWatch(){
-    if(!navigator.geolocation||!window.map) return;
-    if(gpsWatchId!==null) return;
-    setMobileStatus('LIVE GPS: requesting device location…');
-    gpsWatchId=navigator.geolocation.watchPosition(function(p){
-      var lon=p.coords.longitude, lat=p.coords.latitude;
-      if(window.map){
-        if(!gpsMarker && window.maplibregl && window.maplibregl.Marker){
-          gpsMarker=new window.maplibregl.Marker({color:'#43e0a0'}).setLngLat([lon,lat]).addTo(window.map);
-        } else if(gpsMarker){ gpsMarker.setLngLat([lon,lat]); }
-        window.map.flyTo({center:[lon,lat],zoom:Math.max(window.map.getZoom(),12),duration:500});
-      }
-      var acc=p.coords.accuracy!=null?Math.round(p.coords.accuracy):'?';
-      setMobileStatus('LIVE GPS: '+lat.toFixed(6)+', '+lon.toFixed(6)+' · ±'+acc+' m');
-    },function(err){
-      setMobileStatus('GPS unavailable: '+(err&&err.message?err.message:'permission denied'));
-      stopGpsWatch();
-    },{enableHighAccuracy:true,maximumAge:3000,timeout:15000});
-  }
-  if(adminBtn) adminBtn.onclick=function(){window.location.href='./admin.html';};
-  if(gps) gps.onclick=function(){
-    if(gpsWatchId!==null) stopGpsWatch(); else startGpsWatch();
-  };
-})();
-</script>
+<script src="./visuals-ui.js?v=1"></script>
 </body>
 </html>
