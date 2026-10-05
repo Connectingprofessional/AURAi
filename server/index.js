@@ -26,6 +26,23 @@ app.use(express.static(ROOT, {
   }
 }));
 app.use('/api/global', globalSourcesRouter);
+app.get('/api/cell',async(req,res)=>{
+  const key=process.env.OPENCELLID_API_KEY;
+  const mcc=Number(req.query.mcc),mnc=Number(req.query.mnc),lac=Number(req.query.lac),cellid=Number(req.query.cellid);
+  const radio=String(req.query.radio||'').trim().toUpperCase();
+  if(!key) return res.status(503).json({error:'OpenCelliD API is not configured on the server'});
+  if(![mcc,mnc,lac,cellid].every(Number.isInteger)) return res.status(400).json({error:'mcc,mnc,lac,cellid are required integers'});
+  const p=new URLSearchParams({key,mcc:String(mcc),mnc:String(mnc),lac:String(lac),cellid:String(cellid),format:'json'});
+  if(['GSM','UMTS','LTE','NBIOT','NR','CDMA'].includes(radio)) p.set('radio',radio);
+  try{
+    const r=await fetch('https://opencellid.org/cell/get?'+p.toString(),{headers:{'User-Agent':'TrackMeNow/0.2'}});
+    const j=await r.json();
+    if(!r.ok) return res.status(r.status).json({error:'OpenCelliD HTTP '+r.status});
+    if(!j || j.stat==='fail' || !Number.isFinite(Number(j.lat)) || !Number.isFinite(Number(j.lon))) return res.status(404).json(j||{error:'cell not found'});
+    res.set('Cache-Control','public,max-age=300');
+    res.json(j);
+  }catch(e){ res.status(502).json({error:'OpenCelliD lookup failed',detail:e.message}); }
+});
 app.get('/api/ads', (req,res)=>{
   const apiKey=process.env.APPLIXIR_API_KEY||null;
   if(!apiKey)return res.status(404).json({error:'rewarded ads not configured'});
