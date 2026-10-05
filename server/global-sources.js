@@ -362,8 +362,8 @@ router.get('/visuals',function(req,res){
   const category=String(req.query.category||'LIVE').toUpperCase();
   const allowed=['LIVE','CAMERAS','WEBCAMS','IMAGES','VIDEOS','CLIPS','SOURCE HISTORY'];
   const selected=allowed.includes(category)?category:'LIVE';
-  const sources=String(process.env.VISUALS_PUBLIC_SOURCE_URLS||'').split(',').map(function(s){return s.trim()}).filter(Boolean).map(function(url,i){
-    return {id:'configured-'+i,type:'public',status:'LIVE',title:'Configured public visual source',provider:'TrackMeNow public source adapter',url:url,category:selected};
+  const sources=selected==='SOURCE HISTORY'?[]:String(process.env.VISUALS_PUBLIC_SOURCE_URLS||'').split(',').map(function(s){return s.trim()}).filter(Boolean).map(function(url,i){
+    return {id:'configured-'+i,type:'public',status:selected==='LIVE'?'LIVE':'SOURCE',title:'Configured public visual source',provider:'TrackMeNow public source adapter',url:url,category:selected};
   });
   res.set('Cache-Control','no-store');
   res.json({ok:true,storage:'none',policy:'TrackMeNow does not store or copy public visual media.',category:selected,sources:sources,labels:['LIVE','RECORDED','ARCHIVED','USER SHARED','SOURCE OFFLINE']});
