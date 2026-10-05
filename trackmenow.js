@@ -1426,7 +1426,7 @@
         gibs: { type: 'raster', tileSize: 256, maxzoom: 9, tiles: ['https://gibs.earthdata.nasa.gov/wmts/epsg3857/best/VIIRS_SNPP_CorrectedReflectance_TrueColor/default/' + date + '/GoogleMapsCompatible_Level9/{z}/{y}/{x}.jpg'] },
         labels: { type: 'raster', tileSize: 256, maxzoom: 19, tiles: ['https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}'] },
         street: { type: 'raster', tileSize: 256, maxzoom: 19, tiles: ['https://tile.openstreetmap.org/{z}/{x}/{y}.png'], attribution: '© OpenStreetMap contributors' },
-        terrainSource: { type: 'raster-dem', url: 'https://tiles.mapterhorn.com/tilejson.json', tileSize: 256 }
+        terrainSource: { type: 'raster-dem', url: 'https://tiles.mapterhorn.com/tilejson.json', tileSize: 256 },
         terminator: { type: 'geojson', data: dayNight ? terminatorFeatures(new Date()) : { type: 'FeatureCollection', features: [] } },
         forecast: { type: 'geojson', data: { type: 'FeatureCollection', features: [] } },
         eonet: { type: 'geojson', data: { type: 'FeatureCollection', features: [] } },
