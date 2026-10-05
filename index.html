@@ -28,18 +28,16 @@ body{overflow:hidden;background:#05090d;color:#edf4f8;font-family:system-ui,sans
     <input id="searchInput" placeholder="Search place, device, Cell ID, MCC/MNC, mobile number…" />
     <button class="btn" id="searchBtn" type="button">Search</button>
   </div>
-  <button class="btn" id="accessBtn" type="button">ACCESS</button>
   <button class="btn" id="gpsBtn" type="button">GPS</button>
 </div>
 <div id="status" class="status">Starting…</div>
 <script src="./vendor/maplibre-gl/maplibre-gl.js"></script>
-<script src="./trackmenow.js?v=transport-3"></script>
+<script src="./trackmenow.js?v=transport-4"></script>
 <script>
 (function(){
   var input=document.getElementById('searchInput');
   var btn=document.getElementById('searchBtn');
   var gps=document.getElementById('gpsBtn');
-  var access=document.getElementById('accessBtn');
   function go(){
     var q=(input&&input.value||'').trim();
     if(!q||!window.map||!window.map.flyTo) return;
@@ -63,7 +61,7 @@ body{overflow:hidden;background:#05090d;color:#edf4f8;font-family:system-ui,sans
     var base=apiBase();
     var viewerToken=sessionStorage.getItem('tmViewerToken')||'';
     if(!viewerToken){
-      setMobileStatus('ACCESS required: use ACCESS to enter the authorized viewer token before searching a device.');
+      askForCode(q);
       return;
     }
     setMobileStatus('Searching the authorized device…');
@@ -75,7 +73,7 @@ body{overflow:hidden;background:#05090d;color:#edf4f8;font-family:system-ui,sans
       if(!x.ok){
         if(x.status===401||x.status===403){
           sessionStorage.removeItem('tmViewerToken');
-          setMobileStatus('Viewer access was rejected. Use ACCESS to enter a valid authorized token.');
+          setMobileStatus('Access expired or was rejected. Search the number again and enter the new code from the device.');
           return;
         }
         setMobileStatus((x.data&&x.data.error)||'Device lookup failed.');
@@ -95,44 +93,25 @@ body{overflow:hidden;background:#05090d;color:#edf4f8;font-family:system-ui,sans
   }
   function setMobileStatus(msg){ var s=document.getElementById('status'); if(s) s.textContent=msg; }
   if(btn) btn.onclick=go;
-  if(access) access.onclick=function(){
+  function askForCode(q){
     var base=apiBase();
-    var current=sessionStorage.getItem('tmViewerToken')||'';
-    var value=window.prompt('Enter the device pairing code, or an existing authorized viewer token:',current);
-    if(value===null) return;
+    var value=window.prompt('Enter the 6-digit code shown on the phone you are searching (the device owner shares it):','');
+    if(value===null){ setMobileStatus('Search cancelled.'); return; }
     value=value.trim();
-    if(!value){
-      sessionStorage.removeItem('tmViewerToken');
-      setMobileStatus('Viewer access cleared.');
-      return;
-    }
-    if(/^\\d{6}$/.test(value)){
-      setMobileStatus('Authorizing device…');
-      fetch(base+'/api/devices/pair',{
-        method:'POST',
-        headers:{'Content-Type':'application/json'},
-        body:JSON.stringify({pairingCode:value})
-      }).then(function(r){
-        return r.json().catch(function(){return {};}).then(function(j){return {ok:r.ok,status:r.status,data:j};});
-      }).then(function(x){
-        if(!x.ok){
-          setMobileStatus((x.data&&x.data.error)||'Pairing failed.');
-          return;
-        }
-        if(x.data&&x.data.viewerToken){
-          sessionStorage.setItem('tmViewerToken',x.data.viewerToken);
-          setMobileStatus('Device authorized: '+(x.data.label||x.data.maskedPhone||'TrackMeNow device')+'. You can now search its mobile number.');
-        } else {
-          setMobileStatus('Pairing succeeded but no viewer token was returned.');
-        }
-      }).catch(function(){
-        setMobileStatus('Could not reach the TrackMeNow pairing API.');
-      });
-      return;
-    }
-    sessionStorage.setItem('tmViewerToken',value);
-    setMobileStatus('Viewer access token saved for this browser session.');
-  };
+    if(!/^\d{6}$/.test(value)){ setMobileStatus('The code is 6 digits. Search the number again to retry.'); return; }
+    setMobileStatus('Authorizing device…');
+    fetch(base+'/api/devices/pair',{
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({pairingCode:value})
+    }).then(function(r){
+      return r.json().catch(function(){return {};}).then(function(j){return {ok:r.ok,data:j};});
+    }).then(function(x){
+      if(!x.ok||!x.data||!x.data.viewerToken){ setMobileStatus((x.data&&x.data.error)||'Pairing failed.'); return; }
+      sessionStorage.setItem('tmViewerToken',x.data.viewerToken);
+      mobileLookup(q);
+    }).catch(function(){ setMobileStatus('Could not reach the TrackMeNow pairing API.'); });
+  }
   if(input) input.addEventListener('keydown',function(e){if(e.key==='Enter')go();});
   if(gps) gps.onclick=function(){
     if(!navigator.geolocation||!window.map) return;
