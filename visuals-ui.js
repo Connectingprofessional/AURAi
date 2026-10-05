@@ -62,17 +62,48 @@ function description(t,s){
  return 'Framework tab ready. The map remains the primary view and this panel is the only place for controls.';
 }
 function drawSearch(panel){
- var row=el('div',{class:'tm-row'}),input=el('input',{class:'tm-input',placeholder:'City, place, coordinates, device, Cell ID, aircraft…',id:'tmSearch'}),go=el('button',{class:'tm-action',type:'button'},'SEARCH');row.appendChild(input);row.appendChild(go);panel.appendChild(row);
+ var row=el('div',{class:'tm-row'}),input=el('input',{class:'tm-input',placeholder:'City, place, coordinates, IP, device, Cell ID, aircraft…',id:'tmSearch'}),go=el('button',{class:'tm-action',type:'button'},'SEARCH');row.appendChild(input);row.appendChild(go);panel.appendChild(row);
+ var note=el('div',{class:'tm-status'},'Phone lookup is consent-based; phone number alone never reveals a location. IP results are approximate.');panel.appendChild(note);
  go.onclick=doSearch;input.onkeydown=function(e){if(e.key==='Enter')doSearch()};
 }
 function doSearch(){
  var q=(document.getElementById('tmSearch').value||'').trim();if(!q)return;
- if(window.tmFindObject){window.tmFindObject(q).catch(function(){})}
- else fetch(API+'/api/global/search?q='+encodeURIComponent(q)).then(function(r){return r.json()}).then(function(j){var x=j.results&&j.results[0];if(x&&window.map&&window.map.flyTo)window.map.flyTo({center:[x.lon,x.lat],zoom:10,duration:1000})}).catch(function(){});
+ if(/^\\+?[0-9][0-9 ()-]{6,18}$/.test(q)){mobileLookup(q);return}
+ if(/^\\d{1,3}(?:\\.\\d{1,3}){3}$/.test(q)||/^(my ip|myip)$/i.test(q)){ipLookup(q);return}
+ if(window.tmFindObject){window.tmFindObject(q).then(function(found){if(!found)globalSearch(q)}).catch(function(){globalSearch(q)})}
+ else globalSearch(q);
 }
+function globalSearch(q){
+ fetch(API+'/api/global/search?q='+encodeURIComponent(q)).then(function(r){return r.json()}).then(function(j){var x=j.results&&j.results[0];if(x&&window.map&&window.map.flyTo)window.map.flyTo({center:[x.lon,x.lat],zoom:10,duration:1000})}).catch(function(){});
+}
+function ipLookup(q){
+ var path=/^(my ip|myip)$/i.test(q)?'/api/integrations/ip/my':'/api/integrations/ip/lookup?ip='+encodeURIComponent(q);
+ fetch(API+path,{cache:'no-store'}).then(function(r){return r.json().then(function(j){return {ok:r.ok,data:j}})}).then(function(x){
+   if(!x.ok)return;
+   var d=x.data||{},lat=Number(d.latitude),lon=Number(d.longitude);if(!Number.isFinite(lat)||!Number.isFinite(lon))return;
+   if(window.map&&window.map.flyTo)window.map.flyTo({center:[lon,lat],zoom:Math.max(window.map.getZoom(),7),duration:1000});
+ }).catch(function(){});
+}
+function mobileLookup(q){
+ var key='tmViewerToken:'+q.replace(/\\D/g,''),tok=localStorage.getItem(key)||sessionStorage.getItem('tmViewerToken')||'';
+ fetch(API+'/api/devices/lookup?phone='+encodeURIComponent(q),{headers:tok?{'Authorization':'Bearer '+tok}:{}}).then(function(r){return r.json().then(function(j){return {ok:r.ok,status:r.status,data:j}})}).then(function(x){
+   if(!x.ok){if(x.status===401){var code=window.prompt('Enter the 6-digit pairing code shown on the consenting device:','');if(!/^\\d{6}$/.test(String(code||'')))return;
+     return fetch(API+'/api/devices/pair',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({pairingCode:String(code).trim()})}).then(function(r){return r.json()}).then(function(j){if(j.viewerToken){localStorage.setItem(key,j.viewerToken);sessionStorage.setItem('tmViewerToken',j.viewerToken);mobileLookup(q)}})
+   } return;
+   var d=x.data&&x.data.location;if(d&&Number.isFinite(Number(d.lat))&&Number.isFinite(Number(d.lon))&&window.map)window.map.flyTo({center:[Number(d.lon),Number(d.lat)],zoom:15,duration:1000});
+ }).catch(function(){});
+}
+var gpsWatchId=null,gpsMarker=null;
 function drawGps(panel){
- var c=el('div',{class:'tm-card'});c.appendChild(el('b',{},'LIVE GPS'));c.appendChild(el('p',{},'Browser GPS is permission-based. Start it only when you want this device tracked.'));var b=el('button',{class:'tm-action',type:'button'},'START GPS');c.appendChild(b);panel.appendChild(c);
- b.onclick=function(){if(!navigator.geolocation){b.textContent='GPS UNAVAILABLE';return}navigator.geolocation.getCurrentPosition(function(p){if(window.map&&window.map.flyTo)window.map.flyTo({center:[p.coords.longitude,p.coords.latitude],zoom:15,duration:1000});b.textContent='GPS: '+Math.round(p.coords.accuracy||0)+' m';},function(){b.textContent='PERMISSION DENIED'},{enableHighAccuracy:true,maximumAge:3000,timeout:15000})};
+ var c=el('div',{class:'tm-card'});c.appendChild(el('b',{},'LIVE GPS'));c.appendChild(el('p',{},'Browser GPS is permission-based. Start/stop live tracking from this tab.'));var b=el('button',{class:'tm-action',type:'button'},'START LIVE GPS');c.appendChild(b);panel.appendChild(c);
+ b.onclick=function(){
+   if(!navigator.geolocation){b.textContent='GPS UNAVAILABLE';return}
+   if(gpsWatchId!==null){navigator.geolocation.clearWatch(gpsWatchId);gpsWatchId=null;if(gpsMarker){gpsMarker.remove();gpsMarker=null}b.textContent='START LIVE GPS';return}
+   gpsWatchId=navigator.geolocation.watchPosition(function(p){
+     if(window.map){var ll=[p.coords.longitude,p.coords.latitude];if(!gpsMarker&&window.maplibregl&&window.maplibregl.Marker)gpsMarker=new window.maplibregl.Marker({color:'#43e0a0'}).setLngLat(ll).addTo(window.map);else if(gpsMarker)gpsMarker.setLngLat(ll);window.map.flyTo({center:ll,zoom:Math.max(window.map.getZoom(),12),duration:400)}
+     b.textContent='LIVE GPS ±'+Math.round(p.coords.accuracy||0)+' m';
+   },function(){b.textContent='GPS PERMISSION ERROR'}, {enableHighAccuracy:true,maximumAge:3000,timeout:15000});
+ };
 }
 function drawVisuals(panel){
  var intro=el('div',{class:'tm-status'},'Visuals is a live/public-resource layer. TrackMeNow stores no camera, image, video or clip media.');panel.appendChild(intro);
