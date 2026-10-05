@@ -83,9 +83,9 @@
   let scale = 'earth', earthMode = 'flat', dayNight = false, openDrawer = null;
   let globe = null, og = null, maplibre = null;
   let solarZoom = 1, solarCanvas = null, solarCtx = null, animId = 0;
-  let activeWx = { satellite: true, live: true, radar: false, dark: false, precip: false, wind: false, temp: false, humidity: false, pressure: false, events: true, quakes: true, fires: false };
+  let activeWx = { satellite: true, live: false, radar: false, dark: false, precip: false, wind: false, temp: true, humidity: false, pressure: false, events: false, quakes: false, fires: false };
   let rvHost = '', rvFrames = [], rvIndex = 0, playTimer = null, playing = false;
-  let terminatorTimer = null, forecastTimer = null, gibsDayOffset = -1;
+  let terminatorTimer = null, forecastTimer = null, gibsDayOffset = 0;
 
   function setStatus(msg, ok) {
     const el = $('status');
@@ -1099,9 +1099,10 @@
       air: { label: 'AIR', noun: 'aircraft', file: 'flights.json', branch: 'live-data', icon: 'tm-air', color: '#58c8ff' },
       ships: { label: 'SHIPS', noun: 'vessels', file: 'ships.json', branch: 'live-data', icon: 'tm-ship', color: '#43e0a0' },
       transit: { label: 'TRANSIT', noun: 'vehicles', file: 'transit.json', branch: 'live-data', icon: 'tm-bus', color: '#ffb347' },
+      rail: { label: 'RAIL', noun: 'trains', file: 'rail.json', branch: 'live-data', icon: 'tm-rail', color: '#ffcf66' },
       cells: { label: 'MOBILE', noun: 'tower cells', file: 'cells.json', branch: 'cell-data', color: '#d28bff' }
     },
-    on: { air: true, ships: true, transit: true, cells: false },
+    on: { air: true, ships: true, transit: true, rail: true, cells: false },
     data: {}, err: {}, sel: null, follow: false, timer: null, refresh: null
   };
   function tpUrl(k) { const d = TP.kinds[k]; return TP_BASE + '/' + d.branch + '/' + d.file + '?t=' + Math.floor(Date.now() / 120000); }
@@ -1125,8 +1126,9 @@
     tpIcon('tm-air', [[16, 2], [19, 12], [30, 19], [30, 22], [19, 19], [18, 27], [23, 30], [23, 31], [16, 29], [9, 31], [9, 30], [14, 27], [13, 19], [2, 22], [2, 19], [13, 12]]);
     tpIcon('tm-ship', [[16, 3], [23, 13], [23, 29], [9, 29], [9, 13]]);
     tpIcon('tm-bus', [[16, 4], [27, 28], [16, 22], [5, 28]]);
+    tpIcon('tm-rail', [[6, 8], [26, 8], [26, 25], [22, 25], [20, 29], [12, 29], [10, 25], [6, 25]]);
     const empty = { type: 'FeatureCollection', features: [] };
-    ['air', 'ships', 'transit'].forEach(function (k) {
+    ['air', 'ships', 'transit', 'rail'].forEach(function (k) {
       if (!maplibre.getSource('tp-' + k)) maplibre.addSource('tp-' + k, { type: 'geojson', data: empty });
       if (!maplibre.getLayer('tp-' + k)) maplibre.addLayer({ id: 'tp-' + k, type: 'symbol', source: 'tp-' + k, layout: { 'icon-image': TP.kinds[k].icon, 'icon-rotate': ['get', 'h'], 'icon-rotation-alignment': 'map', 'icon-allow-overlap': true, 'icon-ignore-placement': true, 'icon-size': ['interpolate', ['linear'], ['zoom'], 1, 0.3, 6, 0.55, 11, 0.9] } });
       maplibre.on('click', 'tp-' + k, function (e) { const f = e.features && e.features[0]; if (f) tpSelect(k, f.properties.i, false); });
@@ -1144,7 +1146,7 @@
     if (!maplibre.getLayer('tp-sel')) maplibre.addLayer({ id: 'tp-sel', type: 'circle', source: 'tp-sel', paint: { 'circle-radius': 16, 'circle-color': 'rgba(0,0,0,0)', 'circle-stroke-width': 2.5, 'circle-stroke-color': '#ffffff' } });
     maplibre.on('dragstart', function () { if (TP.follow) { TP.follow = false; tpCard(); } });
     tpApply();
-    Promise.all(['air', 'ships', 'transit'].map(function (k) { return tpLoad(k); })).then(function () {
+    Promise.all(['air', 'ships', 'transit', 'rail'].map(function (k) { return tpLoad(k); })).then(function () {
       tpTick();
       tpStatus();
     });
@@ -1195,7 +1197,7 @@
   const nowS = Date.now() / 1000;
   const z = maplibre.getZoom();
 
-  ['air', 'ships', 'transit'].forEach(function (k) {
+  ['air', 'ships', 'transit', 'rail'].forEach(function (k) {
     const src = maplibre.getSource('tp-' + k);
     const d = TP.data[k];
     if (!src) return;
@@ -1455,7 +1457,8 @@
       try { maplibre.resize(); } catch (e) {}
       try { tpSetup(); } catch (e) { console.warn('transport layers', e); }
       applyLayers(); loadActivity();
-      setStatus('EARTH · ' + (useGlobe ? '3D' : 'FLAT') + ' · live feeds', true);
+      setStatus('EARTH · ' + (useGlobe ? '3D' : 'FLAT') + ' · transport + terrain + current weather', true);
+      if (activeForecastMode()) refreshForecast().catch(function () {});
       if (dayNight) terminatorTimer = setInterval(function () { applyDayNight(); }, 60000);
     });
     maplibre.on('moveend', function () {
