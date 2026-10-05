@@ -206,6 +206,24 @@ app.post('/api/devices/pair', (req, res) => {
   res.json({ deviceId: d.id, viewerToken: d.viewerToken, maskedPhone: maskPhone(d.phone), label: d.label });
 });
 
+app.post('/api/devices/:id/regenerate-pairing', (req, res) => {
+  const d = devices.get(req.params.id);
+  const consent = req.body?.consent === true;
+  const isLocal = ['127.0.0.1', '::1', '::ffff:127.0.0.1'].includes(String(req.ip || ''));
+  if (!isLocal) return res.status(403).json({ error: 'Pairing regeneration is available only on the local test server.' });
+  if (!consent) return res.status(403).json({ error: 'Explicit device-owner consent is required.' });
+  if (!d) return res.status(404).json({ error: 'Device not found.' });
+  d.pairingCode = randomPairingCode();
+  d.viewerToken = null;
+  res.json({
+    deviceId: d.id,
+    pairingCode: d.pairingCode,
+    maskedPhone: maskPhone(d.phone),
+    label: d.label,
+    message: 'Fresh pairing code generated for this consented local test device.'
+  });
+});
+
 app.get('/api/devices/search', (req, res) => {
   const phone = normalizePhone(req.query?.phone);
   if (!phone) return res.status(400).json({ error: 'Enter a valid mobile number.' });
