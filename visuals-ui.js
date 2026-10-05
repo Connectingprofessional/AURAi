@@ -28,7 +28,7 @@ function status(text){const x=el('div',{class:'tm-status'},text);return x}
 function setPanelTitle(){const h=$('#tm-panel-title');if(h)h.textContent=state.tab+' / '+state.sub+(state.stack?' / '+state.stack:'')}
 function build(){
  const top=el('header',{id:'tm-top'});
- const brand=el('div',{class:'tm-brand'},'TRACKME<span>NOW</span>');
+ const brand=el('div',{class:'tm-brand'});brand.append(document.createTextNode('TRACKME'));const brandSpan=el('span',{},'NOW');brand.append(brandSpan);
  const search=el('div',{class:'tm-search'}),inp=el('input',{id:'tm-global-search',placeholder:'Search city, place, device, cell ID, aircraft, IP…',autocomplete:'off'}),go=el('button',{type:'button'},'SEARCH');
  go.onclick=()=>doSearch(inp.value);inp.onkeydown=e=>{if(e.key==='Enter')doSearch(inp.value)};search.append(inp,go);
  const admin=el('button',{id:'tm-admin',type:'button','aria-label':'Admin'},'⚙');admin.onclick=openAdmin;
