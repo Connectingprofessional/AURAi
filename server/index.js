@@ -221,6 +221,37 @@ app.get('/api/devices/search', (req, res) => {
   });
 });
 
+// Temporary local-development lookup: phone search resolves the latest
+// consented GPS point without requiring Cloudflare. Do not use this route
+// for production; viewer authentication must be enforced before deployment.
+app.get('/api/devices/lookup', (req, res) => {
+  const phone = normalizePhone(req.query?.phone);
+  if (!phone) return res.status(400).json({ error: 'Enter a valid mobile number.' });
+
+  const d = [...devices.values()].find(x => x.phone === phone);
+  if (!d) return res.status(404).json({
+    found: false,
+    message: 'No consented TrackMeNow device is registered for this number.'
+  });
+
+  if (!d.latest) return res.json({
+    found: true,
+    deviceId: d.id,
+    maskedPhone: maskPhone(d.phone),
+    label: d.label,
+    location: null,
+    message: 'Device is registered but has no GPS telemetry yet.'
+  });
+
+  res.json({
+    found: true,
+    deviceId: d.id,
+    maskedPhone: maskPhone(d.phone),
+    label: d.label,
+    location: d.latest
+  });
+});
+
 app.post('/api/devices/:id/telemetry', (req, res) => {
   const d = devices.get(req.params.id);
   if (!d) return res.status(404).json({ error: 'Device not found.' });
