@@ -1444,8 +1444,10 @@
       }).catch(function () {});
   }
 
-  async function enterEarth() {
-    destroyViews(); showSolar(false);
+  async async function enterEarth(transitionFromSolar) {
+    const fromSolar = transitionFromSolar === true;
+    destroyViews();
+    if (!fromSolar) showSolar(false);
     if (!window.maplibregl) throw new Error('MapLibre missing');
     await loadRV();
     const radarPath = rvFrames.length ? rvHost + rvFrames[rvIndex].path + '/256/{z}/{x}/{y}/2/1_1.png' : null;
@@ -1485,18 +1487,37 @@
         { id: 'quakes-pts', type: 'circle', source: 'quakes', paint: { 'circle-radius': ['interpolate', ['linear'], ['get', 'mag'], 2.5, 4, 5, 8, 7, 14], 'circle-color': ['interpolate', ['linear'], ['get', 'mag'], 2.5, '#f0d060', 4.5, '#ff9a3c', 6, '#e04040'], 'circle-stroke-width': 1, 'circle-stroke-color': '#fff', 'circle-opacity': 0.85 } }
       ]
     };
-    if (useGlobe) { style.projection = { type: 'globe' }; style.fog = { color: 'rgb(8, 16, 32)', 'high-color': 'rgb(25, 45, 75)', 'space-color': 'rgb(1, 2, 6)', 'horizon-blend': 0.1, range: [0.5, 12] }; }
+    if (useGlobe) { style.fog = { color: 'rgb(8, 16, 32)', 'high-color': 'rgb(25, 45, 75)', 'space-color': 'rgb(1, 2, 6)', 'horizon-blend': 0.1, range: [0.5, 12] }; }
     if (radarPath) {
       style.sources.radar = { type: 'raster', tileSize: 256, tiles: [radarPath] };
       style.layers.splice(3, 0, { id: 'radar', type: 'raster', source: 'radar', layout: { visibility: 'none' }, paint: { 'raster-opacity': 0.75 } });
     }
     maplibre = new maplibregl.Map({ container: 'map', style: style, center: [20, 15], zoom: useGlobe ? 1.4 : 2, minZoom: useGlobe ? 0.5 : 1, maxZoom: 20, maxPitch: useGlobe ? 85 : 60, attributionControl: false, failIfMajorPerformanceCaveat: false });
     window.map = maplibre;
+    maplibre.on('style.load', function () {
+      if (useGlobe) {
+        try { maplibre.setProjection({ type: 'globe' }); } catch (e) { console.warn('globe projection', e); }
+      }
+    });
     maplibre.on('load', function () {
       try { maplibre.resize(); } catch (e) {}
       try { tpSetup(); } catch (e) { console.warn('transport layers', e); }
       applyLayers(); loadActivity();
-      setStatus('EARTH · ' + (useGlobe ? '3D' : 'FLAT') + ' · transport + terrain + ' + (gibsAvailable ? 'LIVE CLOUD · ' + date : 'satellite fallback'), true);
+      setStatus('EARTH · ' + (useGlobe ? '3D GLOBE' : 'FLAT') + ' · transport + terrain + ' + (gibsAvailable ? 'LIVE CLOUD · ' + date : 'satellite fallback'), true);
+      if (useGlobe) {
+        try {
+          maplibre.jumpTo({ center: [20, 15], zoom: 0.65, pitch: 0, bearing: 0 });
+          maplibre.easeTo({ center: [20, 15], zoom: 1.4, duration: fromSolar ? 1400 : 700, easing: function(t){ return 1 - Math.pow(1 - t, 3); } });
+        } catch (e) {}
+      }
+      if (fromSolar) {
+        const cv = $('tm-solar-canvas');
+        if (cv) {
+          cv.style.transition = 'opacity 900ms ease';
+          cv.style.opacity = '0';
+          setTimeout(function(){ try { showSolar(false); } catch(e) {} }, 950);
+        }
+      }
       if (activeForecastMode()) refreshForecast().catch(function () {});
       if (dayNight) terminatorTimer = setInterval(function () { applyDayNight(); }, 60000);
     });
@@ -1563,18 +1584,31 @@
   }
 
   async function setScale(next) {
+    const previousScale = scale;
     scale = next; markChrome();
     try { localStorage.setItem('tm-scale', scale); } catch (e) {}
     if (scale === 'universe' || scale === 'solar') {
       destroyViews(); resetSky(); showSolar(true);
       return;
     }
-    showSolar(false); setStatus('LOADING ' + scale.toUpperCase() + '…', true);
+    const fromSolar = previousScale === 'solar' || previousScale === 'universe';
+    if (!fromSolar) showSolar(false);
+    setStatus('LOADING ' + scale.toUpperCase() + '…', true);
     try {
-      if (scale === 'earth') await enterEarth();
-      else if (scale === 'moon' || scale === 'mars') await enterPlanet(scale);
-      else await enterEarth();
-    } catch (err) { console.error(err); setStatus('FAILED · ' + (err.message || err), false); }
+      if (scale === 'earth') await enterEarth(fromSolar);
+      else if (scale === 'moon' || scale === 'mars') {
+        if (fromSolar) {
+          const cv = $('tm-solar-canvas');
+          if (cv) { cv.style.transition = 'opacity 700ms ease'; cv.style.opacity = '0'; }
+        }
+        await enterPlanet(scale);
+        if (fromSolar) setTimeout(function(){ try { showSolar(false); } catch(e) {} }, 750);
+      } else await enterEarth(fromSolar);
+    } catch (err) {
+      console.error(err);
+      setStatus('FAILED · ' + (err.message || err), false);
+      if (fromSolar) showSolar(true);
+    }
   }
 
   /* Keep the existing map controls; the standalone Universe landing screen is removed. */
@@ -1592,7 +1626,7 @@
     setEarthMode: function(mode) {
       if (mode === 'globe') earthMode = 'globe';
       else earthMode = 'flat';
-      if (scale === 'earth') enterEarth();
+      if (scale === 'earth') enterEarth(false);
     },
     setDayNight: function(on) {
       dayNight = !!on;
