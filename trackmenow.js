@@ -1077,7 +1077,7 @@
    * Data is collected by GitHub Actions (scripts/fetch-live.mjs, scripts/fetch-cells.mjs) and published on the
    * `live-data` / `cell-data` branches of this repo; the browser reads it from raw.githubusercontent.com.
    * Snapshots are ~10 minutes apart, so positions are projected forward from speed and heading between refreshes. */
-  const TP_BASE = window.TM_DATA_BASE || 'https://raw.githubusercontent.com/connectingprofessional/trackmenow';
+  const TP_BASE = window.TM_DATA_BASE || 'https://raw.githubusercontent.com/Connectingprofessional/TrackMenow';
   const TP = {
     kinds: {
       air: { label: 'AIR', noun: 'aircraft', file: 'flights.json', branch: 'live-data', icon: 'tm-air', color: '#58c8ff' },
