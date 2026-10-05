@@ -30,7 +30,7 @@ jobs:
           mkdir -p _site
           # Core UI
           cp index.html _site/
-          cp trackmenow.js trackmenow-globe-engine.js trackmenow-icons.js water-effect.js _site/ 2>/dev/null || true
+          cp trackmenow.js trackmenow-globe-engine.js trackmenow-icons.js water-effect.js visuals-ui.js visuals.css _site/ 2>/dev/null || true
           # Vendor MapLibre
           mkdir -p _site/vendor/maplibre-gl
           cp -r vendor/maplibre-gl/* _site/vendor/maplibre-gl/
