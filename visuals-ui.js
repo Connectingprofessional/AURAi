@@ -21,7 +21,7 @@ function api(path,opt){return fetch(API+path,Object.assign({cache:'no-store'},op
 function oldClick(selector){const b=document.querySelector(selector);if(b){b.click();return true}return false}
 function engine(){return window.TrackMeNowEngine||null}
 function map(){return window.map||null}
-function openAdmin(){window.open('./admin.html','_blank','noopener,noreferrer')}
+function openAdmin(){window.open('./admin.html','_blank','noopener,noreferrer')}\nfunction logUi(event,tab,detail){api('/api/visitor',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({screen:'map',tab:tab,sub:state.sub,event:event,detail:detail})}).catch(()=>{})}
 function card(title,desc,action,label){const c=el('article',{class:'tm-card'});c.append(el('b',{},title));if(desc)c.append(el('p',{},desc));if(action){const b=el('button',{class:'tm-action',type:'button'},label||'OPEN');b.onclick=action;c.append(b)}return c}
 function status(text){const x=el('div',{class:'tm-status'},text);return x}
 function setPanelTitle(){const h=$('#tm-panel-title');if(h)h.textContent=state.tab+' / '+state.sub+(state.stack?' / '+state.stack:'')}
@@ -33,7 +33,7 @@ function build(){
  const admin=el('button',{id:'tm-admin',type:'button','aria-label':'Admin'},'⚙');admin.onclick=openAdmin;
  top.append(brand,search,admin);document.body.append(top);
  const shell=el('div',{id:'tm-shell'});
- const main=el('nav',{id:'tm-main-tabs'});Object.keys(T).forEach(k=>{const b=el('button',{class:'tm-tab',type:'button'},k);b.onclick=()=>{state.tab=k;state.sub=T[k][0];state.stack=null;state.panel=false;render()};main.append(b)});
+ const main=el('nav',{id:'tm-main-tabs'});Object.keys(T).forEach(k=>{const b=el('button',{class:'tm-tab',type:'button'},k);b.onclick=()=>{state.tab=k;state.sub=T[k][0];state.stack=null;state.panel=false;logUi('tab',k,'');render()};main.append(b)});
  const sub=el('div',{id:'tm-subbar'});
  const zoom=el('div',{class:'tm-zoom-common'});[['−',-1],['+',1]].forEach(([txt,d])=>{const b=el('button',{type:'button'},txt);b.onclick=()=>engine()&&engine().zoomBy(d);zoom.append(b)});
  const panel=el('section',{id:'tm-panel'});const head=el('div',{class:'tm-panel-head'}),title=el('div',{id:'tm-panel-title',class:'tm-panel-title'}),meta=el('div',{class:'tm-panel-meta'},'LIVE / PUBLIC / CONSENT-BASED'),close=el('button',{class:'tm-close',type:'button'},'×');close.onclick=()=>{state.panel=false;render()};head.append(title,meta,close);panel.append(head);
@@ -41,7 +41,7 @@ function build(){
 }
 function render(){
  const main=$('#tm-main-tabs'),sub=$('#tm-subbar'),panel=$('#tm-panel');Array.from(main.children).forEach(b=>b.classList.toggle('active',b.textContent===state.tab));
- sub.innerHTML='';T[state.tab].forEach(s=>{const b=el('button',{class:'tm-sub',type:'button'},s);b.classList.toggle('active',s===state.sub);b.onclick=()=>{state.sub=s;state.stack=null;state.panel=true;render()};sub.append(b)});
+ sub.innerHTML='';T[state.tab].forEach(s=>{const b=el('button',{class:'tm-sub',type:'button'},s);b.classList.toggle('active',s===state.sub);b.onclick=()=>{state.sub=s;state.stack=null;state.panel=true;logUi('subtab',state.tab,s);render()};sub.append(b)});
  panel.classList.toggle('open',state.panel);setPanelTitle();if(state.panel)draw(panel);
  requestAnimationFrame(()=>document.documentElement.style.setProperty('--tm-dock-h',($('#tm-shell').offsetHeight||74)+'px'));
 }
