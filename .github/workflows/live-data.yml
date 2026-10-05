@@ -1,51 +1,69 @@
 name: Live transport data
-# Collects aircraft, ships and transit vehicles every ~6 minutes (each run loops for ~1 hour; hourly cron restarts it) and publishes them on the
-# `live-data` branch (files: flights.json, ships.json, transit.json, meta.json). The site reads them from there.
-# Secrets (Settings -> Secrets and variables -> Actions): AISSTREAM_API_KEY, MOBILITY_DB_REFRESH_TOKEN
+# Publishes fresh aircraft, ships and public-transport positions to the live-data branch.
+# The site projects each reported position between fresh observations so icons keep moving.
+# Secrets: AISSTREAM_API_KEY, AVIATIONSTACK_API_KEY, MOBILITY_DB_REFRESH_TOKEN
 on:
+  push:
+    branches: [main]
+    paths:
+      - "scripts/fetch-live.mjs"
+      - ".github/workflows/live-data.yml"
   schedule:
-    - cron: '7 * * * *'   # hourly safety net: GitHub often skips frequent schedules, so each run loops by itself
+    # Avoid the top of the hour, when GitHub reports heavier scheduling delays.
+    - cron: '2,12,22,32,42,52 * * * *'
   workflow_dispatch:
+
 permissions:
   contents: write
+
 concurrency:
   group: live-data
   cancel-in-progress: false
+
 jobs:
   collect:
     runs-on: ubuntu-latest
-    timeout-minutes: 75
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: 22
+
       - name: Install collector dependencies
         run: npm install --no-save --no-audit --no-fund ws gtfs-realtime-bindings
-      - name: Collect and publish every 6 minutes for about an hour
+
+      - name: Collect and publish one fresh snapshot
         env:
           AISSTREAM_API_KEY: ${{ secrets.AISSTREAM_API_KEY }}
           AVIATIONSTACK_API_KEY: ${{ secrets.AVIATIONSTACK_API_KEY }}
           MOBILITY_DB_REFRESH_TOKEN: ${{ secrets.MOBILITY_DB_REFRESH_TOKEN }}
-          AIS_SECONDS: '90'
+          AIS_SECONDS: '60'
+          MOBILITY_DB_MAX_FEEDS: '150'
           GH_PUSH_URL: https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}.git
         run: |
+          set -e
           mkdir -p out
           git config --global user.name "github-actions[bot]"
           git config --global user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
           if git ls-remote --exit-code --heads origin live-data >/dev/null 2>&1; then
             git fetch --depth=1 origin live-data
-            for f in flights ships transit; do git show FETCH_HEAD:$f.json > out/$f.json 2>/dev/null || rm -f out/$f.json; done
+            for f in flights ships transit; do
+              git show FETCH_HEAD:$f.json > out/$f.json 2>/dev/null || true
+            done
           fi
-          END=$(( $(date +%s) + 3300 ))
-          while true; do
-            START=$(date +%s)
-            node scripts/fetch-live.mjs out || echo "collector failed, keeping previous files"
-            ( cd out && rm -rf .git && git init -q -b live-data && git add -A \
-              && git commit -q -m "Live data $(date -u +%FT%TZ)" \
-              && git push -q -f "$GH_PUSH_URL" live-data ) || echo "publish failed"
-            rm -rf out/.git
-            [ $(date +%s) -ge $END ] && break
-            LEFT=$(( 360 - ( $(date +%s) - START ) ))
-            [ $LEFT -gt 0 ] && sleep $LEFT
-          done
+
+          node scripts/fetch-live.mjs out
+
+          if [ -z "$(find out -maxdepth 1 -name '*.json' -print -quit)" ]; then
+            echo "Collector produced no JSON files; refusing to publish an empty live-data branch."
+            exit 1
+          fi
+
+          cd out
+          rm -rf .git
+          git init -q -b live-data
+          git add -A
+          git commit -q -m "Live data $(date -u +%FT%TZ)"
+          git push -q -f "$GH_PUSH_URL" live-data
