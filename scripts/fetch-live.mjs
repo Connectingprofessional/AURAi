@@ -148,8 +148,34 @@ async function transit() {
   return { t: now(), src: 'GTFS-Realtime via Mobility Database', feeds: okFeeds, a: rows.slice(0, 40000) };
 }
 
+/* ── dedicated railway GTFS-Realtime feeds: [id, lat, lon, bearing°, speed m/s, label, route] ── */
+async function rail() {
+  const urls = String(E.RAIL_GTFS_RT_URLS || '').split(',').map(s => s.trim()).filter(Boolean);
+  if (!urls.length) return { t: now(), src: 'No dedicated railway GTFS-Realtime feeds configured', feeds: 0, a: [] };
+  const rows = [], seen = new Set(); let okFeeds = 0;
+  await pool(urls, 8, async (u) => {
+    const res = await fetch(u, { headers: { ...UA, Accept: 'application/x-protobuf,application/octet-stream' }, signal: AbortSignal.timeout(10000) });
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    const feed = GtfsRealtimeBindings.transit_realtime.FeedMessage.decode(new Uint8Array(await res.arrayBuffer())), n = now(); let got = 0;
+    for (const e of feed.entity || []) {
+      const v = e.vehicle, p = v && v.position;
+      if (!p || !Number.isFinite(p.latitude) || !Number.isFinite(p.longitude)) continue;
+      const ts = Number(v.timestamp || (feed.header && feed.header.timestamp) || 0);
+      if (ts && n - ts > 300) continue;
+      const id = String((v.vehicle && v.vehicle.id) || e.id || '');
+      if (!id || seen.has(id)) continue;
+      seen.add(id);
+      rows.push([id, r(p.latitude, 5), r(p.longitude, 5), r(p.bearing ?? 0, 0), r(p.speed ?? 0, 1),
+        String((v.vehicle && v.vehicle.label) || '').slice(0, 28), String((v.trip && v.trip.routeId) || '').slice(0, 20)]);
+      got++;
+    }
+    if (got) okFeeds++;
+  });
+  return { t: now(), src: 'Dedicated railway GTFS-Realtime feeds', feeds: okFeeds, a: rows.slice(0, 40000) };
+}
+
 await mkdir(OUT, { recursive: true });
-const jobs = { flights, ships, transit };
+const jobs = { flights, ships, transit, rail };
 await Promise.all(Object.entries(jobs).map(async ([name, fn]) => {
   try {
     const d = await fn(); await writeFile(`${OUT}/${name === 'flights' ? 'flights' : name}.json`, JSON.stringify(d));
