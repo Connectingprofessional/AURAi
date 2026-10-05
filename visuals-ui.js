@@ -5,7 +5,7 @@ const API=(location.hostname==='localhost'||location.hostname==='127.0.0.1')?loc
 const isLocal=location.hostname==='localhost'||location.hostname==='127.0.0.1';
 const T={
  MAP:['OVERVIEW','LAYERS','SEARCH'],
- SPACE:['UNIVERSE','SOLAR SYSTEM','EARTH','MOON','MARS'],
+ SPACE:['SOLAR SYSTEM','EARTH','MOON','MARS'],
  TRANSIT:['AIR','SHIP','TAXI','RAILWAY','BOAT','PERSONAL JET','METRO','CAR','BIKES'],
  WEATHER:['NATURAL CALAMITIES','WEATHER REPORT'],
  COMMUNICATION:['WEBRTC','PHONE'],
@@ -75,7 +75,7 @@ function mapAction(k){
  if(k==='3D')e.setEarthMode('globe');
 }
 function drawSpace(p){
- const items={UNIVERSE:['UNIVERSE'], 'SOLAR SYSTEM':['SOLAR SYSTEM','EARTH','MOON','MARS'],EARTH:['EARTH'],MOON:['MOON'],MARS:['MARS']}[state.sub]||[];
+ const items={'SOLAR SYSTEM':['SOLAR SYSTEM','EARTH','MOON','MARS'],EARTH:['EARTH'],MOON:['MOON'],MARS:['MARS']}[state.sub]||[];
  p.append(status('Space uses the existing TrackMeNow 3D engine. Earth, Moon and Mars are rendered as interactive 3D planetary views; Universe and Solar System use the orbital view.'));
  const g=el('div',{class:'tm-stack'});
  items.forEach(k=>{
