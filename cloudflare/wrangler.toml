@@ -13,4 +13,4 @@ binding = "DB"
 database_name = "trackmenow"
 database_id = "PASTE-YOUR-D1-DATABASE-ID-HERE"   # printed by: npx wrangler d1 create trackmenow
 
-# Secret (never put it in this file):  npx wrangler secret put OPENCELLID_API_KEY
+# Secrets (never put values in this file): npx wrangler secret put OPENCELLID_API_KEY; npx wrangler secret put ADMIN_USER; npx wrangler secret put ADMIN_PASSWORD
