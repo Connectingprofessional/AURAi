@@ -1092,7 +1092,7 @@
   function tpUrl(k) { const d = TP.kinds[k]; return TP_BASE + '/' + d.branch + '/' + d.file + '?t=' + Math.floor(Date.now() / 120000); }
   async function tpLoad(k) {
     try {
-      const r = await fetch(tpUrl(k)); if (!r.ok) throw new Error(r.status === 404 ? 'no data published yet' : 'HTTP ' + r.status);
+      const r = await fetch(tpUrl(k), { cache: 'no-store' }); if (!r.ok) throw new Error(r.status === 404 ? 'no data published yet' : 'HTTP ' + r.status);
       const j = await r.json(); if (!j || !Array.isArray(j.a)) throw new Error('bad data');
       TP.data[k] = j; TP.err[k] = null;
     } catch (e) { TP.err[k] = e.message || String(e); }
@@ -1130,7 +1130,7 @@
     maplibre.on('dragstart', function () { if (TP.follow) { TP.follow = false; tpCard(); } });
     tpApply();
     if (!TP.timer) TP.timer = setInterval(tpTick, 2500);
-    if (!TP.refresh) TP.refresh = setInterval(function () { Object.keys(TP.on).forEach(function (k) { if (TP.on[k] && k !== 'cells') tpLoad(k).then(function () { tpStatus(); }); }); }, 150000);
+    if (!TP.refresh) TP.refresh = setInterval(function () { Object.keys(TP.on).forEach(function (k) { if (TP.on[k] && k !== 'cells') tpLoad(k).then(function () { tpStatus(); }); }); }, 30000);
   }
   function tpStop() {
     if (TP.timer) clearInterval(TP.timer); if (TP.refresh) clearInterval(TP.refresh);
