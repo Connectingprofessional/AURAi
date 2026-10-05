@@ -5,6 +5,7 @@ import http from 'http';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import crypto from 'crypto';
+import fs from 'fs';
 import pg from 'pg';
 import GtfsRealtimeBindings from 'gtfs-realtime-bindings';
 import globalSourcesRouter from './global-sources.js';
@@ -140,6 +141,31 @@ async function movementData(b, layers) {
 // Location/radio telemetry is accepted only from a device token created by that device.
 // A dashboard must use the one-time pairing code displayed on the consenting device.
 const devices = new Map();
+const deviceStorePath = process.env.TRACKMENOW_DEVICE_STORE || path.join(__dirname, 'data', 'devices.json');
+
+function loadDeviceStore() {
+  try {
+    if (!fs.existsSync(deviceStorePath)) return;
+    const saved = JSON.parse(fs.readFileSync(deviceStorePath, 'utf8'));
+    if (!Array.isArray(saved)) return;
+    for (const d of saved) if (d && d.id && d.phone) devices.set(d.id, d);
+  } catch (e) {
+    console.error('TrackMeNow device store load failed:', e.message);
+  }
+}
+
+function persistDeviceStore() {
+  try {
+    fs.mkdirSync(path.dirname(deviceStorePath), { recursive: true });
+    const tmp = deviceStorePath + '.tmp';
+    fs.writeFileSync(tmp, JSON.stringify([...devices.values()], null, 2), 'utf8');
+    fs.renameSync(tmp, deviceStorePath);
+  } catch (e) {
+    console.error('TrackMeNow device store write failed:', e.message);
+  }
+}
+
+loadDeviceStore();
 
 function normalizePhone(value) {
   const raw = String(value || '').trim();
@@ -188,6 +214,7 @@ app.post('/api/devices/register', (req, res) => {
     history: []
   };
   devices.set(d.id, d);
+  persistDeviceStore();
   res.status(201).json({
     deviceId: d.id,
     deviceToken: d.deviceToken,
@@ -203,6 +230,7 @@ app.post('/api/devices/pair', (req, res) => {
   if (!d) return res.status(404).json({ error: 'Pairing code not found or already used.' });
   d.viewerToken = randomToken();
   d.pairingCode = null;
+  persistDeviceStore();
   res.json({ deviceId: d.id, viewerToken: d.viewerToken, maskedPhone: maskPhone(d.phone), label: d.label });
 });
 
@@ -215,6 +243,7 @@ app.post('/api/devices/:id/regenerate-pairing', (req, res) => {
   if (!d) return res.status(404).json({ error: 'Device not found.' });
   d.pairingCode = randomPairingCode();
   d.viewerToken = null;
+  persistDeviceStore();
   res.json({
     deviceId: d.id,
     pairingCode: d.pairingCode,
@@ -293,6 +322,7 @@ app.post('/api/devices/:id/telemetry', (req, res) => {
   d.latest = point;
   d.history.push(point);
   if (d.history.length > 1000) d.history.splice(0, d.history.length - 1000);
+  persistDeviceStore();
   broadcast({ type: 'device-telemetry', deviceId: d.id, point });
   res.status(201).json({ ok: true, receivedAt: new Date().toISOString() });
 });
@@ -319,6 +349,7 @@ app.post('/api/devices/:id/revoke', (req, res) => {
   d.deviceToken = randomToken();
   d.pairingCode = null;
   d.latest = null;
+  persistDeviceStore();
   res.json({ ok: true, revoked: true });
 });
 
