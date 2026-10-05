@@ -5,12 +5,14 @@ var API=(location.hostname==='localhost'||location.hostname==='127.0.0.1')?locat
 var tabs={
  MAP:{subs:['OVERVIEW','LAYERS','SEARCH']},
  TRANSPORT:{subs:['AIR','SEA','RAIL','BUS','TAXI']},
- WEATHER:{subs:['CURRENT','RADAR','PRECIP','WIND','TEMP','HUMIDITY','PRESSURE']},
+ TERRAIN:{subs:['SATELLITE','TERRAIN','STREET','3D TERRAIN']},
+ WEATHER:{subs:['LIVE CLOUD','RADAR','PRECIP','WIND','TEMP','HUMIDITY','PRESSURE']},
  VISUALS:{subs:['LIVE','CAMERAS','WEBCAMS','IMAGES','VIDEOS','CLIPS','SOURCE HISTORY']},
  NETWORK:{subs:['CELLS','RADIO','CARRIERS','INFRASTRUCTURE']},
  DEVICES:{subs:['LIVE GPS','HISTORY','GEOfENCE','CONSENT']},
  EVENTS:{subs:['EARTHQUAKES','FIRES','STORMS','ALERTS']},
  SPACE:{subs:['EARTH','SOLAR SYSTEM','PLANETS','ASTEROIDS','UNIVERSE']},
+ COMMUNICATION:{subs:['WEBRTC CALL','VIDEO','VOICE','CONTACTS','CALL HISTORY']},
  MORE:{subs:['ADMIN','SOURCES','STATUS','SETTINGS']}
 };
 var state={tab:'MAP',sub:'OVERVIEW',panel:false};
@@ -48,17 +50,21 @@ function drawPanel(panel){
  if(state.tab==='VISUALS'){drawVisuals(panel);return}
  if(state.tab==='MAP'&&state.sub==='SEARCH'){drawSearch(panel);return}
  if(state.tab==='DEVICES'&&state.sub==='LIVE GPS'){drawGps(panel);return}
+ if(state.tab==='COMMUNICATION'){drawCommunication(panel);return}
+ if(state.tab==='TERRAIN'){drawTerrain(panel);return}
  if(state.tab==='MORE'&&state.sub==='ADMIN'){location.href='./admin.html';return}
  var grid=el('div',{class:'tm-grid'});
  var card=el('div',{class:'tm-card'});card.appendChild(el('b',{},state.sub));card.appendChild(el('p',{},description(state.tab,state.sub)));grid.appendChild(card);panel.appendChild(grid);
 }
 function description(t,s){
  if(t==='TRANSPORT')return 'Live transport layer controls. Only sources that are actually configured and returning current observations are labelled LIVE.';
- if(t==='WEATHER')return 'Current weather and forecast layers. Forecast data is not presented as historical observation.';
+ if(t==='TERRAIN')return 'Map surface controls for satellite imagery, terrain, street mapping and 3D terrain. The map remains unobstructed.';
+ if(t==='WEATHER')return 'LIVE CLOUD is the default landing weather layer. Temperature, humidity, pressure, wind and precipitation are available only when selected.';
  if(t==='NETWORK')return 'Public cell/network intelligence and infrastructure. A public cell estimate is never presented as live handset location.';
  if(t==='DEVICES')return 'Consent-based device tracking. A phone number alone never grants location access.';
  if(t==='EVENTS')return 'Live public event feeds with source and timestamp labels.';
  if(t==='SPACE')return 'Astronomy and space views already provided by the TrackMeNow map engine.';
+ if(t==='COMMUNICATION')return 'Native TrackMeNow communication using WebRTC. No WhatsApp dependency is required.';
  return 'Framework tab ready. The map remains the primary view and this panel is the only place for controls.';
 }
 function drawSearch(panel){
@@ -94,6 +100,45 @@ function mobileLookup(q){
  }).catch(function(){});
 }
 var gpsWatchId=null,gpsMarker=null;
+function drawTerrain(panel){
+ var grid=el('div',{class:'tm-grid'});
+ var items={
+  'SATELLITE':'Live satellite/base imagery for the map.',
+  'TERRAIN':'Terrain-aware map presentation and elevation context.',
+  'STREET':'Street-level cartographic map view.',
+  '3D TERRAIN':'3D terrain/elevation mode when the map engine supports it.'
+ };
+ Object.keys(items).forEach(function(k){
+  var c=el('div',{class:'tm-card'});c.appendChild(el('b',{},k));c.appendChild(el('p',{},items[k]));
+  var b=el('button',{class:'tm-action',type:'button'},'SELECT');c.appendChild(b);
+  b.onclick=function(){
+   if(k==='SATELLITE'&&window.TrackMeNowEngine) window.TrackMeNowEngine.setScale('earth');
+   if(window.map&&window.map.setTerrain && k==='3D TERRAIN') { try{ window.map.setTerrain({source:'terrain'}); }catch(e){} }
+  };
+  grid.appendChild(c);
+ });
+ panel.appendChild(grid);
+}
+function drawCommunication(panel){
+ var status=el('div',{class:'tm-status'},'WEBRTC · native TrackMeNow communication · no WhatsApp dependency · calls require user permission and an authorized peer.');panel.appendChild(status);
+ var grid=el('div',{class:'tm-grid'});
+ var items={
+  'WEBRTC CALL':'Start an authorized TrackMeNow peer call using WebRTC signaling.',
+  'VIDEO':'TrackMeNow-to-TrackMeNow video communication.',
+  'VOICE':'TrackMeNow-to-TrackMeNow voice communication.',
+  'CONTACTS':'Authorized devices/people available for communication.',
+  'CALL HISTORY':'Communication events and call metadata; media is not stored by this UI.'
+ };
+ Object.keys(items).forEach(function(k){
+  var c=el('div',{class:'tm-card'});c.appendChild(el('b',{},k));c.appendChild(el('p',{},items[k]));
+  var b=el('button',{class:'tm-action',type:'button'},k==='WEBRTC CALL'?'OPEN CALL':'OPEN');
+  b.onclick=function(){
+   if(k==='WEBRTC CALL'||k==='VIDEO'||k==='VOICE') window.open('./rtc-call.html','_blank','noopener,noreferrer');
+  };
+  c.appendChild(b);grid.appendChild(c);
+ });
+ panel.appendChild(grid);
+}
 function drawGps(panel){
  var c=el('div',{class:'tm-card'});c.appendChild(el('b',{},'LIVE GPS'));c.appendChild(el('p',{},'Browser GPS is permission-based. Start/stop live tracking from this tab.'));var b=el('button',{class:'tm-action',type:'button'},'START LIVE GPS');c.appendChild(b);panel.appendChild(c);
  b.onclick=function(){
