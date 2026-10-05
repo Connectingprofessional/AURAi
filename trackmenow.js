@@ -1444,7 +1444,7 @@
       }).catch(function () {});
   }
 
-  async async function enterEarth(transitionFromSolar) {
+  async function enterEarth(transitionFromSolar) {
     const fromSolar = transitionFromSolar === true;
     destroyViews();
     if (!fromSolar) showSolar(false);
