@@ -56,30 +56,49 @@ body{overflow:hidden;background:#05090d;color:#edf4f8;font-family:system-ui,sans
       }).catch(function(){});
   }
   function mobileLookup(q){
-    /*
-      PHONE-ONLY SELF TEST:
-      The phone number is only the search input. GPS permission is requested
-      for THIS browser/device. It does not locate another person by number.
-    */
-    if(!navigator.geolocation){
-      setMobileStatus('GPS is unavailable in this browser.');
+    var base='https://wispy-bush-9aee.recreationeeraj.workers.dev';
+    var viewerToken=sessionStorage.getItem('tmViewerToken')||'';
+    if(!viewerToken){
+      setMobileStatus('ACCESS required: use ACCESS to enter the authorized viewer token before searching a device.');
       return;
     }
-    setMobileStatus('Requesting GPS permission for this device…');
-    navigator.geolocation.getCurrentPosition(function(p){
-      var lat=p.coords.latitude, lon=p.coords.longitude;
-      window.map.flyTo({center:[lon,lat],zoom:15,duration:1400});
-      setMobileStatus('PHONE TEST: '+q+' — this browser/device is at '+lat.toFixed(6)+', '+lon.toFixed(6));
-    },function(err){
-      var msg='GPS permission was not granted.';
-      if(err && err.code===2) msg='This device could not determine its GPS position.';
-      if(err && err.code===3) msg='GPS request timed out. Try again.';
-      setMobileStatus(msg+' Phone-number lookup will require registration/authorization.');
-    },{enableHighAccuracy:true,maximumAge:5000,timeout:15000});
+    setMobileStatus('Searching the authorized device…');
+    fetch(base+'/api/devices/lookup?phone='+encodeURIComponent(q),{
+      headers:{'Authorization':'Bearer '+viewerToken}
+    }).then(function(r){
+      return r.json().catch(function(){return {};}).then(function(j){return {ok:r.ok,status:r.status,data:j};});
+    }).then(function(x){
+      if(!x.ok){
+        if(x.status===401||x.status===403){
+          sessionStorage.removeItem('tmViewerToken');
+          setMobileStatus('Viewer access was rejected. Use ACCESS to enter a valid authorized token.');
+          return;
+        }
+        setMobileStatus((x.data&&x.data.error)||'Device lookup failed.');
+        return;
+      }
+      var d=x.data&&x.data.location;
+      if(!d || typeof d.lat!=='number' || typeof d.lon!=='number'){
+        setMobileStatus((x.data&&x.data.message)||'The device is authorized, but no GPS telemetry has been recorded yet.');
+        return;
+      }
+      window.map.flyTo({center:[d.lon,d.lat],zoom:15,duration:1400});
+      var when=d.recordedAt?new Date(d.recordedAt).toLocaleString():'unknown time';
+      setMobileStatus('LIVE GPS: '+q+' — '+d.lat.toFixed(6)+', '+d.lon.toFixed(6)+' · '+when);
+    }).catch(function(){
+      setMobileStatus('Could not reach the TrackMeNow device API.');
+    });
   }
   function setMobileStatus(msg){ var s=document.getElementById('status'); if(s) s.textContent=msg; }
   if(btn) btn.onclick=go;
-  if(access) access.onclick=function(){ sessionStorage.removeItem('tmViewerToken'); setMobileStatus('Viewer access token cleared.'); };
+  if(access) access.onclick=function(){
+    var current=sessionStorage.getItem('tmViewerToken')||'';
+    var token=window.prompt('Enter the authorized TrackMeNow viewer token:',current);
+    if(token===null) return;
+    token=token.trim();
+    if(token){ sessionStorage.setItem('tmViewerToken',token); setMobileStatus('Viewer access token saved for this browser session.'); }
+    else { sessionStorage.removeItem('tmViewerToken'); setMobileStatus('Viewer access token cleared.'); }
+  };
   if(input) input.addEventListener('keydown',function(e){if(e.key==='Enter')go();});
   if(gps) gps.onclick=function(){
     if(!navigator.geolocation||!window.map) return;
