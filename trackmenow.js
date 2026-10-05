@@ -134,9 +134,35 @@
       { type: 'Feature', properties: { soft: 2 }, geometry: { type: 'Polygon', coordinates: [offsetRing(-8)] } }
     ]};
   }
-  function gibsDateStr() {
-    const d = new Date(); d.setUTCDate(d.getUTCDate() + gibsDayOffset);
+  // NASA GIBS near-real-time VIIRS imagery is not guaranteed to be available for
+  // the current UTC date. Keep the requested date a few days behind "today" and
+  // validate it against a lightweight global tile before creating the MapLibre source.
+  const GIBS_VIIRS_BASE = 'https://gibs.earthdata.nasa.gov/wmts/epsg3857/best/VIIRS_SNPP_CorrectedReflectance_TrueColor/default/';
+  const GIBS_VIIRS_MATRIX = 'GoogleMapsCompatible_Level9';
+  const GIBS_SAFE_LAG_DAYS = 3;
+
+  function gibsDateStr(extraOffset) {
+    const d = new Date();
+    d.setUTCDate(d.getUTCDate() - GIBS_SAFE_LAG_DAYS + (Number(extraOffset) || gibsDayOffset));
     return d.toISOString().slice(0, 10);
+  }
+
+  async function resolveGibsDate() {
+    // GIBS can return 404 both for unavailable dates and for individual empty
+    // tiles. Tile 0/0/0 is used only as a date-availability probe.
+    for (let i = 0; i <= 7; i++) {
+      const date = gibsDateStr(-i);
+      const url = GIBS_VIIRS_BASE + date + '/' + GIBS_VIIRS_MATRIX + '/0/0/0.jpg';
+      try {
+        const res = await fetch(url, { method: 'HEAD', cache: 'no-store' });
+        if (res.ok) return date;
+      } catch (e) {}
+    }
+    return null;
+  }
+
+  function gibsTileUrl(date) {
+    return GIBS_VIIRS_BASE + date + '/' + GIBS_VIIRS_MATRIX + '/{z}/{y}/{x}.jpg';
   }
   function updateTimeLabel() {
     const el = $('tm-time-label'); if (!el) return;
@@ -1423,13 +1449,16 @@
     if (!window.maplibregl) throw new Error('MapLibre missing');
     await loadRV();
     const radarPath = rvFrames.length ? rvHost + rvFrames[rvIndex].path + '/256/{z}/{x}/{y}/2/1_1.png' : null;
-    const useGlobe = earthMode === 'globe'; const date = gibsDateStr(); updateTimeLabel();
+    const useGlobe = earthMode === 'globe';
+    const date = await resolveGibsDate();
+    const gibsAvailable = !!date;
+    updateTimeLabel();
     const style = {
       version: 8,
       sources: {
         sat: { type: 'raster', tileSize: 256, maxzoom: 19, tiles: ['https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}'] },
         dark: { type: 'raster', tileSize: 256, maxzoom: 19, tiles: ['https://services.arcgisonline.com/ArcGIS/rest/services/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}'] },
-        gibs: { type: 'raster', tileSize: 256, maxzoom: 9, tiles: ['https://gibs.earthdata.nasa.gov/wmts/epsg3857/best/VIIRS_SNPP_CorrectedReflectance_TrueColor/default/' + date + '/GoogleMapsCompatible_Level9/{z}/{y}/{x}.jpg'] },
+        gibs: { type: 'raster', tileSize: 256, maxzoom: 9, tiles: [gibsTileUrl(date || gibsDateStr(-7))] },
         labels: { type: 'raster', tileSize: 256, maxzoom: 19, tiles: ['https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}'] },
         street: { type: 'raster', tileSize: 256, maxzoom: 19, tiles: ['https://tile.openstreetmap.org/{z}/{x}/{y}.png'], attribution: '© OpenStreetMap contributors' },
         terrainSource: { type: 'raster-dem', url: 'https://tiles.mapterhorn.com/tilejson.json', tileSize: 256 },
@@ -1442,7 +1471,7 @@
       layers: [
         { id: 'sat', type: 'raster', source: 'sat' },
         { id: 'dark', type: 'raster', source: 'dark', layout: { visibility: 'none' } },
-        { id: 'gibs-live', type: 'raster', source: 'gibs', layout: { visibility: activeWx.live ? 'visible' : 'none' }, paint: { 'raster-opacity': 0.55 } },
+        { id: 'gibs-live', type: 'raster', source: 'gibs', layout: { visibility: gibsAvailable && activeWx.live ? 'visible' : 'none' }, paint: { 'raster-opacity': 0.55 } },
         { id: 'night-0', type: 'fill', source: 'terminator', filter: ['==', ['get', 'soft'], 0], layout: { visibility: dayNight ? 'visible' : 'none' }, paint: { 'fill-color': '#00060f', 'fill-opacity': 0.12 } },
         { id: 'night-1', type: 'fill', source: 'terminator', filter: ['==', ['get', 'soft'], 1], layout: { visibility: dayNight ? 'visible' : 'none' }, paint: { 'fill-color': '#00060f', 'fill-opacity': 0.16 } },
         { id: 'night-2', type: 'fill', source: 'terminator', filter: ['==', ['get', 'soft'], 2], layout: { visibility: dayNight ? 'visible' : 'none' }, paint: { 'fill-color': '#00060f', 'fill-opacity': 0.22 } },
@@ -1467,7 +1496,7 @@
       try { maplibre.resize(); } catch (e) {}
       try { tpSetup(); } catch (e) { console.warn('transport layers', e); }
       applyLayers(); loadActivity();
-      setStatus('EARTH · ' + (useGlobe ? '3D' : 'FLAT') + ' · transport + terrain + LIVE CLOUD', true);
+      setStatus('EARTH · ' + (useGlobe ? '3D' : 'FLAT') + ' · transport + terrain + ' + (gibsAvailable ? 'LIVE CLOUD · ' + date : 'satellite fallback'), true);
       if (activeForecastMode()) refreshForecast().catch(function () {});
       if (dayNight) terminatorTimer = setInterval(function () { applyDayNight(); }, 60000);
     });
