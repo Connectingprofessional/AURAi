@@ -1,0 +1,27 @@
+/* TrackMeNow bottom-dock shell: map always occupies only the space above the dock. */
+:root{--tm-dock-h:74px}
+#map{position:fixed!important;inset:0 0 var(--tm-dock-h) 0!important}
+.topbar,#status{display:none!important}
+#tm-shell{position:fixed;z-index:5000;left:0;right:0;bottom:0;background:rgba(4,8,13,.96);border-top:1px solid rgba(150,190,220,.18);backdrop-filter:blur(12px);font-family:system-ui,sans-serif;color:#eaf4f8}
+#tm-main-tabs{height:42px;display:flex;align-items:stretch;gap:2px;padding:0 10px;overflow-x:auto;scrollbar-width:none}
+#tm-main-tabs::-webkit-scrollbar{display:none}
+.tm-tab{flex:0 0 auto;border:0;background:transparent;color:#9eacb5;padding:0 14px;font-size:10px;font-weight:850;letter-spacing:.8px;cursor:pointer}
+.tm-tab:hover,.tm-tab.active{color:#fff;background:rgba(69,168,255,.12)}
+#tm-subbar{height:32px;display:flex;align-items:center;gap:7px;padding:0 10px;border-top:1px solid rgba(255,255,255,.06);overflow-x:auto;scrollbar-width:none}
+#tm-subbar::-webkit-scrollbar{display:none}
+.tm-sub{border:1px solid rgba(255,255,255,.09);background:rgba(255,255,255,.035);color:#b9c7cf;border-radius:5px;padding:5px 9px;font-size:9px;font-weight:750;white-space:nowrap;cursor:pointer}
+.tm-sub.active{color:#fff;border-color:rgba(69,168,255,.5);background:rgba(69,168,255,.12)}
+#tm-panel{display:none;position:absolute;left:10px;right:10px;bottom:78px;max-height:min(360px,45vh);overflow:auto;background:rgba(5,10,16,.98);border:1px solid rgba(150,190,220,.2);border-radius:10px;box-shadow:0 10px 40px rgba(0,0,0,.45);padding:12px}
+#tm-panel.open{display:block}
+.tm-panel-head{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:9px}
+.tm-panel-title{font-size:12px;font-weight:900;letter-spacing:.7px}
+.tm-panel-meta{font-size:9px;color:#81919b}
+.tm-close{border:0;background:transparent;color:#9eacb5;font-size:18px;cursor:pointer}
+.tm-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:8px}
+.tm-card{border:1px solid rgba(255,255,255,.08);border-radius:7px;background:rgba(255,255,255,.035);padding:10px}
+.tm-card b{font-size:10px}.tm-card p{margin:5px 0 0;font-size:9px;color:#8f9ea7;line-height:1.4}
+.tm-card button,.tm-action{margin-top:8px;border:1px solid rgba(69,168,255,.35);background:rgba(69,168,255,.1);color:#dcefff;border-radius:5px;padding:6px 8px;font-size:9px;cursor:pointer}
+.tm-input{width:100%;height:30px;border:1px solid rgba(255,255,255,.1);background:#091019;color:#fff;border-radius:5px;padding:0 9px;outline:0;font-size:10px}
+.tm-row{display:flex;gap:7px;align-items:center}.tm-row .tm-input{flex:1}
+.tm-muted{color:#82929c;font-size:9px}.tm-status{font-size:9px;color:#9fb0ba;padding:5px 0}
+@media(max-width:700px){#tm-main-tabs{padding:0 5px}.tm-tab{padding:0 10px;font-size:9px}#tm-panel{left:5px;right:5px}}
