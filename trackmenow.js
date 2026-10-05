@@ -1171,29 +1171,62 @@
     return [lon, lat, h];
   }
   function tpTick() {
-    if (!maplibre || !maplibre.isStyleLoaded || !maplibre.getSource('tp-sel')) return;
-    const nowS = Date.now() / 1000, z = maplibre.getZoom(), b = maplibre.getBounds();
-    const w = b.getWest(), e = b.getEast(), s = b.getSouth(), n = b.getNorth(), padX = (e - w) * 0.15, padY = (n - s) * 0.15;
-    const wide = (e - w) > 300;
-    ['air', 'ships', 'transit'].forEach(function (k) {
-      const src = maplibre.getSource('tp-' + k), d = TP.data[k]; if (!src) return;
-      if (!TP.on[k] || !d) { if (TP._drawn && TP._drawn[k]) { src.setData({ type: 'FeatureCollection', features: [] }); TP._drawn[k] = 0; } return; }
-      (TP._drawn = TP._drawn || {})[k] = 1;
-      const dt0 = nowS - (d.t || nowS), stride = k === 'air' ? 1 : (z < 2.5 ? 6 : z < 3.5 ? 3 : z < 4.5 ? 2 : 1), feats = [];
-      for (let i = 0; i < d.a.length; i++) {
-        const row = d.a[i], isSel = TP.sel && TP.sel.k === k && TP.sel.i === i;
-        if (!isSel && stride > 1 && i % stride) continue;
-        if (!wide && !isSel) { const la = row[1], lo = row[2]; if (la < s - padY || la > n + padY) continue; if (lo < w - padX || lo > e + padX) { if (!(w - padX < -180 || e + padX > 180)) continue; } }
-        const p = tpPos(k, row, k === 'ships' && row[6] ? nowS - row[6] : dt0); feats.push({ type: 'Feature', geometry: { type: 'Point', coordinates: [p[0], p[1]] }, properties: { i: i, h: p[2] } });
-        if (feats.length > 12000) break;
-      }
-      src.setData({ type: 'FeatureCollection', features: feats });
+  if (!maplibre || !maplibre.isStyleLoaded || !maplibre.getSource('tp-sel')) return;
+
+  const nowS = Date.now() / 1000;
+  const z = maplibre.getZoom();
+
+  ['air', 'ships', 'transit'].forEach(function (k) {
+    const src = maplibre.getSource('tp-' + k);
+    const d = TP.data[k];
+    if (!src) return;
+
+    if (!TP.on[k] || !d) {
+      src.setData({ type: 'FeatureCollection', features: [] });
+      return;
+    }
+
+    const dt0 = nowS - (d.t || nowS);
+    const feats = [];
+    const stride = k === 'air' ? 1 : (z < 2 ? 3 : z < 3.5 ? 2 : 1);
+
+    for (let i = 0; i < d.a.length; i++) {
+      if (stride > 1 && i % stride !== 0) continue;
+
+      const row = d.a[i];
+      const p = tpPos(k, row, (k === 'ships' && row[6]) ? nowS - row[6] : dt0);
+
+      feats.push({
+        type: 'Feature',
+        geometry: { type: 'Point', coordinates: [p[0], p[1]] },
+        properties: { i: i, h: p[2] }
+      });
+
+      if (feats.length > 20000) break;
+    }
+
+    src.setData({ type: 'FeatureCollection', features: feats });
+  });
+
+  const sel = maplibre.getSource('tp-sel');
+  const cur = tpSelPos();
+
+  sel.setData(cur
+    ? { type: 'FeatureCollection', features: [{ type: 'Feature', geometry: { type: 'Point', coordinates: [cur[0], cur[1]] }, properties: {} }] }
+    : { type: 'FeatureCollection', features: [] }
+  );
+
+  if (cur && TP.follow) {
+    maplibre.easeTo({
+      center: [cur[0], cur[1]],
+      duration: 2400,
+      easing: function (t) { return t; },
+      essential: true
     });
-    const sel = maplibre.getSource('tp-sel'), cur = tpSelPos();
-    sel.setData(cur ? { type: 'FeatureCollection', features: [{ type: 'Feature', geometry: { type: 'Point', coordinates: [cur[0], cur[1]] }, properties: {} }] } : { type: 'FeatureCollection', features: [] });
-    if (cur && TP.follow) maplibre.easeTo({ center: [cur[0], cur[1]], duration: 2400, easing: function (t) { return t; }, essential: true });
-    if (cur) tpCard(true);
   }
+
+  if (cur) tpCard(true);
+}
   function tpSelPos() {
     if (!TP.sel) return null; const d = TP.data[TP.sel.k]; if (!d) return null; const row = d.a[TP.sel.i]; if (!row) return null;
     if (TP.sel.k === 'cells') return [row[1], row[0]];
