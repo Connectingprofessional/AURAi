@@ -9,6 +9,7 @@ import fs from 'fs';
 import pg from 'pg';
 import GtfsRealtimeBindings from 'gtfs-realtime-bindings';
 import globalSourcesRouter from './global-sources.js';
+import integrationsRouter from './integrations.js';
 
 const { Pool } = pg;
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -27,6 +28,7 @@ app.use(express.static(ROOT, {
   }
 }));
 app.use('/api/global', globalSourcesRouter);
+app.use('/api/integrations', integrationsRouter);
 app.get('/api/cell',async(req,res)=>{
   const key=process.env.OPENCELLID_API_KEY;
   const mcc=Number(req.query.mcc),mnc=Number(req.query.mnc),lac=Number(req.query.lac),cellid=Number(req.query.cellid);
