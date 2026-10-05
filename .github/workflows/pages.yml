@@ -35,6 +35,10 @@ jobs:
           rm -rf _site
           mkdir -p _site/vendor/maplibre-gl
 
+          # Parse-check the browser scripts before anything is published.
+          node --check trackmenow.js
+          node --check visuals-ui.js
+
           cp index.html _site/index.html
           cp trackmenow.js _site/trackmenow.js
           cp trackmenow-globe-engine.js _site/trackmenow-globe-engine.js
@@ -44,7 +48,6 @@ jobs:
           cp visuals.css _site/visuals.css
           cp -r vendor/maplibre-gl/. _site/vendor/maplibre-gl/
 
-          # Fail the deployment instead of publishing an incomplete/stale UI.
           test -s _site/index.html
           test -s _site/visuals-ui.js
           test -s _site/visuals.css
