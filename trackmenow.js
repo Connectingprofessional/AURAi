@@ -1077,7 +1077,7 @@
   /* ───────── transport layers: aircraft, ships, transit vehicles, cell towers ─────────
    * Data is collected by GitHub Actions (scripts/fetch-live.mjs, scripts/fetch-cells.mjs) and published on the
    * `live-data` / `cell-data` branches of this repo; the browser reads it from raw.githubusercontent.com.
-   * Snapshots are ~10 minutes apart, so positions are projected forward from speed and heading between refreshes. */
+   * Snapshots are published about every 6 minutes when the GitHub collector is running; the map projects positions between fresh observations using reported speed and heading. */
   const TM_API_BASE = window.TM_API_BASE || window.location.origin;
   async function tmApi(path) {
     const r = await fetch(TM_API_BASE + path, { cache: 'no-store' });
@@ -1101,7 +1101,7 @@
       transit: { label: 'TRANSIT', noun: 'vehicles', file: 'transit.json', branch: 'live-data', icon: 'tm-bus', color: '#ffb347' },
       cells: { label: 'MOBILE', noun: 'tower cells', file: 'cells.json', branch: 'cell-data', color: '#d28bff' }
     },
-    on: { air: false, ships: false, transit: false, cells: false },
+    on: { air: true, ships: true, transit: true, cells: false },
     data: {}, err: {}, sel: null, follow: false, timer: null, refresh: null
   };
   function tpUrl(k) { const d = TP.kinds[k]; return TP_BASE + '/' + d.branch + '/' + d.file + '?t=' + Math.floor(Date.now() / 120000); }
@@ -1144,6 +1144,10 @@
     if (!maplibre.getLayer('tp-sel')) maplibre.addLayer({ id: 'tp-sel', type: 'circle', source: 'tp-sel', paint: { 'circle-radius': 16, 'circle-color': 'rgba(0,0,0,0)', 'circle-stroke-width': 2.5, 'circle-stroke-color': '#ffffff' } });
     maplibre.on('dragstart', function () { if (TP.follow) { TP.follow = false; tpCard(); } });
     tpApply();
+    Promise.all(['air', 'ships', 'transit'].map(function (k) { return tpLoad(k); })).then(function () {
+      tpTick();
+      tpStatus();
+    });
     if (!TP.timer) TP.timer = setInterval(tpTick, 2500);
     if (!TP.refresh) TP.refresh = setInterval(function () { Object.keys(TP.on).forEach(function (k) { if (TP.on[k] && k !== 'cells') tpLoad(k).then(function () { tpStatus(); }); }); }, 30000);
   }
