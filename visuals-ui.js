@@ -68,8 +68,8 @@ function drawSearch(panel){
 }
 function doSearch(){
  var q=(document.getElementById('tmSearch').value||'').trim();if(!q)return;
- if(/^\\+?[0-9][0-9 ()-]{6,18}$/.test(q)){mobileLookup(q);return}
- if(/^\\d{1,3}(?:\\.\\d{1,3}){3}$/.test(q)||/^(my ip|myip)$/i.test(q)){ipLookup(q);return}
+ if(/^\+?[0-9][0-9 ()-]{6,18}$/.test(q)){mobileLookup(q);return}
+ if(/^\d{1,3}(?:\.\d{1,3}){3}$/.test(q)||/^(my ip|myip)$/i.test(q)){ipLookup(q);return}
  if(window.tmFindObject){window.tmFindObject(q).then(function(found){if(!found)globalSearch(q)}).catch(function(){globalSearch(q)})}
  else globalSearch(q);
 }
@@ -85,9 +85,9 @@ function ipLookup(q){
  }).catch(function(){});
 }
 function mobileLookup(q){
- var key='tmViewerToken:'+q.replace(/\\D/g,''),tok=localStorage.getItem(key)||sessionStorage.getItem('tmViewerToken')||'';
+ var key='tmViewerToken:'+q.replace(/\D/g,''),tok=localStorage.getItem(key)||sessionStorage.getItem('tmViewerToken')||'';
  fetch(API+'/api/devices/lookup?phone='+encodeURIComponent(q),{headers:tok?{'Authorization':'Bearer '+tok}:{}}).then(function(r){return r.json().then(function(j){return {ok:r.ok,status:r.status,data:j}})}).then(function(x){
-   if(!x.ok){if(x.status===401){var code=window.prompt('Enter the 6-digit pairing code shown on the consenting device:','');if(!/^\\d{6}$/.test(String(code||'')))return;
+   if(!x.ok){if(x.status===401){var code=window.prompt('Enter the 6-digit pairing code shown on the consenting device:','');if(!/^\d{6}$/.test(String(code||'')))return;
      return fetch(API+'/api/devices/pair',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({pairingCode:String(code).trim()})}).then(function(r){return r.json()}).then(function(j){if(j.viewerToken){localStorage.setItem(key,j.viewerToken);sessionStorage.setItem('tmViewerToken',j.viewerToken);mobileLookup(q)}})
    } return;
    var d=x.data&&x.data.location;if(d&&Number.isFinite(Number(d.lat))&&Number.isFinite(Number(d.lon))&&window.map)window.map.flyTo({center:[Number(d.lon),Number(d.lat)],zoom:15,duration:1000});
