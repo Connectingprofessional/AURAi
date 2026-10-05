@@ -25,7 +25,7 @@ const num = (v) => (v === null || v === undefined || v === '' || !Number.isFinit
 function corsHeaders(req, env) {
   const origin = req.headers.get('Origin') || '';
   const allowed = String(env.ALLOWED_ORIGINS || 'https://connectingprofessional.github.io').split(',').map((s) => s.trim()).filter(Boolean);
-  const h = { 'Vary': 'Origin', 'Access-Control-Allow-Methods': 'GET,POST,OPTIONS', 'Access-Control-Allow-Headers': 'Authorization,Content-Type', 'Access-Control-Max-Age': '86400' };
+  const h = { 'Vary': 'Origin', 'Access-Control-Allow-Methods': 'GET,POST,OPTIONS', 'Access-Control-Allow-Headers': 'Authorization,Content-Type,X-Admin-Token', 'Access-Control-Max-Age': '86400' };
   if (origin && (allowed.includes(origin) || allowed.includes('*'))) h['Access-Control-Allow-Origin'] = origin;
   return h;
 }
@@ -46,7 +46,24 @@ async function limited(env, req, bucket, max, windowSec) {
   return row.n + 1 > max;
 }
 
-async function readBody(req) { try { return await req.json(); } catch (e) { return {}; } }
+async function readBody(req) { try { return await req.json(); } catch (e) { return {}; } }\nasync function ensureAdminTables(env) {
+  if (!env.DB) return;
+  await env.DB.prepare('CREATE TABLE IF NOT EXISTS admin_sessions (token_hash TEXT PRIMARY KEY, expires_at TEXT NOT NULL)').run();
+  await env.DB.prepare('CREATE TABLE IF NOT EXISTS admin_logs (id TEXT PRIMARY KEY, occurred_at TEXT NOT NULL, event TEXT NOT NULL, ip TEXT, tab TEXT, sub TEXT, detail TEXT)').run();
+}
+async function adminSession(req, env) {
+  const tok = req.headers.get('X-Admin-Token') || bearer(req);
+  if (!tok || !env.DB) return false;
+  await ensureAdminTables(env);
+  const r = await env.DB.prepare('SELECT token_hash FROM admin_sessions WHERE token_hash = ? AND expires_at > ?').bind(await sha256(tok), nowIso()).first();
+  return !!r;
+}
+const requestIp = (req) => req.headers.get('CF-Connecting-IP') || '';
+async function adminLog(env, req, event, tab='', sub='', detail='') {
+  await ensureAdminTables(env);
+  await env.DB.prepare('INSERT INTO admin_logs(id,occurred_at,event,ip,tab,sub,detail) VALUES(?,?,?,?,?,?,?)').bind(crypto.randomUUID(),nowIso(),String(event||'ui-event').slice(0,80),requestIp(req),String(tab||'').slice(0,80),String(sub||'').slice(0,80),String(detail||'').slice(0,500)).run();
+}
+
 const deviceByDeviceToken = async (env, tok) => (tok ? env.DB.prepare('SELECT * FROM devices WHERE device_token_hash = ? AND revoked_at IS NULL').bind(await sha256(tok)).first() : null);
 const deviceByViewerToken = async (env, tok) => (tok ? env.DB.prepare('SELECT * FROM devices WHERE viewer_token_hash = ? AND revoked_at IS NULL').bind(await sha256(tok)).first() : null);
 async function latestPoint(env, id) {
@@ -196,6 +213,38 @@ export default {
         return json(req, env, { ok: true, database: 'connected', tables: { devices: t.has('devices'), telemetry: t.has('telemetry'), rate_limits: t.has('rate_limits') }, pairingExpiryColumn: migrated });
       }
       if (!['GET', 'POST'].includes(req.method)) return json(req, env, { ok: false, error: 'Method not allowed' }, 405);
+      if (url.pathname === '/api/visitor' && req.method === 'POST') {
+        try { const b=await readBody(req); await adminLog(env,req,'page-visit',b.tab||'',b.sub||'',b.screen||''); return json(req,env,{ok:true}); } catch(e) { return json(req,env,{ok:false,error:'audit logging failed'},500); }
+      }
+      if (url.pathname === '/api/admin/login' && req.method === 'POST') {
+        const b=await readBody(req);
+        if(!env.ADMIN_USER || !env.ADMIN_PASSWORD) return json(req,env,{error:'Admin credentials are not configured on the Worker.'},503);
+        if(String(b.username||'')!==String(env.ADMIN_USER)||String(b.password||'')!==String(env.ADMIN_PASSWORD)) return json(req,env,{error:'Invalid admin credentials.'},401);
+        await ensureAdminTables(env);
+        const t=token(), exp=new Date(Date.now()+8*60*60*1000).toISOString();
+        await env.DB.prepare('INSERT INTO admin_sessions(token_hash,expires_at) VALUES(?,?)').bind(await sha256(t),exp).run();
+        return json(req,env,{ok:true,token:t,expiresAt:exp});
+      }
+      if (url.pathname === '/api/admin/logs' && req.method === 'GET') {
+        if(!(await adminSession(req,env))) return json(req,env,{error:'Admin authorization required.'},401);
+        await ensureAdminTables(env); const limit=Math.min(Math.max(Number(url.searchParams.get('limit')||200),1),1000);
+        const r=await env.DB.prepare('SELECT * FROM admin_logs ORDER BY occurred_at DESC LIMIT ?').bind(limit).all();
+        return json(req,env,{source:'D1',rows:r.results||[]});
+      }
+      if (url.pathname === '/api/admin/summary' && req.method === 'GET') {
+        if(!(await adminSession(req,env))) return json(req,env,{error:'Admin authorization required.'},401);
+        await ensureAdminTables(env);
+        const r=await env.DB.prepare("SELECT substr(occurred_at,1,10) day,count(*) total,sum(CASE WHEN event='page-visit' THEN 1 ELSE 0 END) visits,sum(CASE WHEN event='search' THEN 1 ELSE 0 END) searches,count(DISTINCT ip) unique_ips FROM admin_logs GROUP BY substr(occurred_at,1,10) ORDER BY day DESC LIMIT 30").all();
+        return json(req,env,{source:'D1',days:r.results||[]});
+      }
+      if (url.pathname === '/api/admin/feed-report' && req.method === 'GET') {
+        if(!(await adminSession(req,env))) return json(req,env,{error:'Admin authorization required.'},401);
+        return json(req,env,{ok:true,feeds:{visuals:!!env.VISUALS_PUBLIC_SOURCE_URLS,cell:!!env.OPENCELLID_API_KEY,devices:!!env.DB},generatedAt:nowIso()});
+      }
+      if (url.pathname === '/api/admin/log-event' && req.method === 'POST') {
+        if(!(await adminSession(req,env))) return json(req,env,{error:'Admin authorization required.'},401);
+        const b=await readBody(req); await adminLog(env,req,b.event||'ui-event',b.tab,b.sub,b.detail); return json(req,env,{ok:true});
+      }
       if (url.pathname === '/api/visuals' && req.method === 'GET') {
         const allowed = ['LIVE','CAMERAS','WEBCAMS','IMAGES','VIDEOS','CLIPS','SOURCE HISTORY'];
         const category = allowed.includes(String(url.searchParams.get('category') || 'LIVE').toUpperCase())
