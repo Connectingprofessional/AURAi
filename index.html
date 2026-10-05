@@ -110,11 +110,32 @@ body{overflow:hidden;background:#05090d;color:#edf4f8;font-family:system-ui,sans
     }).catch(function(){ setMobileStatus('Could not reach the TrackMeNow pairing API.'); });
   }
   if(input) input.addEventListener('keydown',function(e){if(e.key==='Enter')go();});
-  if(gps) gps.onclick=function(){
+  var gpsWatchId=null, gpsMarker=null;
+  function stopGpsWatch(){
+    if(gpsWatchId!==null && navigator.geolocation){ navigator.geolocation.clearWatch(gpsWatchId); gpsWatchId=null; }
+    if(gpsMarker){ gpsMarker.remove(); gpsMarker=null; }
+  }
+  function startGpsWatch(){
     if(!navigator.geolocation||!window.map) return;
-    navigator.geolocation.getCurrentPosition(function(p){
-      window.map.flyTo({center:[p.coords.longitude,p.coords.latitude],zoom:12,duration:1000});
-    });
+    if(gpsWatchId!==null) return;
+    setMobileStatus('LIVE GPS: requesting device location…');
+    gpsWatchId=navigator.geolocation.watchPosition(function(p){
+      var lon=p.coords.longitude, lat=p.coords.latitude;
+      if(window.map){
+        if(!gpsMarker && window.maplibregl && window.maplibregl.Marker){
+          gpsMarker=new window.maplibregl.Marker({color:'#43e0a0'}).setLngLat([lon,lat]).addTo(window.map);
+        } else if(gpsMarker){ gpsMarker.setLngLat([lon,lat]); }
+        window.map.flyTo({center:[lon,lat],zoom:Math.max(window.map.getZoom(),12),duration:500});
+      }
+      var acc=p.coords.accuracy!=null?Math.round(p.coords.accuracy):'?';
+      setMobileStatus('LIVE GPS: '+lat.toFixed(6)+', '+lon.toFixed(6)+' · ±'+acc+' m');
+    },function(err){
+      setMobileStatus('GPS unavailable: '+(err&&err.message?err.message:'permission denied'));
+      stopGpsWatch();
+    },{enableHighAccuracy:true,maximumAge:3000,timeout:15000});
+  }
+  if(gps) gps.onclick=function(){
+    if(gpsWatchId!==null) stopGpsWatch(); else startGpsWatch();
   };
 })();
 </script>
