@@ -83,7 +83,7 @@
   let scale = 'earth', earthMode = 'flat', dayNight = false, openDrawer = null;
   let globe = null, og = null, maplibre = null;
   let solarZoom = 1, solarCanvas = null, solarCtx = null, animId = 0;
-  let activeWx = { satellite: true, live: false, radar: false, dark: false, precip: false, wind: false, temp: true, humidity: false, pressure: false, events: false, quakes: false, fires: false };
+  let activeWx = { satellite: true, live: true, radar: false, dark: false, precip: false, wind: false, temp: false, humidity: false, pressure: false, events: false, quakes: false, fires: false };
   let rvHost = '', rvFrames = [], rvIndex = 0, playTimer = null, playing = false;
   let terminatorTimer = null, forecastTimer = null, gibsDayOffset = 0;
 
@@ -1457,7 +1457,7 @@
       try { maplibre.resize(); } catch (e) {}
       try { tpSetup(); } catch (e) { console.warn('transport layers', e); }
       applyLayers(); loadActivity();
-      setStatus('EARTH · ' + (useGlobe ? '3D' : 'FLAT') + ' · transport + terrain + current weather', true);
+      setStatus('EARTH · ' + (useGlobe ? '3D' : 'FLAT') + ' · transport + terrain + LIVE CLOUD', true);
       if (activeForecastMode()) refreshForecast().catch(function () {});
       if (dayNight) terminatorTimer = setInterval(function () { applyDayNight(); }, 60000);
     });
