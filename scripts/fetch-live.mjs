@@ -68,8 +68,16 @@ async function flights() {
     status.flights_opensky = 'failed: ' + e.message;
     const seen = new Set(), rows = [];
     await pool(adsbGrid().slice(0, 220), 8, async ([la, lo]) => { const j = await getJSON(`${ADSBLOL}/v2/point/${la}/${lo}/250`, {}, 6000); rows.push(...adsbRows(j.ac, seen)); });
-    if (rows.length < 100) throw new Error('OpenSky and ADSB.lol both returned too little (' + rows.length + ')');
-    return { t: now(), src: 'ADSB.lol (regional)', a: rows };
+    if (rows.length >= 100) return { t: now(), src: 'ADSB.lol (regional)', a: rows };
+    if (E.AVIATIONSTACK_API_KEY) {
+      const j = await getJSON('https://api.aviationstack.com/v1/flights?' + new URLSearchParams({ access_key: E.AVIATIONSTACK_API_KEY, flight_status: 'active' }).toString(), {}, 30000);
+      const av = (j.data || []).map(f => {
+        const live = f.live || {};
+        return [String((f.flight && (f.flight.icao || f.flight.iata || f.flight.number)) || ''), r(live.latitude, 4), r(live.longitude, 4), r(live.direction || 0, 0), r(live.speed_horizontal || 0, 0), r(live.altitude || 0, 0), String((f.flight && (f.flight.iata || f.flight.number)) || '').trim(), String((f.airline && f.airline.name) || '')];
+      }).filter(x => Number.isFinite(x[1]) && Number.isFinite(x[2]));
+      if (av.length) return { t: now(), src: 'Aviationstack', a: av };
+    }
+    throw new Error('OpenSky, ADSB.lol and Aviationstack returned too little aircraft data');
   }
 }
 
