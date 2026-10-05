@@ -1550,7 +1550,7 @@
 
   /* Keep the existing map controls; the standalone Universe landing screen is removed. */
   try { scale = localStorage.getItem('tm-scale') || 'earth'; } catch (e) {}
-  if (['moon', 'mars', 'solar', 'universe'].indexOf(scale) < 0) scale = 'earth';
+  if (['moon', 'mars', 'solar'].indexOf(scale) < 0) scale = 'earth';
   setStatus('STARTING…', true);
   injectChrome();
   setScale(scale);
