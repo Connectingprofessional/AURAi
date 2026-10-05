@@ -91,7 +91,8 @@ body{overflow:hidden;background:#05090d;color:#edf4f8;font-family:system-ui,sans
   }
   function mobileLookup(q){
     var base=apiBase();
-    var viewerToken=sessionStorage.getItem('tmViewerToken')||'';
+    var viewerKey='tmViewerToken:'+q.replace(/\D/g,'');
+    var viewerToken=localStorage.getItem(viewerKey)||sessionStorage.getItem('tmViewerToken')||'';
     setMobileStatus('Searching the authorized device…');
     fetch(base+'/api/devices/lookup?phone='+encodeURIComponent(q),{
       headers:viewerToken?{'Authorization':'Bearer '+viewerToken}:{}
@@ -100,9 +101,10 @@ body{overflow:hidden;background:#05090d;color:#edf4f8;font-family:system-ui,sans
     }).then(function(x){
       if(!x.ok){
         if(x.status===401||x.status===403){
-          sessionStorage.removeItem('tmViewerToken');
-          if(x.status===401){ askForCode(q); return; }
-          setMobileStatus('Access expired or was rejected. Search the number again and enter the new code from the device.');
+          localStorage.removeItem(viewerKey);
+        sessionStorage.removeItem('tmViewerToken');
+          if(x.status===401){ askForCode(q,viewerKey); return; }
+          setMobileStatus('Access expired. Authorize this device once again to restore trusted access.');
           return;
         }
         setMobileStatus((x.data&&x.data.error)||'Device lookup failed.');
@@ -122,7 +124,7 @@ body{overflow:hidden;background:#05090d;color:#edf4f8;font-family:system-ui,sans
   }
   function setMobileStatus(msg){ var s=document.getElementById('status'); if(s) s.textContent=msg; }
   if(btn) btn.onclick=go;
-  function askForCode(q){
+  function askForCode(q,viewerKey){
     var base=apiBase();
     var value=window.prompt('Enter the 6-digit code shown on the phone you are searching (the device owner shares it):','');
     if(value===null){ setMobileStatus('Search cancelled.'); return; }
