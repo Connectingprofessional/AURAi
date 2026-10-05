@@ -1,0 +1,14 @@
+name = "wispy-bush-9aee"          # same name as your existing Worker, so the URL stays the same
+main = "worker.js"
+compatibility_date = "2025-01-01"
+
+[vars]
+ALLOWED_ORIGINS = "https://connectingprofessional.github.io,http://localhost:8080,http://127.0.0.1:8080"
+RETENTION_DAYS = "7"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "trackmenow"
+database_id = "PASTE-YOUR-D1-DATABASE-ID-HERE"   # printed by: npx wrangler d1 create trackmenow
+
+# Secret (never put it in this file):  npx wrangler secret put OPENCELLID_API_KEY
