@@ -1549,7 +1549,7 @@
     } catch (err) { console.error(err); setStatus('FAILED · ' + (err.message || err), false); }
   }
 
-  injectChrome();
+  /* Legacy Universe overlay disabled; visuals-ui.js owns navigation. */
   try { scale = localStorage.getItem('tm-scale') || 'earth'; } catch (e) {}
   if (['moon', 'mars', 'solar', 'universe'].indexOf(scale) < 0) scale = 'earth';
   setStatus('STARTING…', true);
