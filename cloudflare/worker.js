@@ -249,8 +249,8 @@ export default {
         const allowed = ['LIVE','CAMERAS','WEBCAMS','IMAGES','VIDEOS','CLIPS','SOURCE HISTORY'];
         const category = allowed.includes(String(url.searchParams.get('category') || 'LIVE').toUpperCase())
           ? String(url.searchParams.get('category') || 'LIVE').toUpperCase() : 'LIVE';
-        const sources = String(env.VISUALS_PUBLIC_SOURCE_URLS || '').split(',').map(s => s.trim()).filter(Boolean).map((source, i) => ({
-          id: 'configured-' + i, type: 'public', status: 'LIVE',
+        const sources = category === 'SOURCE HISTORY' ? [] : String(env.VISUALS_PUBLIC_SOURCE_URLS || '').split(',').map(s => s.trim()).filter(Boolean).map((source, i) => ({
+          id: 'configured-' + i, type: 'public', status: category === 'LIVE' ? 'LIVE' : 'SOURCE',
           title: 'Configured public visual source',
           provider: 'TrackMeNow public source adapter',
           url: source, category
