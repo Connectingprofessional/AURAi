@@ -38,6 +38,7 @@ function render(){
  tabs[state.tab].subs.forEach(function(s){var b=el('button',{class:'tm-sub',type:'button'},s);b.classList.toggle('active',s===state.sub);b.onclick=function(){state.sub=s;state.panel=true;render()};sub.appendChild(b)});
  panel.classList.toggle('open',state.panel);
  if(state.panel) drawPanel(panel);
+ requestAnimationFrame(function(){document.documentElement.style.setProperty('--tm-dock-h',(document.getElementById('tm-shell').offsetHeight||74)+'px')});
 }
 function drawPanel(panel){
  panel.innerHTML='';
