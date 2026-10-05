@@ -1,170 +1,154 @@
-/* TrackMeNow — bottom dock framework. No media is stored; public/authorized sources are opened at origin. */
+/* TrackMeNow — full category UI. All navigation lives in the bottom dock; map viewport ends above it. */
 (function(){
 'use strict';
-var API=(location.hostname==='localhost'||location.hostname==='127.0.0.1')?location.origin:'https://wispy-bush-9aee.recreationeeraj.workers.dev';
-var tabs={
- MAP:{subs:['OVERVIEW','LAYERS','SEARCH']},
- TRANSPORT:{subs:['AIR','SEA','RAIL','BUS','TAXI']},
- TERRAIN:{subs:['SATELLITE','TERRAIN','STREET','3D TERRAIN']},
- WEATHER:{subs:['LIVE CLOUD','RADAR','PRECIP','WIND','TEMP','HUMIDITY','PRESSURE']},
- VISUALS:{subs:['LIVE','CAMERAS','WEBCAMS','IMAGES','VIDEOS','CLIPS','SOURCE HISTORY']},
- NETWORK:{subs:['CELLS','RADIO','CARRIERS','INFRASTRUCTURE']},
- DEVICES:{subs:['LIVE GPS','HISTORY','GEOfENCE','CONSENT']},
- EVENTS:{subs:['EARTHQUAKES','FIRES','STORMS','ALERTS']},
- SPACE:{subs:['EARTH','SOLAR SYSTEM','PLANETS','ASTEROIDS','UNIVERSE']},
- COMMUNICATION:{subs:['WEBRTC CALL','VIDEO','VOICE','CONTACTS','CALL HISTORY']},
- MORE:{subs:['ADMIN','SOURCES','STATUS','SETTINGS']}
+const API=(location.hostname==='localhost'||location.hostname==='127.0.0.1')?location.origin:'https://wispy-bush-9aee.recreationeeraj.workers.dev';
+const isLocal=location.hostname==='localhost'||location.hostname==='127.0.0.1';
+const T={
+ MAP:['OVERVIEW','LAYERS','SEARCH'],
+ SPACE:['UNIVERSE','SOLAR SYSTEM','EARTH','MOON','MARS'],
+ TRANSIT:['AIR','SHIP','TAXI','RAILWAY','BOAT','PERSONAL JET','METRO','CAR','BIKES'],
+ WEATHER:['NATURAL CALAMITIES','WEATHER REPORT'],
+ COMMUNICATION:['WEBRTC','PHONE'],
+ TRACK:['GPS','IP','CELL','DEVICE','HISTORY','GEOFENCE','CONSENT'],
+ VISUALS:['LIVE','CAMERAS','IMAGES','VIDEOS','CLIPS','HISTORY','USER SHARED'],
+ MORE:['ADMIN','SOURCES','STATUS','SETTINGS']
 };
-var state={tab:'MAP',sub:'OVERVIEW',panel:false};
-var fallback=[
- {type:'camera',status:'DISCOVERY',title:'Public camera sources',description:'Configured public camera feeds appear here. TrackMeNow does not scan private cameras.',source:'OpenStreetMap / configured public feeds'},
- {type:'webcam',status:'DISCOVERY',title:'Public webcams',description:'Open public webcam pages or feeds from their original provider.',source:'Provider source'},
- {type:'image',status:'RECORDED',title:'Public imagery',description:'External street, weather and map imagery remains at the original provider.',source:'Mapillary / KartaView / provider'},
- {type:'video',status:'PUBLIC',title:'Public video',description:'Public videos open at their original source; TrackMeNow does not copy them.',source:'Original publisher'},
- {type:'clip',status:'PUBLIC',title:'Clips',description:'Saved references can be added later without storing the media itself.',source:'Original publisher'}
-];
-function el(tag,attrs,text){var x=document.createElement(tag);if(attrs)Object.keys(attrs).forEach(function(k){x.setAttribute(k,attrs[k])});if(text!=null)x.textContent=text;return x}
+const state={tab:'MAP',sub:'OVERVIEW',stack:null,period:'DAY',panel:false};
+let gps={watch:null,session:null,marker:null}, historyTimer=null;
+const $=(s)=>document.querySelector(s);
+function el(tag,attrs={},txt){const x=document.createElement(tag);Object.keys(attrs).forEach(k=>x.setAttribute(k,attrs[k]));if(txt!==undefined)x.textContent=txt;return x}
+function api(path,opt){return fetch(API+path,Object.assign({cache:'no-store'},opt||{})).then(async r=>{const j=await r.json().catch(()=>({}));if(!r.ok)throw Object.assign(new Error(j.error||('HTTP '+r.status)),{status:r.status,data:j});return j})}
+function oldClick(selector){const b=document.querySelector(selector);if(b){b.click();return true}return false}
+function engine(){return window.TrackMeNowEngine||null}
+function map(){return window.map||null}
+function openAdmin(){window.open('./admin.html','_blank','noopener,noreferrer')}
+function card(title,desc,action,label){const c=el('article',{class:'tm-card'});c.append(el('b',{},title));if(desc)c.append(el('p',{},desc));if(action){const b=el('button',{class:'tm-action',type:'button'},label||'OPEN');b.onclick=action;c.append(b)}return c}
+function status(text){const x=el('div',{class:'tm-status'},text);return x}
+function setPanelTitle(){const h=$('#tm-panel-title');if(h)h.textContent=state.tab+' / '+state.sub+(state.stack?' / '+state.stack:'')}
 function build(){
- var shell=el('div',{id:'tm-shell'});
- var main=el('nav',{id:'tm-main-tabs','aria-label':'TrackMeNow sections'});
- Object.keys(tabs).forEach(function(k){var b=el('button',{class:'tm-tab',type:'button'},k);b.onclick=function(){state.tab=k;state.sub=tabs[k].subs[0];state.panel=false;render()};main.appendChild(b)});
- var sub=el('div',{id:'tm-subbar','aria-label':'TrackMeNow subsections'});
- var panel=el('section',{id:'tm-panel','aria-live':'polite'});
- shell.appendChild(main);shell.appendChild(sub);shell.appendChild(panel);document.body.appendChild(shell);
- render();
+ const top=el('header',{id:'tm-top'});
+ const brand=el('div',{class:'tm-brand'},'TRACKME<span>NOW</span>');
+ const search=el('div',{class:'tm-search'}),inp=el('input',{id:'tm-global-search',placeholder:'Search city, place, device, cell ID, aircraft, IP…',autocomplete:'off'}),go=el('button',{type:'button'},'SEARCH');
+ go.onclick=()=>doSearch(inp.value);inp.onkeydown=e=>{if(e.key==='Enter')doSearch(inp.value)};search.append(inp,go);
+ const admin=el('button',{id:'tm-admin',type:'button','aria-label':'Admin'},'⚙');admin.onclick=openAdmin;
+ top.append(brand,search,admin);document.body.append(top);
+ const shell=el('div',{id:'tm-shell'});
+ const main=el('nav',{id:'tm-main-tabs'});Object.keys(T).forEach(k=>{const b=el('button',{class:'tm-tab',type:'button'},k);b.onclick=()=>{state.tab=k;state.sub=T[k][0];state.stack=null;state.panel=false;render()};main.append(b)});
+ const sub=el('div',{id:'tm-subbar'});
+ const zoom=el('div',{class:'tm-zoom-common'});[['−',-1],['+',1]].forEach(([txt,d])=>{const b=el('button',{type:'button'},txt);b.onclick=()=>engine()&&engine().zoomBy(d);zoom.append(b)});
+ const panel=el('section',{id:'tm-panel'});const head=el('div',{class:'tm-panel-head'}),title=el('div',{id:'tm-panel-title',class:'tm-panel-title'}),meta=el('div',{class:'tm-panel-meta'},'LIVE / PUBLIC / CONSENT-BASED'),close=el('button',{class:'tm-close',type:'button'},'×');close.onclick=()=>{state.panel=false;render()};head.append(title,meta,close);panel.append(head);
+ shell.append(main,sub,zoom,panel);document.body.append(shell);render();
 }
 function render(){
- var main=document.getElementById('tm-main-tabs'),sub=document.getElementById('tm-subbar'),panel=document.getElementById('tm-panel');
- Array.from(main.children).forEach(function(b){b.classList.toggle('active',b.textContent===state.tab)});
- sub.innerHTML='';
- tabs[state.tab].subs.forEach(function(s){var b=el('button',{class:'tm-sub',type:'button'},s);b.classList.toggle('active',s===state.sub);b.onclick=function(){state.sub=s;state.panel=true;render()};sub.appendChild(b)});
- panel.classList.toggle('open',state.panel);
- if(state.panel) drawPanel(panel);
- requestAnimationFrame(function(){document.documentElement.style.setProperty('--tm-dock-h',(document.getElementById('tm-shell').offsetHeight||74)+'px')});
+ const main=$('#tm-main-tabs'),sub=$('#tm-subbar'),panel=$('#tm-panel');Array.from(main.children).forEach(b=>b.classList.toggle('active',b.textContent===state.tab));
+ sub.innerHTML='';T[state.tab].forEach(s=>{const b=el('button',{class:'tm-sub',type:'button'},s);b.classList.toggle('active',s===state.sub);b.onclick=()=>{state.sub=s;state.stack=null;state.panel=true;render()};sub.append(b)});
+ panel.classList.toggle('open',state.panel);setPanelTitle();if(state.panel)draw(panel);
+ requestAnimationFrame(()=>document.documentElement.style.setProperty('--tm-dock-h',($('#tm-shell').offsetHeight||74)+'px'));
 }
-function drawPanel(panel){
- panel.innerHTML='';
- var head=el('div',{class:'tm-panel-head'}),title=el('div',{class:'tm-panel-title'},state.tab+' / '+state.sub),meta=el('div',{class:'tm-panel-meta'},'LIVE RESOURCE · NO MEDIA STORAGE');
- var close=el('button',{class:'tm-close',type:'button','aria-label':'Close panel'},'×');close.onclick=function(){state.panel=false;render()};
- head.appendChild(title);head.appendChild(meta);head.appendChild(close);panel.appendChild(head);
- if(state.tab==='VISUALS'){drawVisuals(panel);return}
- if(state.tab==='MAP'&&state.sub==='SEARCH'){drawSearch(panel);return}
- if(state.tab==='DEVICES'&&state.sub==='LIVE GPS'){drawGps(panel);return}
- if(state.tab==='COMMUNICATION'){drawCommunication(panel);return}
- if(state.tab==='TERRAIN'){drawTerrain(panel);return}
- if(state.tab==='MORE'&&state.sub==='ADMIN'){location.href='./admin.html';return}
- var grid=el('div',{class:'tm-grid'});
- var card=el('div',{class:'tm-card'});card.appendChild(el('b',{},state.sub));card.appendChild(el('p',{},description(state.tab,state.sub)));grid.appendChild(card);panel.appendChild(grid);
+function draw(panel){
+ while(panel.children.length>1)panel.lastChild.remove();
+ const body=el('div',{class:'tm-panel-body'});panel.append(body);
+ if(state.tab==='MAP')return drawMap(body);
+ if(state.tab==='SPACE')return drawSpace(body);
+ if(state.tab==='TRANSIT')return drawTransit(body);
+ if(state.tab==='WEATHER')return drawWeather(body);
+ if(state.tab==='COMMUNICATION')return drawCommunication(body);
+ if(state.tab==='TRACK')return drawTrack(body);
+ if(state.tab==='VISUALS')return drawVisuals(body);
+ return drawMore(body);
 }
-function description(t,s){
- if(t==='TRANSPORT')return 'Live transport layer controls. Only sources that are actually configured and returning current observations are labelled LIVE.';
- if(t==='TERRAIN')return 'Map surface controls for satellite imagery, terrain, street mapping and 3D terrain. The map remains unobstructed.';
- if(t==='WEATHER')return 'LIVE CLOUD is the default landing weather layer. Temperature, humidity, pressure, wind and precipitation are available only when selected.';
- if(t==='NETWORK')return 'Public cell/network intelligence and infrastructure. A public cell estimate is never presented as live handset location.';
- if(t==='DEVICES')return 'Consent-based device tracking. A phone number alone never grants location access.';
- if(t==='EVENTS')return 'Live public event feeds with source and timestamp labels.';
- if(t==='SPACE')return 'Astronomy and space views already provided by the TrackMeNow map engine.';
- if(t==='COMMUNICATION')return 'Native TrackMeNow communication using WebRTC. No WhatsApp dependency is required.';
- return 'Framework tab ready. The map remains the primary view and this panel is the only place for controls.';
+function drawMap(p){
+ if(state.sub==='SEARCH')return drawSearch(p);
+ const items={OVERVIEW:['SATELLITE','LIVE','3D','FLAT','RADAR','DAY / NIGHT'],LAYERS:['SATELLITE','LIVE','RADAR','DAY / NIGHT'],SEARCH:[]}[state.sub]||[];
+ p.append(status('Map views are mutually selectable; the common zoom control stays in the dock.'));
+ const g=el('div',{class:'tm-stack'});
+ items.forEach(k=>g.append(card(k,'Select this map view.',()=>mapAction(k),'SELECT')));p.append(g);
 }
-function drawSearch(panel){
- var row=el('div',{class:'tm-row'}),input=el('input',{class:'tm-input',placeholder:'City, place, coordinates, IP, device, Cell ID, aircraft…',id:'tmSearch'}),go=el('button',{class:'tm-action',type:'button'},'SEARCH');row.appendChild(input);row.appendChild(go);panel.appendChild(row);
- var note=el('div',{class:'tm-status'},'Phone lookup is consent-based; phone number alone never reveals a location. IP results are approximate.');panel.appendChild(note);
- go.onclick=doSearch;input.onkeydown=function(e){if(e.key==='Enter')doSearch()};
+function mapAction(k){
+ const e=engine();if(!e)return;
+ if(k==='SATELLITE')oldClick('[data-bar="satellite"]');
+ if(k==='LIVE')oldClick('[data-bar="live"]');
+ if(k==='RADAR')e.selectWeather('radar');
+ if(k==='DAY / NIGHT')oldClick('[data-bar="daynight"]');
+ if(k==='FLAT')e.setEarthMode('flat');
+ if(k==='3D')e.setEarthMode('globe');
 }
-function doSearch(){
- var q=(document.getElementById('tmSearch').value||'').trim();if(!q)return;
- if(/^\+?[0-9][0-9 ()-]{6,18}$/.test(q)){mobileLookup(q);return}
- if(/^\d{1,3}(?:\.\d{1,3}){3}$/.test(q)||/^(my ip|myip)$/i.test(q)){ipLookup(q);return}
- if(window.tmFindObject){window.tmFindObject(q).then(function(found){if(!found)globalSearch(q)}).catch(function(){globalSearch(q)})}
- else globalSearch(q);
+function drawSpace(p){
+ const items={UNIVERSE:['UNIVERSE'], 'SOLAR SYSTEM':['SOLAR SYSTEM','EARTH','MOON','MARS'],EARTH:['EARTH'],MOON:['MOON'],MARS:['MARS']}[state.sub]||[];
+ p.append(status('Space uses the existing TrackMeNow 3D engine. Earth, Moon and Mars are rendered as interactive 3D planetary views; Universe and Solar System use the orbital view.'));
+ const g=el('div',{class:'tm-stack'});items.forEach(k=>g.append(card(k,k==='EARTH'?'Return to live Earth map.':k==='MOON'?'Open 3D Moon.':k==='MARS'?'Open 3D Mars.':k==='SOLAR SYSTEM'?'Open the Solar System view.':'Open the Universe view.',()=>{const e=engine();if(e)e.setScale(k==='SOLAR SYSTEM'?'solar':k.toLowerCase())},'OPEN 3D'));p.append(g);
 }
-function globalSearch(q){
- fetch(API+'/api/global/search?q='+encodeURIComponent(q)).then(function(r){return r.json()}).then(function(j){var x=j.results&&j.results[0];if(x&&window.map&&window.map.flyTo)window.map.flyTo({center:[x.lon,x.lat],zoom:10,duration:1000})}).catch(function(){});
+const transitMap={AIR:'air',SHIP:'ships',RAILWAY:'rail',BOAT:'ships', 'PERSONAL JET':'air',TAXI:null,METRO:null,CAR:null,BIKES:null};
+function drawTransit(p){
+ p.append(status('TRANSIT is one umbrella. Moving feeds are toggled from the available live source; categories without a dedicated live feed are reported as source-required rather than simulated.'));
+ const g=el('div',{class:'tm-stack'});
+ T.TRANSIT.forEach(k=>{const feed=transitMap[k];let desc=feed?'Uses the live '+feed.toUpperCase()+' transport layer.':'Dedicated live '+k.toLowerCase()+' feed is not currently configured.';
+ const act=feed?()=>{const e=engine();if(e)e.toggleTransport(feed)}:()=>showSourceStatus(p,k);
+ g.append(card(k,desc,act,feed?'TOGGLE LIVE':'SOURCE STATUS'))});p.append(g);
 }
-function ipLookup(q){
- var path=/^(my ip|myip)$/i.test(q)?'/api/integrations/ip/my':'/api/integrations/ip/lookup?ip='+encodeURIComponent(q);
- fetch(API+path,{cache:'no-store'}).then(function(r){return r.json().then(function(j){return {ok:r.ok,data:j}})}).then(function(x){
-   if(!x.ok)return;
-   var d=x.data||{},lat=Number(d.latitude),lon=Number(d.longitude);if(!Number.isFinite(lat)||!Number.isFinite(lon))return;
-   if(window.map&&window.map.flyTo)window.map.flyTo({center:[lon,lat],zoom:Math.max(window.map.getZoom(),7),duration:1000});
- }).catch(function(){});
+function showSourceStatus(p,k){p.append(status(k+': no dedicated live feed is configured. TrackMeNow will not invent vehicle positions.'))}
+function drawWeather(p){
+ if(state.sub==='NATURAL CALAMITIES')return drawCalamities(p);
+ return drawWeatherReport(p);
 }
-function mobileLookup(q){
- var key='tmViewerToken:'+q.replace(/\D/g,''),tok=localStorage.getItem(key)||sessionStorage.getItem('tmViewerToken')||'';
- fetch(API+'/api/devices/lookup?phone='+encodeURIComponent(q),{headers:tok?{'Authorization':'Bearer '+tok}:{}}).then(function(r){return r.json().then(function(j){return {ok:r.ok,status:r.status,data:j}})}).then(function(x){
-   if(!x.ok){if(x.status===401){var code=window.prompt('Enter the 6-digit pairing code shown on the consenting device:','');if(!/^\d{6}$/.test(String(code||'')))return;
-     return fetch(API+'/api/devices/pair',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({pairingCode:String(code).trim()})}).then(function(r){return r.json()}).then(function(j){if(j.viewerToken){localStorage.setItem(key,j.viewerToken);sessionStorage.setItem('tmViewerToken',j.viewerToken);mobileLookup(q)}})
-   } return;
-   var d=x.data&&x.data.location;if(d&&Number.isFinite(Number(d.lat))&&Number.isFinite(Number(d.lon))&&window.map)window.map.flyTo({center:[Number(d.lon),Number(d.lat)],zoom:15,duration:1000});
- }).catch(function(){});
+function drawCalamities(p){
+ const g=el('div',{class:'tm-stack'}),items=[['LIVE CLOUD','Current-day NASA VIIRS imagery',()=>engine().selectWeather('live')],['ACTIVE FIRES','NASA VIIRS thermal anomalies',()=>engine().selectWeather('fires')],['EONET','NASA open natural-event feed',()=>engine().selectWeather('events')],['EARTHQUAKE','USGS earthquake feed',()=>engine().selectWeather('quakes')],['DARK BASE','Dark base map',()=>engine().selectWeather('dark')]];
+ items.forEach(x=>g.append(card(x[0],x[1],x[2],'SHOW ON MAP')));p.append(g);
 }
-var gpsWatchId=null,gpsMarker=null;
-function drawTerrain(panel){
- var grid=el('div',{class:'tm-grid'});
- var items={
-  'SATELLITE':'Live satellite/base imagery for the map.',
-  'TERRAIN':'Terrain-aware map presentation and elevation context.',
-  'STREET':'Street-level cartographic map view.',
-  '3D TERRAIN':'3D terrain/elevation mode when the map engine supports it.'
- };
- Object.keys(items).forEach(function(k){
-  var c=el('div',{class:'tm-card'});c.appendChild(el('b',{},k));c.appendChild(el('p',{},items[k]));
-  var b=el('button',{class:'tm-action',type:'button'},'SELECT');c.appendChild(b);
-  b.onclick=function(){
-   if(k==='SATELLITE'&&window.TrackMeNowEngine) window.TrackMeNowEngine.setScale('earth');
-   if(window.map&&window.map.setTerrain && k==='3D TERRAIN') { try{ window.map.setTerrain({source:'terrain'}); }catch(e){} }
-  };
-  grid.appendChild(c);
- });
- panel.appendChild(grid);
+function drawWeatherReport(p){
+ const g=el('div',{class:'tm-stack'}),items=[['LIVE CLOUD','Current-day cloud/imagery layer',()=>engine().selectWeather('live')],['RAIN','Weather report focused on rain',()=>weatherSelect('precip')],['PRECIPITATION','Precipitation layer/report',()=>weatherSelect('precip')],['WIND','Wind report/layer',()=>weatherSelect('wind')],['TEMPERATURE','Temperature report/layer',()=>weatherSelect('temp')],['HUMIDITY','Humidity report/layer',()=>weatherSelect('humidity')],['PRESSURE','Pressure report/layer',()=>weatherSelect('pressure')]];
+ items.forEach(x=>g.append(card(x[0],x[1],x[2],'SELECT')));p.append(g);
+ const periods=el('div',{class:'tm-periods'});['DAY','MONTH','QUARTER','YEAR'].forEach(x=>{const b=el('button',{type:'button',class:x===state.period?'on':''},x);b.onclick=()=>{state.period=x;renderWeatherReport(p)};periods.append(b)});p.append(periods);
+ const timeline=el('div',{class:'tm-timeline'});const l=el('button',{type:'button'},'◀');const r=el('button',{type:'button'},'▶');const ts=el('span',{},'TIMELINE · '+new Date().toLocaleString());const link=el('button',{type:'button'},'OPEN TIMELINE');l.onclick=()=>shiftPeriod(-1);r.onclick=()=>shiftPeriod(1);link.onclick=()=>showTimeline(p);timeline.append(l,ts,r,link);p.append(timeline);
 }
-function drawCommunication(panel){
- var status=el('div',{class:'tm-status'},'WEBRTC · native TrackMeNow communication · no WhatsApp dependency · calls require user permission and an authorized peer.');panel.appendChild(status);
- var grid=el('div',{class:'tm-grid'});
- var items={
-  'WEBRTC CALL':'Start an authorized TrackMeNow peer call using WebRTC signaling.',
-  'VIDEO':'TrackMeNow-to-TrackMeNow video communication.',
-  'VOICE':'TrackMeNow-to-TrackMeNow voice communication.',
-  'CONTACTS':'Authorized devices/people available for communication.',
-  'CALL HISTORY':'Communication events and call metadata; media is not stored by this UI.'
- };
- Object.keys(items).forEach(function(k){
-  var c=el('div',{class:'tm-card'});c.appendChild(el('b',{},k));c.appendChild(el('p',{},items[k]));
-  var b=el('button',{class:'tm-action',type:'button'},k==='WEBRTC CALL'?'OPEN CALL':'OPEN');
-  b.onclick=function(){
-   if(k==='WEBRTC CALL'||k==='VIDEO'||k==='VOICE') window.open('./rtc-call.html','_blank','noopener,noreferrer');
-  };
-  c.appendChild(b);grid.appendChild(c);
- });
- panel.appendChild(grid);
+function renderWeatherReport(p){drawWeatherReport(p)}
+function weatherSelect(k){const e=engine();if(e)e.selectWeather(k);loadWeatherReport()}
+function shiftPeriod(d){const p=$('#tm-panel-body');if(p)loadWeatherReport(d)}
+async function loadWeatherReport(){const p=document.querySelector('.tm-panel-body');if(!p)return;const m=map();if(!m)return;
+ const c=m.getCenter(), now=new Date(), days=state.period==='DAY'?1:state.period==='MONTH'?30:state.period==='QUARTER'?90:365;
+ const end=new Date(now),start=new Date(now);start.setDate(start.getDate()-days);
+ const fmt=d=>d.toISOString().slice(0,10);
+ const u='https://archive-api.open-meteo.com/v1/archive?latitude='+c.lat.toFixed(3)+'&longitude='+c.lng.toFixed(3)+'&start_date='+fmt(start)+'&end_date='+fmt(end)+'&daily=temperature_2m_max,temperature_2m_min,precipitation_sum,wind_speed_10m_max&timezone=auto';
+ try{const j=await fetch(u).then(r=>r.json()),d=j.daily||{},n=(d.time||[]).length;const box=el('div',{class:'tm-report'},'WEATHER REPORT · '+state.period+' · '+(j.timezone||'local'));box.append(el('div',{},n+' daily points'));if(n){const last=n-1;box.append(el('div',{},'Latest: '+d.time[last]+' · '+(d.temperature_2m_min?.[last]??'—')+'–'+(d.temperature_2m_max?.[last]??'—')+' °C · precip '+(d.precipitation_sum?.[last]??'—')+' mm · wind max '+(d.wind_speed_10m_max?.[last]??'—')+' km/h'))}p.append(box)}catch(e){p.append(status('Weather report unavailable for the current map center.'))}
 }
-function drawGps(panel){
- var c=el('div',{class:'tm-card'});c.appendChild(el('b',{},'LIVE GPS'));c.appendChild(el('p',{},'Browser GPS is permission-based. Start/stop live tracking from this tab.'));var b=el('button',{class:'tm-action',type:'button'},'START LIVE GPS');c.appendChild(b);panel.appendChild(c);
- b.onclick=function(){
-   if(!navigator.geolocation){b.textContent='GPS UNAVAILABLE';return}
-   if(gpsWatchId!==null){navigator.geolocation.clearWatch(gpsWatchId);gpsWatchId=null;if(gpsMarker){gpsMarker.remove();gpsMarker=null}b.textContent='START LIVE GPS';return}
-   gpsWatchId=navigator.geolocation.watchPosition(function(p){
-     if(window.map){var ll=[p.coords.longitude,p.coords.latitude];if(!gpsMarker&&window.maplibregl&&window.maplibregl.Marker)gpsMarker=new window.maplibregl.Marker({color:'#43e0a0'}).setLngLat(ll).addTo(window.map);else if(gpsMarker)gpsMarker.setLngLat(ll);window.map.flyTo({center:ll,zoom:Math.max(window.map.getZoom(),12),duration:400)}
-     b.textContent='LIVE GPS ±'+Math.round(p.coords.accuracy||0)+' m';
-   },function(){b.textContent='GPS PERMISSION ERROR'}, {enableHighAccuracy:true,maximumAge:3000,timeout:15000});
- };
+function showTimeline(p){p.append(status('Timeline is tied to the selected weather period. Use ◀ / ▶ to move the reporting window and the day/month/quarter/year selector to change scale.'))}
+function drawCommunication(p){
+ p.append(status('TrackMeNow communication uses native WebRTC. Calls require microphone/camera permission and an authorized peer. Phone is a communication/contact entry, not a location mechanism.'));
+ p.append(card('WEBRTC','Open the native TrackMeNow call room.',()=>{window.open('./rtc-call.html','_blank','noopener,noreferrer')},'OPEN CALL'));
+ p.append(card('VIDEO','WebRTC video communication.',()=>window.open('./rtc-call.html','_blank','noopener,noreferrer'),'VIDEO CALL'));
+ p.append(card('VOICE','WebRTC voice communication.',()=>window.open('./rtc-call.html','_blank','noopener,noreferrer'),'VOICE CALL'));
+ p.append(card('PHONE','Open the device/contact phone action without using it for location.',()=>{const n=prompt('Phone number to call:');if(n)location.href='tel:'+n.replace(/[^+0-9]/g,'')},'PHONE'));
 }
-function drawVisuals(panel){
- var intro=el('div',{class:'tm-status'},'Visuals is a live/public-resource layer. TrackMeNow stores no camera, image, video or clip media.');panel.appendChild(intro);
- var row=el('div',{class:'tm-row'}),refresh=el('button',{class:'tm-action',type:'button'},'REFRESH SOURCES');row.appendChild(refresh);panel.appendChild(row);
- var grid=el('div',{class:'tm-grid'});panel.appendChild(grid);
- refresh.onclick=function(){loadVisuals(grid);};loadVisuals(grid);
+function drawTrack(p){
+ if(state.sub==='GPS')return drawGps(p);
+ if(state.sub==='IP')return drawIp(p);
+ if(state.sub==='CELL')return drawCell(p);
+ if(state.sub==='DEVICE'||state.sub==='CONSENT')return drawDevice(p);
+ if(state.sub==='HISTORY')return drawHistory(p);
+ if(state.sub==='GEOFENCE')return drawGeofence(p);
 }
-function loadVisuals(grid){
- grid.innerHTML='';
- fetch(API+'/api/visuals?category='+encodeURIComponent(state.sub),{cache:'no-store'}).then(function(r){if(!r.ok)throw Error('backend');return r.json()}).then(function(j){renderVisualCards(grid,j.sources||[])})
- .catch(function(){renderVisualCards(grid,fallback.filter(function(x){return state.sub==='LIVE'||state.sub==='CAMERAS'||state.sub==='WEBCAMS'||state.sub==='IMAGES'||state.sub==='VIDEOS'||state.sub==='CLIPS'}));});
+function drawGps(p){const c=card('LIVE GPS','Permission-based browser GPS. Start creates a TrackMeNow session and every point is sent to the session history API.',startGps,gps.watch?'STOP LIVE GPS':'START LIVE GPS');p.append(c);p.append(status(gps.session?'SESSION '+gps.session:'NO ACTIVE SESSION'))}
+async function startGps(){if(gps.watch!==null){navigator.geolocation.clearWatch(gps.watch);gps.watch=null;if(gps.session)await api('/api/sessions/'+gps.session+'/stop',{method:'POST'}).catch(()=>{});state.panel=true;render();return}
+ try{const s=await api('/api/sessions',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});gps.session=s.id;gps.watch=navigator.geolocation.watchPosition(async pos=>{const q=pos.coords;await api('/api/sessions/'+gps.session+'/location',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({lat:q.latitude,lon:q.longitude,accuracy:q.accuracy,altitude:q.altitude,heading:q.heading,speed:q.speed,source:'browser-gps',timestamp:new Date(pos.timestamp).toISOString()})}).catch(()=>{});const m=map();if(m&&window.maplibregl){if(!gps.marker)gps.marker=new maplibregl.Marker({color:'#43e0a0'}).setLngLat([q.longitude,q.latitude]).addTo(m);else gps.marker.setLngLat([q.longitude,q.latitude])}},e=>console.warn(e),{enableHighAccuracy:true,maximumAge:3000,timeout:15000});render()}catch(e){alert(e.message)}}
+function drawIp(p){const input=el('input',{class:'tm-input',placeholder:'IP address or MY IP'}),b=el('button',{class:'tm-action',type:'button'},'LOOK UP');b.onclick=async()=>{try{const path=/^my ip$/i.test(input.value)?'/api/integrations/ip/my':'/api/integrations/ip/lookup?ip='+encodeURIComponent(input.value);const j=await api(path);if(Number.isFinite(+j.latitude)&&Number.isFinite(+j.longitude)&&map())map().flyTo({center:[+j.longitude,+j.latitude],zoom:7});}catch(e){alert(e.message)}};const row=el('div',{class:'tm-row'});row.append(input,b);p.append(row,status('IP location is approximate; it is not device GPS.'))}
+function drawCell(p){const row=el('div',{class:'tm-row'});['mcc','mnc','lac','cellid'].forEach(x=>row.append(el('input',{class:'tm-input',id:'cell-'+x,placeholder:x.toUpperCase()})));const b=el('button',{class:'tm-action',type:'button'},'LOOK UP');b.onclick=async()=>{try{const q=['mcc','mnc','lac','cellid'].map(x=>x+'='+encodeURIComponent($('#cell-'+x).value)).join('&');const j=await api('/api/cell?'+q);const d=j.data||j;if(map()&&Number.isFinite(+d.longitude))map().flyTo({center:[+d.longitude,+d.latitude],zoom:13});}catch(e){alert(e.message)}};p.append(row,b,status('OpenCelliD is a public cell database estimate, not live handset location.'))}
+function drawDevice(p){const phone=el('input',{class:'tm-input',placeholder:'+91 mobile number'}),label=el('input',{class:'tm-input',placeholder:'Device label'}),cons=el('label',{class:'tm-check'}),cb=el('input',{type:'checkbox'});cons.append(cb,document.createTextNode(' I own this device and consent to tracking'));const b=el('button',{class:'tm-action',type:'button'},'REGISTER + GENERATE 6-DIGIT CODE');b.onclick=async()=>{if(!cb.checked)return alert('Owner consent is required.');try{const j=await api('/api/devices/register',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({phone:phone.value,label:label.value||'My TrackMeNow device',consent:true})});localStorage.setItem('tmDeviceToken',j.deviceToken||'');p.append(card('PAIRING CODE',j.pairingCode,'',''));}catch(e){alert(e.message)}};p.append(phone,label,cons,b,status('The code is generated by the consented device registration. A phone number alone never grants location.'))}
+function drawHistory(p){const id=gps.session;if(!id){p.append(status('Start LIVE GPS first to create a session.'));return}const b=el('button',{class:'tm-action',type:'button'},'LOAD HISTORY');const out=el('div',{class:'tm-report'});b.onclick=async()=>{try{const j=await api('/api/sessions/'+id+'/history');out.textContent='HISTORY · '+j.length+' points · '+(j.length?new Date(j[0].recorded_at||j[0].timestamp).toLocaleString():'no points')}catch(e){out.textContent=e.message}};p.append(b,out)}
+function drawGeofence(p){p.append(status('Geofences use the current GPS session and server-side distance checks.'));p.append(card('CREATE GEOFENCE','Create around the current map center.',async()=>{const m=map();if(!m)return;const c=m.getCenter(),name=prompt('Geofence name','My zone'),radius=Number(prompt('Radius in metres','500'));if(!name||!radius)return;await api('/api/geofences',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sessionId:gps.session,lat:c.lat,lon:c.lng,radius_m:radius,name})});alert('Geofence created.')},'CREATE'))}
+function drawVisuals(p){
+ p.append(status('LIVE/PUBLIC resources only. TrackMeNow does not copy or store media. Labels distinguish LIVE, RECORDED, ARCHIVED, USER SHARED and SOURCE OFFLINE.'));
+ const load=()=>api('/api/global/visuals?category='+encodeURIComponent(state.sub)).catch(()=>api('/api/visuals?category='+encodeURIComponent(state.sub))).then(j=>{const g=el('div',{class:'tm-stack'});(j.sources||[]).forEach(s=>g.append(card((s.status||'SOURCE')+' · '+(s.title||s.type||'visual'),[s.provider,s.location].filter(Boolean).join(' · '),()=>window.open(s.url,'_blank','noopener,noreferrer'),'OPEN SOURCE')));if(!g.children.length)g.append(card('NO CURRENT PUBLIC SOURCE','No configured source is available. TrackMeNow does not invent or store media.'));p.append(g)}).catch(()=>p.append(status('Visual source registry unavailable.')));
+ load();
 }
-function renderVisualCards(grid,sources){
- if(!sources.length){var c=el('div',{class:'tm-card'});c.appendChild(el('b',{},'NO CURRENT PUBLIC SOURCE'));c.appendChild(el('p',{},'No configured/public source is available for this category right now. Nothing is being invented or stored.'));grid.appendChild(c);return}
- sources.forEach(function(s){var c=el('article',{class:'tm-card'});c.appendChild(el('b',{},(s.status||'SOURCE').toUpperCase()+' · '+(s.title||s.type||'Visual')));c.appendChild(el('p',{},[s.provider,s.location,s.timestamp].filter(Boolean).join(' · ')||s.description||'Public resource'));if(s.url){var b=el('button',{class:'tm-action',type:'button'},s.status==='LIVE'?'OPEN LIVE SOURCE':'OPEN SOURCE');b.onclick=function(){window.open(s.url,'_blank','noopener,noreferrer')};c.appendChild(b)}grid.appendChild(c)});
+function drawMore(p){
+ if(state.sub==='ADMIN')return p.append(card('ADMIN LOGS','Open the protected admin audit dashboard.',openAdmin,'OPEN ADMIN'));
+ if(state.sub==='SOURCES')return api('/api/sources').then(j=>p.append(card('SOURCE STATUS',JSON.stringify(j),'',''))).catch(()=>p.append(status('Source status unavailable.')));
+ if(state.sub==='STATUS')return Promise.all([api('/health').catch(e=>({error:e.message})),api('/api/global/status').catch(e=>({error:e.message}))]).then(x=>p.append(card('SYSTEM STATUS',JSON.stringify(x),'','')));
+ p.append(card('SETTINGS','Map, privacy, live-source and communication settings belong here. Current defaults keep public media live and unstored.','',''));
 }
-function start(){var link=el('link',{rel:'stylesheet',href:'./visuals.css?v=1'});document.head.appendChild(link);build();window.addEventListener('resize',function(){document.documentElement.style.setProperty('--tm-dock-h',(document.getElementById('tm-shell').offsetHeight||74)+'px')});setTimeout(function(){document.documentElement.style.setProperty('--tm-dock-h',(document.getElementById('tm-shell').offsetHeight||74)+'px')},0)}
+function drawSearch(p){const i=el('input',{class:'tm-input',id:'tm-panel-search',placeholder:'Search anything…'}),b=el('button',{class:'tm-action',type:'button'},'SEARCH');b.onclick=()=>doSearch(i.value);i.onkeydown=e=>{if(e.key==='Enter')doSearch(i.value)};p.append(el('div',{class:'tm-row'},i,b),status('Places, coordinates, aircraft, IP, device and cell identifiers are supported where a live source exists.'))}
+async function doSearch(q){q=String(q||'').trim();if(!q)return;try{if(/^\+?[0-9][0-9 ()-]{6,18}$/.test(q)){state.tab='TRACK';state.sub='DEVICE';state.panel=true;render();return}
+ const j=await api('/api/global/search?q='+encodeURIComponent(q)).catch(()=>api('/api/search?q='+encodeURIComponent(q)));const x=(j.results||[])[0];if(x&&map()&&Number.isFinite(+x.lon))map().flyTo({center:[+x.lon,+x.lat],zoom:Math.max(8,map().getZoom()),duration:900});else alert('No live/public result found.')}catch(e){alert(e.message)}}
+function start(){const l=el('link',{rel:'stylesheet',href:'./visuals.css?v=full-frame-1'});document.head.append(l);build();setTimeout(()=>{const z=$('#tm-zoom-common');if(z)z.title='Common map zoom';},100)}
 if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',start);else start();
 })();
