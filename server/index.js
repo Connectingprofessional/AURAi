@@ -134,6 +134,145 @@ async function movementData(b, layers) {
   return out;
 }
 
+
+// ───────── Consent-based mobile devices ─────────
+// A phone number is an account/device identifier only. It never grants location access.
+// Location/radio telemetry is accepted only from a device token created by that device.
+// A dashboard must use the one-time pairing code displayed on the consenting device.
+const devices = new Map();
+
+function normalizePhone(value) {
+  const raw = String(value || '').trim();
+  const digits = raw.replace(/[^0-9+]/g, '');
+  if (!/^\+?[0-9]{7,15}$/.test(digits)) return null;
+  return digits.startsWith('+') ? digits : '+' + digits;
+}
+function maskPhone(phone) {
+  return phone ? phone.replace(/(\+\d{2})\d+(\d{3})$/, '$1•••••$2') : '';
+}
+function randomToken(bytes = 24) {
+  return crypto.randomBytes(bytes).toString('base64url');
+}
+function randomPairingCode() {
+  return String(crypto.randomInt(100000, 1000000));
+}
+function bearer(req) {
+  const h = String(req.headers.authorization || '');
+  return h.startsWith('Bearer ') ? h.slice(7).trim() : '';
+}
+function findDeviceByToken(token, field) {
+  if (!token) return null;
+  for (const d of devices.values()) if (d[field] === token) return d;
+  return null;
+}
+
+app.post('/api/devices/register', (req, res) => {
+  const phone = normalizePhone(req.body?.phone);
+  const consent = req.body?.consent === true;
+  const label = String(req.body?.label || 'My TrackMeNow device').trim().slice(0, 80);
+  if (!phone) return res.status(400).json({ error: 'A valid mobile number is required.' });
+  if (!consent) return res.status(403).json({ error: 'Explicit device-owner consent is required.' });
+
+  let existing = [...devices.values()].find(d => d.phone === phone);
+  if (existing) return res.status(409).json({ error: 'This number is already registered on this test server.', deviceId: existing.id });
+
+  const d = {
+    id: crypto.randomUUID(),
+    phone,
+    label,
+    deviceToken: randomToken(),
+    pairingCode: randomPairingCode(),
+    viewerToken: null,
+    consentAt: new Date().toISOString(),
+    latest: null,
+    history: []
+  };
+  devices.set(d.id, d);
+  res.status(201).json({
+    deviceId: d.id,
+    deviceToken: d.deviceToken,
+    pairingCode: d.pairingCode,
+    maskedPhone: maskPhone(d.phone),
+    message: 'Device registered with owner consent. Enter the pairing code on the TrackMeNow dashboard to authorize viewing.'
+  });
+});
+
+app.post('/api/devices/pair', (req, res) => {
+  const code = String(req.body?.pairingCode || '').trim();
+  const d = [...devices.values()].find(x => x.pairingCode === code);
+  if (!d) return res.status(404).json({ error: 'Pairing code not found or already used.' });
+  d.viewerToken = randomToken();
+  d.pairingCode = null;
+  res.json({ deviceId: d.id, viewerToken: d.viewerToken, maskedPhone: maskPhone(d.phone), label: d.label });
+});
+
+app.get('/api/devices/search', (req, res) => {
+  const phone = normalizePhone(req.query?.phone);
+  if (!phone) return res.status(400).json({ error: 'Enter a valid mobile number.' });
+  const d = [...devices.values()].find(x => x.phone === phone);
+  if (!d) return res.status(404).json({ found: false, message: 'No consented TrackMeNow device is registered for this number.' });
+  res.json({
+    found: true,
+    deviceId: d.id,
+    maskedPhone: maskPhone(d.phone),
+    label: d.label,
+    consented: true,
+    access: 'PAIRING_REQUIRED'
+  });
+});
+
+app.post('/api/devices/:id/telemetry', (req, res) => {
+  const d = devices.get(req.params.id);
+  if (!d) return res.status(404).json({ error: 'Device not found.' });
+  if (bearer(req) !== d.deviceToken) return res.status(401).json({ error: 'Invalid device token.' });
+
+  const t = req.body || {};
+  const lat = Number(t.lat), lon = Number(t.lon);
+  if (!Number.isFinite(lat) || !Number.isFinite(lon) || lat < -90 || lat > 90 || lon < -180 || lon > 180)
+    return res.status(400).json({ error: 'Valid GPS coordinates are required.' });
+
+  const point = {
+    timestamp: t.timestamp || new Date().toISOString(),
+    lat, lon,
+    accuracy: Number.isFinite(Number(t.accuracy)) ? Number(t.accuracy) : null,
+    altitude: Number.isFinite(Number(t.altitude)) ? Number(t.altitude) : null,
+    speed: Number.isFinite(Number(t.speed)) ? Number(t.speed) : null,
+    heading: Number.isFinite(Number(t.heading)) ? Number(t.heading) : null,
+    source: 'android-gps',
+    radio: t.radio && typeof t.radio === 'object' ? t.radio : null
+  };
+  d.latest = point;
+  d.history.push(point);
+  if (d.history.length > 1000) d.history.splice(0, d.history.length - 1000);
+  broadcast({ type: 'device-telemetry', deviceId: d.id, point });
+  res.status(201).json({ ok: true, receivedAt: new Date().toISOString() });
+});
+
+app.get('/api/devices/:id/latest', (req, res) => {
+  const d = devices.get(req.params.id);
+  if (!d) return res.status(404).json({ error: 'Device not found.' });
+  if (bearer(req) !== d.viewerToken) return res.status(401).json({ error: 'Pair this device before viewing telemetry.' });
+  res.json({ deviceId: d.id, label: d.label, maskedPhone: maskPhone(d.phone), latest: d.latest });
+});
+
+app.get('/api/devices/:id/history', (req, res) => {
+  const d = devices.get(req.params.id);
+  if (!d) return res.status(404).json({ error: 'Device not found.' });
+  if (bearer(req) !== d.viewerToken) return res.status(401).json({ error: 'Pair this device before viewing telemetry.' });
+  res.json({ deviceId: d.id, history: d.history });
+});
+
+app.post('/api/devices/:id/revoke', (req, res) => {
+  const d = devices.get(req.params.id);
+  if (!d) return res.status(404).json({ error: 'Device not found.' });
+  if (bearer(req) !== d.deviceToken) return res.status(401).json({ error: 'Invalid device token.' });
+  d.viewerToken = null;
+  d.deviceToken = randomToken();
+  d.pairingCode = null;
+  d.latest = null;
+  res.json({ ok: true, revoked: true });
+});
+
 app.get('/health',async(_,res)=>res.json({ok:true,service:'trackmenow-api',database:!!pool,feeds:{gtfs:gtfsUrls.length,cameras:cameraUrls.length,ais:!!process.env.AIS_API_URL,traffic:!!process.env.TRAFFIC_GEOJSON_URL}}));
 app.get('/api/movement',async(req,res)=>{ const b=bboxParams(req.query.bbox); if(!b) return res.status(400).json({error:'bbox must be minLon,minLat,maxLon,maxLat'}); const layers=String(req.query.layers||'flights,ships,rail,bus,road,cameras').split(',').map(s=>s.trim()).filter(Boolean); res.json(await movementData(b,layers)); });
 app.get('/api/sources',(_,res)=>res.json({gtfs:gtfsUrls.map(url=>({url})),cameras:cameraUrls.map(url=>({url})),ais:!!process.env.AIS_API_URL,traffic:!!process.env.TRAFFIC_GEOJSON_URL,cell:!!process.env.CELL_FEED_URL}));
