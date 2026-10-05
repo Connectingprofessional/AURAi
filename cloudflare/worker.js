@@ -196,6 +196,23 @@ export default {
         return json(req, env, { ok: true, database: 'connected', tables: { devices: t.has('devices'), telemetry: t.has('telemetry'), rate_limits: t.has('rate_limits') }, pairingExpiryColumn: migrated });
       }
       if (!['GET', 'POST'].includes(req.method)) return json(req, env, { ok: false, error: 'Method not allowed' }, 405);
+      if (url.pathname === '/api/visuals' && req.method === 'GET') {
+        const allowed = ['LIVE','CAMERAS','WEBCAMS','IMAGES','VIDEOS','CLIPS','SOURCE HISTORY'];
+        const category = allowed.includes(String(url.searchParams.get('category') || 'LIVE').toUpperCase())
+          ? String(url.searchParams.get('category') || 'LIVE').toUpperCase() : 'LIVE';
+        const sources = String(env.VISUALS_PUBLIC_SOURCE_URLS || '').split(',').map(s => s.trim()).filter(Boolean).map((source, i) => ({
+          id: 'configured-' + i, type: 'public', status: 'LIVE',
+          title: 'Configured public visual source',
+          provider: 'TrackMeNow public source adapter',
+          url: source, category
+        }));
+        return json(req, env, {
+          ok: true, storage: 'none',
+          policy: 'TrackMeNow does not store or copy public visual media.',
+          category, sources,
+          labels: ['LIVE','RECORDED','ARCHIVED','USER SHARED','SOURCE OFFLINE']
+        });
+      }
       if (url.pathname === '/api/cell' && req.method === 'GET') return await cellLookup(req, env, url);
       if (parts[0] === 'api' && parts[1] === 'devices') {
         if (!env.DB) return json(req, env, { error: 'D1 database binding "DB" is not configured on the Worker.' }, 503);
