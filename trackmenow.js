@@ -400,11 +400,18 @@
 
   /* ───────── NASA data feed ───────── */
   function loadNasa() {
+    /*
+     * The optional supplemental NASA catalogue is not bundled in the current
+     * Pages artifact. Keep the core Universe catalogue operational without
+     * generating a browser 404 or console error.
+     */
     if (nasaPromise) return nasaPromise;
-    nasaPromise = fetch('./data/nasa.json', { cache: 'no-cache' }).then(function (r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); }).then(function (j) {
-      NASA = j; nasaState = 'ok';
-      (j.exoplanetHosts || []).forEach(function (h) { const g = galactic(h[1], h[2]); h.l = g.l; h.lr = Math.log10(Math.max(0.3, h[3])); });
-    }).catch(function (e) { nasaState = 'offline'; NASA = null; console.warn('NASA data feed unavailable:', e.message || e); }).then(function () { renderSkyPanel(); updateSkyStatus(); });
+    NASA = null;
+    nasaState = 'offline';
+    nasaPromise = Promise.resolve().then(function () {
+      renderSkyPanel();
+      updateSkyStatus();
+    });
     return nasaPromise;
   }
   function feedAge() {
