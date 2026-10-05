@@ -6,10 +6,10 @@ const isLocal=location.hostname==='localhost'||location.hostname==='127.0.0.1';
 const T={
  MAP:['OVERVIEW','LAYERS','SEARCH'],
  SPACE:['UNIVERSE','SOLAR SYSTEM','EARTH','MOON','MARS'],
- TRANSIT:['AIR','SHIP','TAXI','RAILWAY','BOAT','PERSONAL JET','METRO','CAR','BIKES'],
+ TRANSIT:['AIR','SHIP','TAXI','RAILWAY','BUS','BOAT','PERSONAL JET','METRO','CAR','BIKES'],
  WEATHER:['NATURAL CALAMITIES','WEATHER REPORT'],
  COMMUNICATION:['WEBRTC','PHONE'],
- TRACK:['GPS','IP','CELL','DEVICE','HISTORY','GEOFENCE','CONSENT'],
+ TRACK:['GPS','GEOLOCATION','IP','CELL','DEVICE','HISTORY','GEOFENCE','CONSENT'],
  VISUALS:['LIVE','CAMERAS','IMAGES','VIDEOS','CLIPS','HISTORY','USER SHARED'],
  MORE:['ADMIN','SOURCES','STATUS','SETTINGS']
 };
@@ -78,7 +78,7 @@ function drawSpace(p){
  p.append(status('Space uses the existing TrackMeNow 3D engine. Earth, Moon and Mars are rendered as interactive 3D planetary views; Universe and Solar System use the orbital view.'));
  const g=el('div',{class:'tm-stack'});items.forEach(k=>g.append(card(k,k==='EARTH'?'Return to live Earth map.':k==='MOON'?'Open 3D Moon.':k==='MARS'?'Open 3D Mars.':k==='SOLAR SYSTEM'?'Open the Solar System view.':'Open the Universe view.',()=>{const e=engine();if(e)e.setScale(k==='SOLAR SYSTEM'?'solar':k.toLowerCase())},'OPEN 3D'));p.append(g);
 }
-const transitMap={AIR:'air',SHIP:'ships',RAILWAY:'rail',BOAT:'ships', 'PERSONAL JET':'air',TAXI:null,METRO:'transit',CAR:null,BIKES:null};
+const transitMap={AIR:'air',SHIP:'ships',RAILWAY:'rail',BUS:'transit',BOAT:'ships', 'PERSONAL JET':'air',TAXI:null,METRO:'transit',CAR:null,BIKES:null};
 function drawTransit(p){
  p.append(status('TRANSIT is one umbrella. Moving feeds are toggled from the available live source; categories without a dedicated live feed are reported as source-required rather than simulated.'));
  const g=el('div',{class:'tm-stack'});
@@ -120,7 +120,7 @@ function drawCommunication(p){
  p.append(card('PHONE','Open the device/contact phone action without using it for location.',()=>{const n=prompt('Phone number to call:');if(n)location.href='tel:'+n.replace(/[^+0-9]/g,'')},'PHONE'));
 }
 function drawTrack(p){
- if(state.sub==='GPS')return drawGps(p);
+ if(state.sub==='GPS'||state.sub==='GEOLOCATION')return drawGps(p);
  if(state.sub==='IP')return drawIp(p);
  if(state.sub==='CELL')return drawCell(p);
  if(state.sub==='DEVICE'||state.sub==='CONSENT')return drawDevice(p);
