@@ -1230,8 +1230,54 @@
       '<div style="margin-top:10px"><button data-tp="zoom" style="' + btn + '">Zoom to</button>' + (k === 'cells' ? '' : '<button data-tp="follow" style="' + btn + (TP.follow ? ';background:#4fd0a0;color:#06210f' : '') + '">' + (TP.follow ? 'Following ✓' : 'Follow') + '</button>') + '</div>';
     c.style.display = 'block';
   }
-  window.tmFindObject = async function (q) { /* search callsign / ship name / MMSI / ICAO24 / transit label among loaded data */
-    q = String(q || '').trim().toLowerCase(); if (!q || scale !== 'earth' || !maplibre) return false;
+  async function tmCellLookup(q) {
+    const raw = String(q || '').trim();
+    const nums = raw.replace(/(?:mcc|mnc|lac|tac|cellid|cid|nci)\\s*[:=]?/gi, ' ').replace(/[,;|/\\-]+/g, ' ').trim().split(/\\s+/).map(Number).filter(Number.isFinite);
+    if (nums.length < 4) return false;
+    const apiBase = window.TM_CELL_API_BASE || (location.hostname === 'localhost' || location.hostname === '127.0.0.1' ? '/api/cell' : '');
+    if (!apiBase) {
+      setStatus('Exact Mobile lookup needs the secure TrackMeNow API · GitHub Pages is static', false);
+      return false;
+    }
+    const mcc = nums[0], mnc = nums[1], lac = nums[2], cellid = nums[3], radio = /\\b(nr|5g)\\b/i.test(raw) ? 'NR' : /\\b(lte|4g)\\b/i.test(raw) ? 'LTE' : /\\b(umts|3g)\\b/i.test(raw) ? 'UMTS' : /\\b(gsm|2g)\\b/i.test(raw) ? 'GSM' : '';
+    if (![mcc,mnc,lac,cellid].every(Number.isInteger)) return false;
+    setStatus('Looking up cell ' + mcc + '/' + mnc + '/' + lac + '/' + cellid + '…', true);
+    const u = apiBase.replace(/\\/$/, '') + '?mcc=' + mcc + '&mnc=' + mnc + '&lac=' + lac + '&cellid=' + cellid + (radio ? '&radio=' + encodeURIComponent(radio) : '');
+    const res = await fetch(u);
+    const j = await res.json();
+    if (!res.ok || !j || j.error || j.stat === 'fail' || !Number.isFinite(Number(j.lat)) || !Number.isFinite(Number(j.lon))) {
+      setStatus('Cell not found · check MCC, MNC, LAC/TAC, Cell ID and radio', false);
+      return true;
+    }
+    const pos = [Number(j.lon), Number(j.lat)];
+    if (maplibre) maplibre.flyTo({center: pos, zoom: 13, duration: 1400});
+    let c = $('tm-cell-search-card');
+    if (!c) {
+      c = document.createElement('div'); c.id = 'tm-cell-search-card';
+      c.style.cssText = 'position:fixed;z-index:2290;right:14px;top:110px;width:285px;padding:13px 14px;border-radius:12px;background:rgba(8,12,18,.95);border:1px solid rgba(210,139,255,.35);backdrop-filter:blur(14px);color:#e8f0f6;font:12px/1.55 system-ui';
+      document.body.appendChild(c);
+    }
+    const escv = function(v){return String(v==null?'—':v).replace(/[&<>"]/g,function(x){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[x]})};
+    c.innerHTML = '<div style="display:flex;justify-content:space-between"><b style="color:#d28bff">MOBILE CELL</b><a id="tm-cell-close" style="cursor:pointer;opacity:.7">✕</a></div>' +
+      '<div style="margin-top:7px">MCC <b>'+escv(j.mcc)+'</b> · MNC <b>'+escv(j.mnc)+'</b></div>' +
+      '<div>LAC/TAC <b>'+escv(j.lac != null ? j.lac : j.tac)+'</b> · Cell ID <b>'+escv(j.cellid)+'</b></div>' +
+      '<div>Radio <b>'+escv(j.radio)+'</b></div>' +
+      '<div>Estimated position <b>'+escv(Number(j.lat).toFixed(5))+', '+escv(Number(j.lon).toFixed(5))+'</b></div>' +
+      '<div>Range <b>'+escv(j.range != null ? j.range+' m' : null)+'</b> · Samples <b>'+escv(j.samples)+'</b></div>' +
+      '<div style="margin-top:7px;color:#9aabba;font-size:10px">PUBLIC CELL DATABASE · estimated cell position, not live phone location.</div>' +
+      '<div style="margin-top:8px;color:#9aabba;font-size:10px">Source: OpenCelliD · CC BY-SA 4.0</div>';
+    c.querySelector('#tm-cell-close').onclick=function(){c.style.display='none'};
+    c.style.display='block';
+    setStatus('CELL DATABASE · ' + j.radio + ' · ' + j.lat + ', ' + j.lon, true);
+    return true;
+  }
+
+  window.tmFindObject = async function (q) { /* search places, movers and mobile-cell identifiers */
+    q = String(q || '').trim(); if (!q || scale !== 'earth' || !maplibre) return false;
+    if (/^\\s*(?:\\d+\\s*[,;|/\\-]\\s*){3}\\d+\\s*$/.test(q) || /\\b(?:mcc|mnc|lac|tac|cellid|cid|nci)\\b/i.test(q)) {
+      return await tmCellLookup(q);
+    }
+    q = q.toLowerCase();
     if (!TP.data.air && !TP.data.ships && !TP.data.transit && (/^[a-z]{2,3}\d{1,4}[a-z]?$/.test(q) || /^[0-9a-f]{6}$/.test(q) || /^\d{9}$/.test(q))) {
       await Promise.all(['air', 'ships'].map(tpLoad));
     }
