@@ -67,7 +67,7 @@ function drawMap(p){
 function mapAction(k){
  const e=engine();if(!e)return;
  if(k==='SATELLITE')oldClick('[data-bar="satellite"]');
- if(k==='LIVE')oldClick('[data-bar="live"]');
+ if(k==='LIVE')e.selectWeather('live');
  if(k==='RADAR')e.selectWeather('radar');
  if(k==='DAY / NIGHT')oldClick('[data-bar="daynight"]');
  if(k==='FLAT')e.setEarthMode('flat');
@@ -136,8 +136,14 @@ function drawDevice(p){const phone=el('input',{class:'tm-input',placeholder:'+91
 function drawHistory(p){const id=gps.session;if(!id){p.append(status('Start LIVE GPS first to create a session.'));return}const b=el('button',{class:'tm-action',type:'button'},'LOAD HISTORY');const out=el('div',{class:'tm-report'});b.onclick=async()=>{try{const j=await api('/api/sessions/'+id+'/history');out.textContent='HISTORY · '+j.length+' points · '+(j.length?new Date(j[0].recorded_at||j[0].timestamp).toLocaleString():'no points')}catch(e){out.textContent=e.message}};p.append(b,out)}
 function drawGeofence(p){p.append(status('Geofences use the current GPS session and server-side distance checks.'));p.append(card('CREATE GEOFENCE','Create around the current map center.',async()=>{const m=map();if(!m)return;const c=m.getCenter(),name=prompt('Geofence name','My zone'),radius=Number(prompt('Radius in metres','500'));if(!name||!radius)return;await api('/api/geofences',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sessionId:gps.session,lat:c.lat,lon:c.lng,radius_m:radius,name})});alert('Geofence created.')},'CREATE'))}
 function drawVisuals(p){
- p.append(status('LIVE/PUBLIC resources only. TrackMeNow does not copy or store media. Labels distinguish LIVE, RECORDED, ARCHIVED, USER SHARED and SOURCE OFFLINE.'));
- const load=()=>api('/api/global/visuals?category='+encodeURIComponent(state.sub)).catch(()=>api('/api/visuals?category='+encodeURIComponent(state.sub))).then(j=>{const g=el('div',{class:'tm-stack'});(j.sources||[]).forEach(s=>g.append(card((s.status||'SOURCE')+' · '+(s.title||s.type||'visual'),[s.provider,s.location].filter(Boolean).join(' · '),()=>window.open(s.url,'_blank','noopener,noreferrer'),'OPEN SOURCE')));if(!g.children.length)g.append(card('NO CURRENT PUBLIC SOURCE','No configured source is available. TrackMeNow does not invent or store media.'));p.append(g)}).catch(()=>p.append(status('Visual source registry unavailable.')));
+ p.append(status('LIVE/PUBLIC resources only. TrackMeNow never copies or stores media. HISTORY means source-provided history/metadata; USER SHARED means a reference shared by the user, not an uploaded TrackMeNow media file.'));
+ if(state.sub==='USER SHARED'){
+   const u=el('input',{class:'tm-input',placeholder:'Paste a public/authorized image, video, live or recorded source URL'}),b=el('button',{class:'tm-action',type:'button'},'OPEN SHARED SOURCE');
+   b.onclick=()=>{if(/^https:\\/\\//i.test(u.value.trim()))window.open(u.value.trim(),'_blank','noopener,noreferrer');else alert('Use a public HTTPS source URL.')};
+   p.append(el('div',{class:'tm-row'},u,b),status('The URL is opened at its original source. TrackMeNow does not upload or retain the media.'));
+   return;
+ }
+ const load=()=>api('/api/global/visuals?category='+encodeURIComponent(state.sub)).catch(()=>api('/api/visuals?category='+encodeURIComponent(state.sub))).then(j=>{const g=el('div',{class:'tm-stack'});(j.sources||[]).forEach(s=>g.append(card((s.status||'SOURCE')+' · '+(s.title||s.type||'visual'),[s.provider,s.location,s.timestamp].filter(Boolean).join(' · '),()=>window.open(s.url,'_blank','noopener,noreferrer'),'OPEN SOURCE')));if(!g.children.length)g.append(card(state.sub==='HISTORY'?'NO SOURCE HISTORY':'NO CURRENT PUBLIC SOURCE',state.sub==='HISTORY'?'No source-provided historical metadata is available right now.':'No configured source is available. TrackMeNow does not invent or store media.'));p.append(g)}).catch(()=>p.append(status('Visual source registry unavailable.')));
  load();
 }
 function drawMore(p){
