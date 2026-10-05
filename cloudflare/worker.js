@@ -123,9 +123,14 @@ async function devices(req, env, url, parts) {
     if (await limited(env, req, 'lookup', 30, 600)) return json(req, env, { error: 'Too many lookups. Try again in a few minutes.' }, 429);
     const phone = normalizePhone(url.searchParams.get('phone'));
     if (!phone) return json(req, env, { error: 'Enter a valid mobile number.' }, 400);
-    const viewer = await deviceByViewerToken(env, bearer(req));
-    if (!viewer) return json(req, env, { error: 'Viewer authorization required. Pair the device with its one-time code first.' }, 401);
-    if (!samePhone(viewer.phone, phone)) return json(req, env, { found: false, error: 'This viewer token is not authorized for that number.' }, 403);
+    let viewer = await deviceByViewerToken(env, bearer(req));
+    if (viewer && !samePhone(viewer.phone, phone)) return json(req, env, { found: false, error: 'This viewer token is not authorized for that number.' }, 403);
+    if (!viewer) { /* testing switch: numbers listed in OPEN_LOOKUP_PHONES can be searched without the pairing code. Remove the variable to turn it off. */
+      const open = String(env.OPEN_LOOKUP_PHONES || '').split(',').map(normalizePhone).filter(Boolean);
+      if (!open.some((o) => samePhone(o, phone))) return json(req, env, { error: 'Viewer authorization required. Pair the device with its one-time code first.' }, 401);
+      viewer = await byPhone(phone);
+      if (!viewer) return json(req, env, { found: false, error: 'No consented TrackMeNow device is registered for this number.' }, 404);
+    }
     const loc = await latestPoint(env, viewer.id);
     return json(req, env, { found: true, deviceId: viewer.id, maskedPhone: maskPhone(viewer.phone), label: viewer.label, location: loc, ...(loc ? {} : { message: 'Device is registered but has no GPS telemetry yet.' }) });
   }
