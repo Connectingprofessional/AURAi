@@ -357,4 +357,20 @@ router.get('/cells',async function(req,res){var b=bbox(req.query.bbox);if(!b)ret
 router.get('/assets',async function(req,res){var b=bbox(req.query.bbox);if(!b)return res.status(400).json({error:'invalid bbox'});try{res.json({source:'OpenStreetMap/Overpass',features:await osmAssets(b)})}catch(e){res.status(502).json({error:e.message})}});
 router.get('/status',function(_,res){res.json({infrastructure:'OpenStreetMap/Overpass',flights:'ADSB.lol-live',ships:aisUrl?'configured':'feed-required',publicTransport:gtfsUrls.length?'configured':'no-live-feed-configured',publicTransportFeeds:gtfsUrls.map(function(u){var c=gtfsCache.get(u);return {url:u,status:c&&c.status||'not-polled',vehicles:c?c.features.length:0,error:c&&c.error||null,lastPoll:c&&new Date(c.fetchedAt).toISOString()||null}}),publicAssets:'live',publicCells:cellKey?'configured':'api-key-required',aisStream:aisStreamKey?'configured':'api-key-required',mobilityDatabase:mdbToken?(mdbState.error?'error: '+mdbState.error:mdbState.feeds?'configured · '+mdbState.feeds+' feeds':'configured · not yet queried'):'api-key-required',taxiFeed:taxiUrl?'configured':'feed-required'})});
 
+
+router.get('/visuals',function(req,res){
+  const category=String(req.query.category||'LIVE').toUpperCase();
+  const allowed=['LIVE','CAMERAS','WEBCAMS','IMAGES','VIDEOS','CLIPS','SOURCE HISTORY'];
+  const selected=allowed.includes(category)?category:'LIVE';
+  const sources=String(process.env.VISUALS_PUBLIC_SOURCE_URLS||'').split(',').map(function(s){return s.trim()}).filter(Boolean).map(function(url,i){
+    return {id:'configured-'+i,type:'public',status:'LIVE',title:'Configured public visual source',provider:'TrackMeNow public source adapter',url:url,category:selected};
+  });
+  res.set('Cache-Control','no-store');
+  res.json({ok:true,storage:'none',policy:'TrackMeNow does not store or copy public visual media.',category:selected,sources:sources,labels:['LIVE','RECORDED','ARCHIVED','USER SHARED','SOURCE OFFLINE']});
+});
+router.get('/visuals/health',function(_,res){
+  const count=String(process.env.VISUALS_PUBLIC_SOURCE_URLS||'').split(',').map(function(s){return s.trim()}).filter(Boolean).length;
+  res.json({ok:true,service:'trackmenow-visuals',storage:'none',configuredSources:count});
+});
+
 export default router;
