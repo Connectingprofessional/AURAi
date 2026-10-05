@@ -214,7 +214,7 @@ export default {
       }
       if (!['GET', 'POST'].includes(req.method)) return json(req, env, { ok: false, error: 'Method not allowed' }, 405);
       if (url.pathname === '/api/visitor' && req.method === 'POST') {
-        try { const b=await readBody(req); await adminLog(env,req,'page-visit',b.tab||'',b.sub||'',b.screen||''); return json(req,env,{ok:true}); } catch(e) { return json(req,env,{ok:false,error:'audit logging failed'},500); }
+        try { const b=await readBody(req); await adminLog(env,req,b.event||'page-visit',b.tab||'',b.sub||'',b.detail||b.screen||''); return json(req,env,{ok:true}); } catch(e) { return json(req,env,{ok:false,error:'audit logging failed'},500); }
       }
       if (url.pathname === '/api/admin/login' && req.method === 'POST') {
         const b=await readBody(req);
