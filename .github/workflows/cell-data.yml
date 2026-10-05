@@ -1,0 +1,32 @@
+name: Cell tower data
+# Weekly: downloads the OpenCelliD database and publishes a coarse tower-density grid on the `cell-data` branch.
+# Secret: OPENCELLID_API_KEY
+on:
+  schedule:
+    - cron: '17 3 * * 1'
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  cells:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Build tower grid
+        env:
+          OPENCELLID_API_KEY: ${{ secrets.OPENCELLID_API_KEY }}
+        run: node scripts/fetch-cells.mjs out
+      - name: Publish to cell-data branch
+        run: |
+          test -f out/cells.json || { echo "no cells.json produced (see meta.json)"; cat out/meta.json; exit 0; }
+          cd out
+          git init -q -b cell-data
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -q -m "Cell data $(date -u +%FT%TZ)"
+          git push -f "https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}.git" cell-data

@@ -1,0 +1,45 @@
+name: Live transport data
+# Collects aircraft, ships and transit vehicles every ~10 minutes and publishes them on the
+# `live-data` branch (files: flights.json, ships.json, transit.json, meta.json). The site reads them from there.
+# Secrets (Settings -> Secrets and variables -> Actions): AISSTREAM_API_KEY, MOBILITY_DB_REFRESH_TOKEN
+on:
+  schedule:
+    - cron: '*/10 * * * *'
+  workflow_dispatch:
+permissions:
+  contents: write
+concurrency:
+  group: live-data
+  cancel-in-progress: false
+jobs:
+  collect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Install collector dependencies
+        run: npm install --no-save --no-audit --no-fund ws gtfs-realtime-bindings
+      - name: Restore previous snapshot (kept when a source fails)
+        run: |
+          mkdir -p out
+          if git ls-remote --exit-code --heads origin live-data >/dev/null 2>&1; then
+            git fetch --depth=1 origin live-data
+            for f in flights ships transit; do git show FETCH_HEAD:$f.json > out/$f.json 2>/dev/null || rm -f out/$f.json; done
+          fi
+      - name: Collect
+        env:
+          AISSTREAM_API_KEY: ${{ secrets.AISSTREAM_API_KEY }}
+          MOBILITY_DB_REFRESH_TOKEN: ${{ secrets.MOBILITY_DB_REFRESH_TOKEN }}
+        run: node scripts/fetch-live.mjs out
+      - name: Publish to live-data branch
+        run: |
+          cd out
+          git init -q -b live-data
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -q -m "Live data $(date -u +%FT%TZ)"
+          git push -f "https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}.git" live-data

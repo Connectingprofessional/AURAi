@@ -32,7 +32,7 @@ body{overflow:hidden;background:#05090d;color:#edf4f8;font-family:system-ui,sans
 </div>
 <div id="status" class="status">Starting…</div>
 <script src="./vendor/maplibre-gl/maplibre-gl.js"></script>
-<script src="./trackmenow.js?v=weather-anim-3"></script>
+<script src="./trackmenow.js?v=transport-1"></script>
 <script>
 (function(){
   var input=document.getElementById('searchInput');
@@ -41,6 +41,10 @@ body{overflow:hidden;background:#05090d;color:#edf4f8;font-family:system-ui,sans
   function go(){
     var q=(input&&input.value||'').trim();
     if(!q||!window.map||!window.map.flyTo) return;
+    if(window.tmFindObject){ window.tmFindObject(q).then(function(found){ if(!found) geocode(q); }).catch(function(){ geocode(q); }); return; }
+    geocode(q);
+  }
+  function geocode(q){
     fetch('https://nominatim.openstreetmap.org/search?format=json&limit=1&q='+encodeURIComponent(q))
       .then(function(r){return r.json()})
       .then(function(j){

@@ -222,6 +222,10 @@
       '  <button data-bar="globe" class="tm-bar-btn">3D</button>',
       '  <button data-bar="weather" class="tm-bar-btn">Weather</button>',
       '  <button data-bar="daynight" class="tm-bar-btn">Day/Night</button>',
+      '  <button data-bar="air" class="tm-bar-btn">Air</button>',
+      '  <button data-bar="ships" class="tm-bar-btn">Ships</button>',
+      '  <button data-bar="transit" class="tm-bar-btn">Transit</button>',
+      '  <button data-bar="cells" class="tm-bar-btn">Mobile</button>',
       '</div>',
       '<div id="tm-timebar" style="display:none">',
       '  <button id="tm-play" type="button" class="tm-play">▶</button>',
@@ -243,8 +247,8 @@
       '.tm-scale-btn,.tm-z,.tm-tbtn,.tm-bar-btn,.tm-drawer-item{border:1px solid rgba(255,255,255,.18);border-radius:8px;background:rgba(6,12,18,.92);color:#eaf4fa;cursor:pointer;font:700 11px system-ui}',
       '.tm-scale-btn{padding:8px 12px}',
       '.tm-scale-btn.on{border-color:#4fd0a0;color:#4fd0a0;box-shadow:0 0 12px #4fd0a044}',
-      '#tm-bottom-bar{position:fixed;z-index:2300;left:50%;bottom:14px;transform:translateX(-50%);display:none;gap:6px;padding:8px 10px;border-radius:14px;background:rgba(8,12,18,.94);border:1px solid rgba(255,255,255,.14);backdrop-filter:blur(14px);flex-wrap:wrap;justify-content:center;max-width:96vw}',
-      '.tm-bar-btn{padding:10px 14px;border-radius:10px;white-space:nowrap}',
+      '#tm-bottom-bar{width:max-content;position:fixed;z-index:2300;left:50%;bottom:14px;transform:translateX(-50%);display:none;gap:6px;padding:8px 10px;border-radius:14px;background:rgba(8,12,18,.94);border:1px solid rgba(255,255,255,.14);backdrop-filter:blur(14px);flex-wrap:wrap;justify-content:center;max-width:96vw}',
+      '.tm-bar-btn{padding:10px 11px;border-radius:10px;white-space:nowrap}',
       '.tm-bar-btn.on{border-color:#4fd0a0;color:#4fd0a0;background:rgba(79,208,160,.12)}',
       '.tm-drawer{position:fixed;z-index:2290;left:50%;bottom:70px;transform:translateX(-50%);min-width:200px;max-width:90vw;padding:8px 0;border-radius:12px;background:rgba(18,14,12,.96);border:1px solid rgba(255,255,255,.14);backdrop-filter:blur(14px);color:#f0e8e0}',
       '.tm-drawer-title{padding:4px 14px 6px;font:800 10px system-ui;letter-spacing:.6px;opacity:.65}',
@@ -273,6 +277,7 @@
         else if (k === 'flat') { earthMode = 'flat'; if (scale === 'earth') enterEarth(); syncBar(); }
         else if (k === 'globe') { earthMode = 'globe'; if (scale === 'earth') enterEarth(); syncBar(); }
         else if (k === 'daynight') { dayNight = !dayNight; if (scale === 'earth') applyDayNight(); syncBar(); }
+        else if (TP.kinds[k]) tpToggle(k);
       };
     });
     box.querySelectorAll('[data-wx]').forEach(function (b) {
@@ -324,6 +329,7 @@
       if (k === 'globe') on = earthMode === 'globe';
       if (k === 'weather') on = openDrawer === 'weather' || activeWx.temp || activeWx.wind || activeWx.precip || activeWx.humidity || activeWx.pressure;
       if (k === 'daynight') on = dayNight;
+      if (TP.kinds[k]) on = TP.on[k];
       b.classList.toggle('on', on);
     });
   }
@@ -719,6 +725,7 @@
     if (terminatorTimer) { clearInterval(terminatorTimer); terminatorTimer = null; }
     if (forecastTimer) { clearTimeout(forecastTimer); forecastTimer = null; }
     try { wxStop(); } catch (e) {}
+    try { tpStop(); } catch (e) {}
     try { if (globe && globe.destroy) globe.destroy(); } catch (e) {}
     globe = null;
     try { if (maplibre) maplibre.remove(); } catch (e) {}
@@ -1066,6 +1073,186 @@
     wxView = ''; paintForecast();
     setStatus('Weather · ' + mode + (wxGrid ? ' · updated ' + new Date(wxGrid.t).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : ''), true);
   }
+  /* ───────── transport layers: aircraft, ships, transit vehicles, cell towers ─────────
+   * Data is collected by GitHub Actions (scripts/fetch-live.mjs, scripts/fetch-cells.mjs) and published on the
+   * `live-data` / `cell-data` branches of this repo; the browser reads it from raw.githubusercontent.com.
+   * Snapshots are ~10 minutes apart, so positions are projected forward from speed and heading between refreshes. */
+  const TP_BASE = window.TM_DATA_BASE || 'https://raw.githubusercontent.com/connectingprofessional/trackmenow';
+  const TP = {
+    kinds: {
+      air: { label: 'AIR', noun: 'aircraft', file: 'flights.json', branch: 'live-data', icon: 'tm-air', color: '#58c8ff' },
+      ships: { label: 'SHIPS', noun: 'vessels', file: 'ships.json', branch: 'live-data', icon: 'tm-ship', color: '#43e0a0' },
+      transit: { label: 'TRANSIT', noun: 'vehicles', file: 'transit.json', branch: 'live-data', icon: 'tm-bus', color: '#ffb347' },
+      cells: { label: 'MOBILE', noun: 'tower cells', file: 'cells.json', branch: 'cell-data', color: '#d28bff' }
+    },
+    on: { air: false, ships: false, transit: false, cells: false },
+    data: {}, err: {}, sel: null, follow: false, timer: null, refresh: null
+  };
+  function tpUrl(k) { const d = TP.kinds[k]; return TP_BASE + '/' + d.branch + '/' + d.file + '?t=' + Math.floor(Date.now() / 120000); }
+  async function tpLoad(k) {
+    try {
+      const r = await fetch(tpUrl(k)); if (!r.ok) throw new Error(r.status === 404 ? 'no data published yet' : 'HTTP ' + r.status);
+      const j = await r.json(); if (!j || !Array.isArray(j.a)) throw new Error('bad data');
+      TP.data[k] = j; TP.err[k] = null;
+    } catch (e) { TP.err[k] = e.message || String(e); }
+    return TP.data[k];
+  }
+  function tpIcon(name, draw) {
+    if (!maplibre || maplibre.hasImage(name)) return;
+    const c = document.createElement('canvas'); c.width = c.height = 32; const x = c.getContext('2d');
+    x.fillStyle = TP.kinds[name === 'tm-air' ? 'air' : name === 'tm-ship' ? 'ships' : 'transit'].color; x.strokeStyle = 'rgba(0,10,20,.9)'; x.lineWidth = 1.6; x.lineJoin = 'round';
+    x.beginPath(); draw.forEach(function (p, i) { i ? x.lineTo(p[0], p[1]) : x.moveTo(p[0], p[1]); }); x.closePath(); x.fill(); x.stroke();
+    maplibre.addImage(name, x.getImageData(0, 0, 32, 32));
+  }
+  function tpSetup() {
+    if (!maplibre) return;
+    tpIcon('tm-air', [[16, 2], [19, 12], [30, 19], [30, 22], [19, 19], [18, 27], [23, 30], [23, 31], [16, 29], [9, 31], [9, 30], [14, 27], [13, 19], [2, 22], [2, 19], [13, 12]]);
+    tpIcon('tm-ship', [[16, 3], [23, 13], [23, 29], [9, 29], [9, 13]]);
+    tpIcon('tm-bus', [[16, 4], [27, 28], [16, 22], [5, 28]]);
+    const empty = { type: 'FeatureCollection', features: [] };
+    ['air', 'ships', 'transit'].forEach(function (k) {
+      if (!maplibre.getSource('tp-' + k)) maplibre.addSource('tp-' + k, { type: 'geojson', data: empty });
+      if (!maplibre.getLayer('tp-' + k)) maplibre.addLayer({ id: 'tp-' + k, type: 'symbol', source: 'tp-' + k, layout: { 'icon-image': TP.kinds[k].icon, 'icon-rotate': ['get', 'h'], 'icon-rotation-alignment': 'map', 'icon-allow-overlap': true, 'icon-ignore-placement': true, 'icon-size': ['interpolate', ['linear'], ['zoom'], 1, 0.3, 6, 0.55, 11, 0.9] } });
+      maplibre.on('click', 'tp-' + k, function (e) { const f = e.features && e.features[0]; if (f) tpSelect(k, f.properties.i, false); });
+      maplibre.on('mouseenter', 'tp-' + k, function () { maplibre.getCanvas().style.cursor = 'pointer'; });
+      maplibre.on('mouseleave', 'tp-' + k, function () { maplibre.getCanvas().style.cursor = ''; });
+    });
+    if (!maplibre.getSource('tp-cells')) maplibre.addSource('tp-cells', { type: 'geojson', data: empty });
+    if (!maplibre.getLayer('tp-cells')) {
+      maplibre.addLayer({ id: 'tp-cells', type: 'circle', source: 'tp-cells', layout: { visibility: 'none' }, paint: { 'circle-radius': ['interpolate', ['linear'], ['zoom'], 1, ['+', 1.5, ['*', 0.18, ['sqrt', ['get', 'n']]]], 6, ['+', 3, ['*', 0.9, ['sqrt', ['get', 'n']]]], 10, ['+', 8, ['*', 3, ['sqrt', ['get', 'n']]]]], 'circle-color': ['match', ['get', 'g'], '5G', '#ff5fa2', '4G', '#b57bff', '3G', '#6aa8ff', '#9aa7b5'], 'circle-opacity': 0.5, 'circle-stroke-width': 0.6, 'circle-stroke-color': 'rgba(255,255,255,.55)' } });
+      maplibre.on('click', 'tp-cells', function (e) { const f = e.features && e.features[0]; if (f) tpSelect('cells', f.properties.i, false); });
+      maplibre.on('mouseenter', 'tp-cells', function () { maplibre.getCanvas().style.cursor = 'pointer'; });
+      maplibre.on('mouseleave', 'tp-cells', function () { maplibre.getCanvas().style.cursor = ''; });
+    }
+    if (!maplibre.getSource('tp-sel')) maplibre.addSource('tp-sel', { type: 'geojson', data: empty });
+    if (!maplibre.getLayer('tp-sel')) maplibre.addLayer({ id: 'tp-sel', type: 'circle', source: 'tp-sel', paint: { 'circle-radius': 16, 'circle-color': 'rgba(0,0,0,0)', 'circle-stroke-width': 2.5, 'circle-stroke-color': '#ffffff' } });
+    maplibre.on('dragstart', function () { if (TP.follow) { TP.follow = false; tpCard(); } });
+    tpApply();
+    if (!TP.timer) TP.timer = setInterval(tpTick, 2500);
+    if (!TP.refresh) TP.refresh = setInterval(function () { Object.keys(TP.on).forEach(function (k) { if (TP.on[k] && k !== 'cells') tpLoad(k).then(function () { tpStatus(); }); }); }, 150000);
+  }
+  function tpStop() {
+    if (TP.timer) clearInterval(TP.timer); if (TP.refresh) clearInterval(TP.refresh);
+    TP.timer = TP.refresh = null; TP.follow = false;
+    const c = $('tm-tp-card'); if (c) c.style.display = 'none';
+  }
+  function tpApply() {
+    if (!maplibre) return;
+    Object.keys(TP.on).forEach(function (k) { if (maplibre.getLayer('tp-' + k)) maplibre.setLayoutProperty('tp-' + k, 'visibility', TP.on[k] ? 'visible' : 'none'); });
+    tpTick(); tpStatus();
+  }
+  async function tpToggle(k) {
+    TP.on[k] = !TP.on[k]; syncBar();
+    if (TP.on[k] && !TP.data[k]) { setStatus('Loading ' + TP.kinds[k].label.toLowerCase() + ' data…', true); await tpLoad(k); if (k === 'cells') tpCellsData(); }
+    else if (TP.on[k] && k === 'cells') tpCellsData();
+    tpApply();
+  }
+  function tpCellsData() {
+    const d = TP.data.cells; if (!d || !maplibre || !maplibre.getSource('tp-cells') || d._drawn) return; d._drawn = true;
+    maplibre.getSource('tp-cells').setData({ type: 'FeatureCollection', features: d.a.map(function (c, i) { return { type: 'Feature', geometry: { type: 'Point', coordinates: [c[1], c[0]] }, properties: { i: i, n: c[2], g: c[3] & 8 ? '5G' : c[3] & 4 ? '4G' : c[3] & 2 ? '3G' : '2G' } }; }) });
+  }
+  function tpStatus() {
+    const act = Object.keys(TP.on).filter(function (k) { return TP.on[k]; }); if (!act.length) return;
+    const parts = [], bad = [];
+    act.forEach(function (k) {
+      const d = TP.data[k], def = TP.kinds[k];
+      if (d) { const ageMin = Math.max(0, Math.round((Date.now() / 1000 - (d.t || Date.parse(d.generated) / 1000)) / 60)); parts.push(def.label + ' ' + (k === 'cells' ? (d.total || 0).toLocaleString() + ' towers' : d.a.length.toLocaleString() + ' ' + def.noun + ' · ' + (ageMin < 90 ? ageMin + ' min old' : Math.round(ageMin / 60) + ' h old'))); }
+      else bad.push(def.label + ': ' + (TP.err[k] || 'loading') + (TP.err[k] ? ' — add the repo secret and run the data workflow once' : ''));
+    });
+    setStatus(esc(parts.concat(bad).join(' · ')), !bad.length);
+  }
+  function tpPos(k, row, dt) { /* dead-reckon one row: returns [lon, lat, heading] */
+    let lat = row[1], lon = row[2], h = row[3] || 0, v = k === 'ships' ? (row[4] || 0) * 0.514444 : (row[4] || 0);
+    if (v > 0.5 && dt > 0) {
+      const d = v * Math.min(dt, 900), hr = h * Math.PI / 180;
+      lat += d * Math.cos(hr) / 111320; lon += d * Math.sin(hr) / (111320 * Math.max(0.05, Math.cos(lat * Math.PI / 180)));
+    }
+    return [lon, lat, h];
+  }
+  function tpTick() {
+    if (!maplibre || !maplibre.isStyleLoaded || !maplibre.getSource('tp-sel')) return;
+    const nowS = Date.now() / 1000, z = maplibre.getZoom(), b = maplibre.getBounds();
+    const w = b.getWest(), e = b.getEast(), s = b.getSouth(), n = b.getNorth(), padX = (e - w) * 0.15, padY = (n - s) * 0.15;
+    const wide = (e - w) > 300;
+    ['air', 'ships', 'transit'].forEach(function (k) {
+      const src = maplibre.getSource('tp-' + k), d = TP.data[k]; if (!src) return;
+      if (!TP.on[k] || !d) { if (TP._drawn && TP._drawn[k]) { src.setData({ type: 'FeatureCollection', features: [] }); TP._drawn[k] = 0; } return; }
+      (TP._drawn = TP._drawn || {})[k] = 1;
+      const dt = nowS - (d.t || nowS), stride = k === 'air' ? 1 : (z < 2.5 ? 6 : z < 3.5 ? 3 : z < 4.5 ? 2 : 1), feats = [];
+      for (let i = 0; i < d.a.length; i++) {
+        const row = d.a[i], isSel = TP.sel && TP.sel.k === k && TP.sel.i === i;
+        if (!isSel && stride > 1 && i % stride) continue;
+        if (!wide && !isSel) { const la = row[1], lo = row[2]; if (la < s - padY || la > n + padY) continue; if (lo < w - padX || lo > e + padX) { if (!(w - padX < -180 || e + padX > 180)) continue; } }
+        const p = tpPos(k, row, dt); feats.push({ type: 'Feature', geometry: { type: 'Point', coordinates: [p[0], p[1]] }, properties: { i: i, h: p[2] } });
+        if (feats.length > 12000) break;
+      }
+      src.setData({ type: 'FeatureCollection', features: feats });
+    });
+    const sel = maplibre.getSource('tp-sel'), cur = tpSelPos();
+    sel.setData(cur ? { type: 'FeatureCollection', features: [{ type: 'Feature', geometry: { type: 'Point', coordinates: [cur[0], cur[1]] }, properties: {} }] } : { type: 'FeatureCollection', features: [] });
+    if (cur && TP.follow) maplibre.easeTo({ center: [cur[0], cur[1]], duration: 2400, easing: function (t) { return t; }, essential: true });
+    if (cur) tpCard(true);
+  }
+  function tpSelPos() {
+    if (!TP.sel) return null; const d = TP.data[TP.sel.k]; if (!d) return null; const row = d.a[TP.sel.i]; if (!row) return null;
+    if (TP.sel.k === 'cells') return [row[1], row[0]];
+    return tpPos(TP.sel.k, row, Date.now() / 1000 - (d.t || 0));
+  }
+  function tpSelect(k, i, follow) {
+    TP.sel = { k: k, i: +i }; TP.follow = !!follow; tpCard(); tpTick();
+  }
+  function tpCard(light) {
+    let c = $('tm-tp-card');
+    if (!c) {
+      c = document.createElement('div'); c.id = 'tm-tp-card';
+      c.style.cssText = 'position:fixed;z-index:2260;left:14px;top:110px;width:250px;padding:12px 14px;border-radius:12px;background:rgba(8,12,18,.94);border:1px solid rgba(255,255,255,.16);backdrop-filter:blur(14px);color:#e8f0f6;font:12px/1.5 system-ui;display:none';
+      c.addEventListener('click', function (ev) {
+        const a = ev.target.closest && ev.target.closest('[data-tp]'); if (!a) return; const act = a.getAttribute('data-tp');
+        if (act === 'close') { TP.sel = null; TP.follow = false; c.style.display = 'none'; tpTick(); }
+        else if (act === 'follow') { TP.follow = !TP.follow; const p = tpSelPos(); if (p && maplibre) maplibre.easeTo({ center: [p[0], p[1]], zoom: Math.max(maplibre.getZoom(), TP.sel.k === 'air' ? 7 : 11), duration: 900 }); tpCard(); }
+        else if (act === 'zoom') { const p = tpSelPos(); if (p && maplibre) maplibre.flyTo({ center: [p[0], p[1]], zoom: TP.sel.k === 'cells' ? 9 : 12, duration: 1200 }); }
+      });
+      document.body.appendChild(c);
+    }
+    if (!TP.sel) { c.style.display = 'none'; return; }
+    const k = TP.sel.k, d = TP.data[k], row = d && d.a[TP.sel.i]; if (!row) { c.style.display = 'none'; return; }
+    const pos = tpSelPos(), rows = [], f1 = function (x) { return Math.round(x).toLocaleString(); };
+    let title = '';
+    if (k === 'air') { title = row[6] || row[0]; rows.push(['ICAO24', row[0]], ['Country', row[7] || '—'], ['Altitude', f1(row[5]) + ' m · ' + f1(row[5] * 3.281) + ' ft'], ['Speed', f1(row[4] * 3.6) + ' km/h · ' + f1(row[4] * 1.944) + ' kn'], ['Heading', f1(row[3]) + '°']); }
+    else if (k === 'ships') { title = row[5] || 'MMSI ' + row[0]; rows.push(['MMSI', row[0]], ['Speed', row[4] + ' kn · ' + f1(row[4] * 1.852) + ' km/h'], ['Course', f1(row[3]) + '°']); }
+    else if (k === 'transit') { title = row[5] || row[0]; rows.push(['Vehicle', row[0]], ['Route', row[6] || '—'], ['Speed', f1(row[4] * 3.6) + ' km/h'], ['Bearing', f1(row[3]) + '°']); }
+    else { title = 'Mobile towers'; const m = row[3]; rows.push(['Towers (≈28 km cell)', f1(row[2])], ['Networks', [m & 1 ? '2G' : '', m & 2 ? '3G' : '', m & 4 ? '4G' : '', m & 8 ? '5G' : ''].filter(Boolean).join(' · ') || '—']); }
+    if (pos) rows.push(['Position', pos[1].toFixed(4) + ', ' + pos[0].toFixed(4)]);
+    const btn = 'border:1px solid rgba(255,255,255,.2);border-radius:8px;background:rgba(255,255,255,.08);color:#fff;padding:6px 10px;cursor:pointer;font:700 11px system-ui;margin-right:6px';
+    c.innerHTML = '<div style="display:flex;justify-content:space-between;gap:8px"><b style="font-size:14px;color:' + TP.kinds[k].color + '">' + esc(title) + '</b><a data-tp="close" style="cursor:pointer;opacity:.7">✕</a></div>' +
+      '<div style="opacity:.6;font-size:10px;margin-bottom:6px">' + TP.kinds[k].label + ' · ' + esc(d.src || '') + '</div>' +
+      rows.map(function (r) { return '<div style="display:flex;justify-content:space-between;gap:10px"><span style="opacity:.65">' + esc(r[0]) + '</span><span>' + esc(r[1]) + '</span></div>'; }).join('') +
+      '<div style="margin-top:10px"><button data-tp="zoom" style="' + btn + '">Zoom to</button>' + (k === 'cells' ? '' : '<button data-tp="follow" style="' + btn + (TP.follow ? ';background:#4fd0a0;color:#06210f' : '') + '">' + (TP.follow ? 'Following ✓' : 'Follow') + '</button>') + '</div>';
+    c.style.display = 'block';
+  }
+  window.tmFindObject = async function (q) { /* search callsign / ship name / MMSI / ICAO24 / transit label among loaded data */
+    q = String(q || '').trim().toLowerCase(); if (!q || scale !== 'earth' || !maplibre) return false;
+    if (!TP.data.air && !TP.data.ships && !TP.data.transit && (/^[a-z]{2,3}\d{1,4}[a-z]?$/.test(q) || /^[0-9a-f]{6}$/.test(q) || /^\d{9}$/.test(q))) {
+      await Promise.all(['air', 'ships'].map(tpLoad));
+    }
+    let best = null, score = 0;
+    [['air', [6, 0]], ['ships', [5, 0]], ['transit', [5, 0]]].forEach(function (pair) {
+      const k = pair[0], d = TP.data[k]; if (!d) return;
+      d.a.forEach(function (row, i) {
+        pair[1].forEach(function (col) {
+          const v = String(row[col] == null ? '' : row[col]).toLowerCase(); if (!v) return;
+          const sc = v === q ? 3 : (v.indexOf(q) === 0 ? 2 : (q.length >= 4 && v.indexOf(q) > 0 ? 1 : 0));
+          if (sc > score) { score = sc; best = [k, i]; }
+        });
+      });
+    });
+    if (!best) return false;
+    if (!TP.on[best[0]]) { TP.on[best[0]] = true; maplibre.getLayer('tp-' + best[0]) && maplibre.setLayoutProperty('tp-' + best[0], 'visibility', 'visible'); syncBar(); }
+    TP.sel = { k: best[0], i: best[1] }; const p = tpSelPos(); TP.follow = true;
+    if (p) maplibre.flyTo({ center: [p[0], p[1]], zoom: Math.max(maplibre.getZoom(), best[0] === 'air' ? 7 : 11), duration: 1400 });
+    tpCard(); tpTick(); return true;
+  };
+
   function applyLayers() {
     if (!maplibre) return;
     try {
@@ -1138,6 +1325,7 @@
     window.map = maplibre;
     maplibre.on('load', function () {
       try { maplibre.resize(); } catch (e) {}
+      try { tpSetup(); } catch (e) { console.warn('transport layers', e); }
       applyLayers(); loadActivity();
       setStatus('EARTH · ' + (useGlobe ? '3D' : 'FLAT') + ' · live feeds', true);
       if (dayNight) terminatorTimer = setInterval(function () { applyDayNight(); }, 60000);

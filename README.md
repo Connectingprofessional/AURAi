@@ -52,19 +52,32 @@ Live feed panels need the Node API (run `npm start` or host `server/` elsewhere)
 MapLibre GL, OpenStreetMap, Natural Earth, OpenSky, USGS, and other sources remain under their respective licences.
 
 
-## API keys (AISstream, OpenCelliD, Mobility Database)
+## Transport layers on GitHub only (Air, Ships, Transit, Mobile)
 
-The keys are read by the Node server (`server/`) from **environment variables**. Never put them in the repo, in
-`index.html` or in any browser file: the site is public and anything in it can be read by anyone.
+The Earth bottom bar has **Air**, **Ships**, **Transit** and **Mobile** buttons. Nothing runs outside GitHub:
 
-| Service | Environment variable | What it powers |
+- `.github/workflows/live-data.yml` runs every ~10 minutes, runs `scripts/fetch-live.mjs` and force-pushes
+  `flights.json`, `ships.json`, `transit.json`, `meta.json` to the **`live-data`** branch.
+- `.github/workflows/cell-data.yml` runs weekly, runs `scripts/fetch-cells.mjs` (downloads the OpenCelliD database and
+  reduces it to a 0.25 degree tower-density grid) and force-pushes `cells.json` to the **`cell-data`** branch.
+- The page reads those files from `raw.githubusercontent.com` and moves each object forward from its speed and heading
+  between snapshots. Click an object for its card (**Zoom to**, **Follow**), or type a callsign / ship name / MMSI /
+  ICAO24 / vehicle label in the search box.
+
+Keys live in **GitHub Secrets** (repo -> *Settings* -> *Secrets and variables* -> *Actions* -> *New repository secret*).
+Never put them in the repo, in `index.html` or in any browser file.
+
+| Service | Secret name | What it powers |
 |---|---|---|
-| [aisstream.io](https://aisstream.io/account) | `AISSTREAM_API_KEY` | live ship positions (AIS) |
-| [opencellid.org](https://opencellid.org) | `OPENCELLID_API_KEY` | cell tower locations |
-| [mobilitydatabase.org](https://mobilitydatabase.org/account/api-access) | `MOBILITY_DB_REFRESH_TOKEN` | discovers open GTFS-Realtime vehicle feeds (buses, trams, trains) |
+| [aisstream.io](https://aisstream.io/account) | `AISSTREAM_API_KEY` | ships |
+| [opencellid.org](https://opencellid.org) | `OPENCELLID_API_KEY` | mobile tower density |
+| [mobilitydatabase.org](https://mobilitydatabase.org/account/api-access) | `MOBILITY_DB_REFRESH_TOKEN` | open GTFS-Realtime vehicle feeds (buses, trams, trains) |
 
-**Set them on Render:** dashboard -> your service -> *Environment* -> add each variable -> *Save* (the service redeploys).
-For local work copy `.env.example` to `.env` and fill it in (`.env` is git-ignored).
+Aircraft need no key (OpenSky, with ADSB.lol as fallback). After adding the secrets run each workflow once from the
+*Actions* tab (*Run workflow*); `meta.json` on the data branches says what worked. Until then the page shows
+"no data published yet" for that layer.
 
-Check they are picked up: `GET /api/global/status` shows `aisStream`, `publicCells` and `mobilityDatabase` as
-`configured` (the Mobility Database line also shows how many feeds were found, or the error).
+## Optional Node server API keys
+
+The legacy Node server (`server/`) reads the same three names from **environment variables** (copy `.env.example`
+to `.env` locally; `GET /api/global/status` shows what is configured). The GitHub Pages site does not need it.
