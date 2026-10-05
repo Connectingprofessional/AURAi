@@ -148,7 +148,12 @@ function drawMore(p){
 }
 function drawSearch(p){const i=el('input',{class:'tm-input',id:'tm-panel-search',placeholder:'Search anything…'}),b=el('button',{class:'tm-action',type:'button'},'SEARCH');b.onclick=()=>doSearch(i.value);i.onkeydown=e=>{if(e.key==='Enter')doSearch(i.value)};p.append(el('div',{class:'tm-row'},i,b),status('Places, coordinates, aircraft, IP, device and cell identifiers are supported where a live source exists.'))}
 async function doSearch(q){q=String(q||'').trim();if(!q)return;try{if(/^\+?[0-9][0-9 ()-]{6,18}$/.test(q)){state.tab='TRACK';state.sub='DEVICE';state.panel=true;render();return}
- const j=await api('/api/global/search?q='+encodeURIComponent(q)).catch(()=>api('/api/search?q='+encodeURIComponent(q)));const x=(j.results||[])[0];if(x&&map()&&Number.isFinite(+x.lon))map().flyTo({center:[+x.lon,+x.lat],zoom:Math.max(8,map().getZoom()),duration:900});else alert('No live/public result found.')}catch(e){alert(e.message)}}
+ let j=null;try{j=await api('/api/global/search?q='+encodeURIComponent(q));}catch(e){try{j=await api('/api/search?q='+encodeURIComponent(q));}catch(e2){j=null}}
+ if(!j){
+   const nr=await fetch('https://nominatim.openstreetmap.org/search?format=jsonv2&limit=5&q='+encodeURIComponent(q),{headers:{'Accept':'application/json'}}).then(r=>r.json()).catch(()=>[]);
+   j={results:(nr||[]).map(x=>({type:'place',lat:Number(x.lat),lon:Number(x.lon),label:x.display_name}))};
+ }
+ const x=(j.results||[])[0];if(x&&map()&&Number.isFinite(+x.lon))map().flyTo({center:[+x.lon,+x.lat],zoom:Math.max(8,map().getZoom()),duration:900});else alert('No live/public result found.')}catch(e){alert(e.message)}}
 function start(){const l=el('link',{rel:'stylesheet',href:'./visuals.css?v=full-frame-1'});document.head.append(l);build();setTimeout(()=>{const z=$('#tm-zoom-common');if(z)z.title='Common map zoom';},100)}
 if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',start);else start();
 })();
