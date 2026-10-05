@@ -1078,6 +1078,21 @@
    * Data is collected by GitHub Actions (scripts/fetch-live.mjs, scripts/fetch-cells.mjs) and published on the
    * `live-data` / `cell-data` branches of this repo; the browser reads it from raw.githubusercontent.com.
    * Snapshots are ~10 minutes apart, so positions are projected forward from speed and heading between refreshes. */
+  const TM_API_BASE = window.TM_API_BASE || window.location.origin;
+  async function tmApi(path) {
+    const r = await fetch(TM_API_BASE + path, { cache: 'no-store' });
+    const j = await r.json().catch(function(){ return {}; });
+    if (!r.ok) throw new Error(j.error || 'API HTTP ' + r.status);
+    return j;
+  }
+  window.TrackMeNowAPI = {
+    ip: function(value){ return tmApi('/api/integrations/ip/lookup?ip=' + encodeURIComponent(value)); },
+    myIp: function(){ return tmApi('/api/integrations/ip/my'); },
+    flight: function(value){ return tmApi('/api/integrations/flight/search?flight=' + encodeURIComponent(value)); },
+    country: function(value){ return tmApi('/api/integrations/country/name?name=' + encodeURIComponent(value)); },
+    geocode: function(value){ return tmApi('/api/integrations/geocode?q=' + encodeURIComponent(value)); },
+    reverse: function(lat,lon){ return tmApi('/api/integrations/reverse?lat=' + encodeURIComponent(lat) + '&lon=' + encodeURIComponent(lon)); }
+  };
   const TP_BASE = window.TM_DATA_BASE || 'https://raw.githubusercontent.com/Connectingprofessional/TrackMenow';
   const TP = {
     kinds: {
