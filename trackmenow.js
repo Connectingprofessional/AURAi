@@ -193,7 +193,6 @@
     box.id = 'tm-universe-chrome';
     box.innerHTML = [
       '<div style="position:fixed;z-index:2200;left:50%;top:58px;transform:translateX(-50%);display:flex;gap:6px;flex-wrap:wrap;justify-content:center;max-width:96vw">',
-      '  <button data-scale="universe" class="tm-scale-btn">Universe</button>',
       '  <button data-scale="solar" class="tm-scale-btn">Solar System</button>',
       '  <button data-scale="earth" class="tm-scale-btn">Earth Live</button>',
       '  <button data-scale="moon" class="tm-scale-btn">Moon</button>',
@@ -1549,10 +1548,11 @@
     } catch (err) { console.error(err); setStatus('FAILED · ' + (err.message || err), false); }
   }
 
-  /* Legacy Universe overlay disabled; visuals-ui.js owns navigation. */
+  /* Keep the existing map controls; the standalone Universe landing screen is removed. */
   try { scale = localStorage.getItem('tm-scale') || 'earth'; } catch (e) {}
   if (['moon', 'mars', 'solar', 'universe'].indexOf(scale) < 0) scale = 'earth';
   setStatus('STARTING…', true);
+  injectChrome();
   setScale(scale);
   setInterval(function () { if (!activeWx.radar) updateTimeLabel(); }, 1000);
   window.TrackMeNowEngine = {
