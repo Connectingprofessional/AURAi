@@ -5,6 +5,7 @@
   const OG_VER = '0.28.7';
   const OG_JS = 'https://cdn.jsdelivr.net/npm/@openglobus/og@' + OG_VER + '/lib/og.es.js';
   const OG_CSS = 'https://cdn.jsdelivr.net/npm/@openglobus/og@' + OG_VER + '/lib/og.css';
+  const CELL_API_BASE = 'https://wispy-bush-9aee.recreationeeraj.workers.dev/api/cell';
 
   /* ───────── Real space data ─────────
    * Planets: NASA/JPL "Approximate Positions of the Planets" Keplerian elements (valid 1800–2050),
@@ -1232,44 +1233,141 @@
   }
   async function tmCellLookup(q) {
     const raw = String(q || '').trim();
-    const nums = raw.replace(/(?:mcc|mnc|lac|tac|cellid|cid|nci)\\s*[:=]?/gi, ' ').replace(/[,;|/\\-]+/g, ' ').trim().split(/\\s+/).map(Number).filter(Number.isFinite);
+    const nums = raw
+      .replace(/(?:mcc|mnc|lac|tac|cellid|cid|nci)\s*[:=]?/gi, ' ')
+      .replace(/[,;|/\-]+/g, ' ')
+      .trim()
+      .split(/\s+/)
+      .map(Number)
+      .filter(Number.isFinite);
+
     if (nums.length < 4) return false;
-    const apiBase = window.TM_CELL_API_BASE || (location.hostname === 'localhost' || location.hostname === '127.0.0.1' ? '/api/cell' : '');
-    if (!apiBase) {
-      setStatus('Exact Mobile lookup needs the secure TrackMeNow API · GitHub Pages is static', false);
-      return false;
-    }
-    const mcc = nums[0], mnc = nums[1], lac = nums[2], cellid = nums[3], radio = /\\b(nr|5g)\\b/i.test(raw) ? 'NR' : /\\b(lte|4g)\\b/i.test(raw) ? 'LTE' : /\\b(umts|3g)\\b/i.test(raw) ? 'UMTS' : /\\b(gsm|2g)\\b/i.test(raw) ? 'GSM' : '';
-    if (![mcc,mnc,lac,cellid].every(Number.isInteger)) return false;
-    setStatus('Looking up cell ' + mcc + '/' + mnc + '/' + lac + '/' + cellid + '…', true);
-    const u = apiBase.replace(/\\/$/, '') + '?mcc=' + mcc + '&mnc=' + mnc + '&lac=' + lac + '&cellid=' + cellid + (radio ? '&radio=' + encodeURIComponent(radio) : '');
-    const res = await fetch(u);
-    const j = await res.json();
-    if (!res.ok || !j || j.error || j.stat === 'fail' || !Number.isFinite(Number(j.lat)) || !Number.isFinite(Number(j.lon))) {
-      setStatus('Cell not found · check MCC, MNC, LAC/TAC, Cell ID and radio', false);
+
+    const apiBase = window.TM_CELL_API_BASE || CELL_API_BASE;
+    const mcc = nums[0];
+    const mnc = nums[1];
+    const lac = nums[2];
+    const cellid = nums[3];
+
+    const radio =
+      /\b(nr|5g)\b/i.test(raw) ? 'NR' :
+      /\b(lte|4g)\b/i.test(raw) ? 'LTE' :
+      /\b(umts|3g)\b/i.test(raw) ? 'UMTS' :
+      /\b(gsm|2g)\b/i.test(raw) ? 'GSM' : '';
+
+    if (![mcc, mnc, lac, cellid].every(Number.isInteger)) return false;
+
+    setStatus(
+      'Looking up public cell ' + mcc + '/' + mnc + '/' + lac + '/' + cellid + '…',
+      true
+    );
+
+    const u =
+      apiBase.replace(/\/$/, '') +
+      '?mcc=' + encodeURIComponent(mcc) +
+      '&mnc=' + encodeURIComponent(mnc) +
+      '&lac=' + encodeURIComponent(lac) +
+      '&cellid=' + encodeURIComponent(cellid) +
+      (radio ? '&radio=' + encodeURIComponent(radio) : '');
+
+    try {
+      const res = await fetch(u);
+      const j = await res.json();
+
+      if (!res.ok || !j || !j.ok || !j.data) {
+        const message = j && j.error ? j.error : 'Cell lookup failed';
+        setStatus('CELL DATABASE · ' + message, false);
+        return true;
+      }
+
+      const d = j.data;
+      const lat = Number(d.latitude);
+      const lon = Number(d.longitude);
+
+      if (!Number.isFinite(lat) || !Number.isFinite(lon)) {
+        setStatus('Cell found, but no estimated position was returned', false);
+        return true;
+      }
+
+      const pos = [lon, lat];
+
+      if (maplibre) {
+        maplibre.flyTo({
+          center: pos,
+          zoom: 13,
+          duration: 1400
+        });
+      }
+
+      let c = $('tm-cell-search-card');
+
+      if (!c) {
+        c = document.createElement('div');
+        c.id = 'tm-cell-search-card';
+        c.style.cssText =
+          'position:fixed;z-index:2290;right:14px;top:110px;width:285px;' +
+          'padding:13px 14px;border-radius:12px;background:rgba(8,12,18,.95);' +
+          'border:1px solid rgba(210,139,255,.35);backdrop-filter:blur(14px);' +
+          'color:#e8f0f6;font:12px/1.55 system-ui';
+        document.body.appendChild(c);
+      }
+
+      const escv = function (v) {
+        return String(v == null ? '—' : v).replace(/[&<>"]/g, function (x) {
+          return {
+            '&': '&amp;',
+            '<': '&lt;',
+            '>': '&gt;',
+            '"': '&quot;'
+          }[x];
+        });
+      };
+
+      c.innerHTML =
+        '<div style="display:flex;justify-content:space-between">' +
+          '<b style="color:#d28bff">PUBLIC CELL DATABASE</b>' +
+          '<a id="tm-cell-close" style="cursor:pointer;opacity:.7">✕</a>' +
+        '</div>' +
+        '<div style="margin-top:7px">MCC <b>' + escv(d.mcc) +
+          '</b> · MNC <b>' + escv(d.mnc) + '</b></div>' +
+        '<div>LAC/TAC <b>' + escv(d.lac != null ? d.lac : d.tac) +
+          '</b> · Cell ID <b>' + escv(d.cellid) + '</b></div>' +
+        '<div>Radio <b>' + escv(d.radio) + '</b></div>' +
+        '<div>Estimated position <b>' +
+          escv(lat.toFixed(5)) + ', ' + escv(lon.toFixed(5)) +
+        '</b></div>' +
+        '<div>Range <b>' +
+          escv(d.range != null ? d.range + ' m' : null) +
+          '</b> · Samples <b>' + escv(d.samples) + '</b></div>' +
+        '<div style="margin-top:7px;color:#9aabba;font-size:10px">' +
+          'PUBLIC CELL DATABASE · estimated cell position, not live phone location.' +
+        '</div>' +
+        '<div style="margin-top:8px;color:#9aabba;font-size:10px">' +
+          'Source: OpenCelliD · CC BY-SA 4.0' +
+        '</div>';
+
+      c.querySelector('#tm-cell-close').onclick = function () {
+        c.style.display = 'none';
+      };
+
+      c.style.display = 'block';
+
+      setStatus(
+        'CELL DATABASE · ' +
+        (d.radio || 'network') +
+        ' · ' +
+        lat.toFixed(5) +
+        ', ' +
+        lon.toFixed(5),
+        true
+      );
+
+      return true;
+    } catch (err) {
+      console.error('TrackMeNow cell lookup', err);
+      setStatus('CELL DATABASE · network request failed', false);
       return true;
     }
-    const pos = [Number(j.lon), Number(j.lat)];
-    if (maplibre) maplibre.flyTo({center: pos, zoom: 13, duration: 1400});
-    let c = $('tm-cell-search-card');
-    if (!c) {
-      c = document.createElement('div'); c.id = 'tm-cell-search-card';
-      c.style.cssText = 'position:fixed;z-index:2290;right:14px;top:110px;width:285px;padding:13px 14px;border-radius:12px;background:rgba(8,12,18,.95);border:1px solid rgba(210,139,255,.35);backdrop-filter:blur(14px);color:#e8f0f6;font:12px/1.55 system-ui';
-      document.body.appendChild(c);
-    }
-    const escv = function(v){return String(v==null?'—':v).replace(/[&<>"]/g,function(x){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[x]})};
-    c.innerHTML = '<div style="display:flex;justify-content:space-between"><b style="color:#d28bff">MOBILE CELL</b><a id="tm-cell-close" style="cursor:pointer;opacity:.7">✕</a></div>' +
-      '<div style="margin-top:7px">MCC <b>'+escv(j.mcc)+'</b> · MNC <b>'+escv(j.mnc)+'</b></div>' +
-      '<div>LAC/TAC <b>'+escv(j.lac != null ? j.lac : j.tac)+'</b> · Cell ID <b>'+escv(j.cellid)+'</b></div>' +
-      '<div>Radio <b>'+escv(j.radio)+'</b></div>' +
-      '<div>Estimated position <b>'+escv(Number(j.lat).toFixed(5))+', '+escv(Number(j.lon).toFixed(5))+'</b></div>' +
-      '<div>Range <b>'+escv(j.range != null ? j.range+' m' : null)+'</b> · Samples <b>'+escv(j.samples)+'</b></div>' +
-      '<div style="margin-top:7px;color:#9aabba;font-size:10px">PUBLIC CELL DATABASE · estimated cell position, not live phone location.</div>' +
-      '<div style="margin-top:8px;color:#9aabba;font-size:10px">Source: OpenCelliD · CC BY-SA 4.0</div>';
-    c.querySelector('#tm-cell-close').onclick=function(){c.style.display='none'};
-    c.style.display='block';
-    setStatus('CELL DATABASE · ' + j.radio + ' · ' + j.lat + ', ' + j.lon, true);
-    return true;
   }
 
   window.tmFindObject = async function (q) { /* search places, movers and mobile-cell identifiers */
