@@ -166,7 +166,7 @@ function drawVisuals(p){
  p.append(status('LIVE/PUBLIC resources only. TrackMeNow never copies or stores media. HISTORY means source-provided history/metadata; USER SHARED means a reference shared by the user, not an uploaded TrackMeNow media file.'));
  if(state.sub==='USER SHARED'){
    const u=el('input',{class:'tm-input',placeholder:'Paste a public/authorized image, video, live or recorded source URL'}),b=el('button',{class:'tm-action',type:'button'},'OPEN SHARED SOURCE');
-   b.onclick=()=>{if(/^https:\\/\\//i.test(u.value.trim()))window.open(u.value.trim(),'_blank','noopener,noreferrer');else alert('Use a public HTTPS source URL.')};
+   b.onclick=()=>{if(/^https:\/\//i.test(u.value.trim()))window.open(u.value.trim(),'_blank','noopener,noreferrer');else alert('Use a public HTTPS source URL.')};
    p.append(el('div',{class:'tm-row'},u,b),status('The URL is opened at its original source. TrackMeNow does not upload or retain the media.'));
    return;
  }
