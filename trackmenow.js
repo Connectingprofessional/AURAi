@@ -1425,6 +1425,8 @@
         dark: { type: 'raster', tileSize: 256, maxzoom: 19, tiles: ['https://services.arcgisonline.com/ArcGIS/rest/services/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}'] },
         gibs: { type: 'raster', tileSize: 256, maxzoom: 9, tiles: ['https://gibs.earthdata.nasa.gov/wmts/epsg3857/best/VIIRS_SNPP_CorrectedReflectance_TrueColor/default/' + date + '/GoogleMapsCompatible_Level9/{z}/{y}/{x}.jpg'] },
         labels: { type: 'raster', tileSize: 256, maxzoom: 19, tiles: ['https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}'] },
+        street: { type: 'raster', tileSize: 256, maxzoom: 19, tiles: ['https://tile.openstreetmap.org/{z}/{x}/{y}.png'], attribution: '© OpenStreetMap contributors' },
+        terrainSource: { type: 'raster-dem', url: 'https://tiles.mapterhorn.com/tilejson.json', tileSize: 256 }
         terminator: { type: 'geojson', data: dayNight ? terminatorFeatures(new Date()) : { type: 'FeatureCollection', features: [] } },
         forecast: { type: 'geojson', data: { type: 'FeatureCollection', features: [] } },
         eonet: { type: 'geojson', data: { type: 'FeatureCollection', features: [] } },
@@ -1438,7 +1440,9 @@
         { id: 'night-0', type: 'fill', source: 'terminator', filter: ['==', ['get', 'soft'], 0], layout: { visibility: dayNight ? 'visible' : 'none' }, paint: { 'fill-color': '#00060f', 'fill-opacity': 0.12 } },
         { id: 'night-1', type: 'fill', source: 'terminator', filter: ['==', ['get', 'soft'], 1], layout: { visibility: dayNight ? 'visible' : 'none' }, paint: { 'fill-color': '#00060f', 'fill-opacity': 0.16 } },
         { id: 'night-2', type: 'fill', source: 'terminator', filter: ['==', ['get', 'soft'], 2], layout: { visibility: dayNight ? 'visible' : 'none' }, paint: { 'fill-color': '#00060f', 'fill-opacity': 0.22 } },
+        { id: 'street', type: 'raster', source: 'street', layout: { visibility: 'none' }, paint: { 'raster-opacity': 0.9 } },
         { id: 'labels', type: 'raster', source: 'labels', paint: { 'raster-opacity': 0.85 } },
+        { id: 'terrain-hillshade', type: 'hillshade', source: 'terrainSource', layout: { visibility: 'none' }, paint: { 'hillshade-exaggeration': 0.55 } },
         { id: 'forecast-heat', type: 'heatmap', source: 'forecast', layout: { visibility: 'none' }, paint: { 'heatmap-radius': 55, 'heatmap-intensity': 1.8, 'heatmap-opacity': 0.9, 'heatmap-color': ['interpolate', ['linear'], ['heatmap-density'], 0, 'rgba(0,0,0,0)', 0.15, '#2980b9', 0.35, '#2ecc71', 0.55, '#f1c40f', 0.75, '#e67e22', 1, '#c0392b'] } },
         { id: 'forecast-circles', type: 'circle', source: 'forecast', layout: { visibility: 'none' }, paint: { 'circle-radius': 36, 'circle-color': '#4fd0a0', 'circle-opacity': 0.55, 'circle-blur': 0.9, 'circle-stroke-width': 0 } },
         { id: 'fires-layer', type: 'raster', source: 'fires', layout: { visibility: 'none' }, paint: { 'raster-opacity': 0.85 } },
@@ -1544,5 +1548,48 @@
   setStatus('STARTING…', true);
   setScale(scale);
   setInterval(function () { if (!activeWx.radar) updateTimeLabel(); }, 1000);
-  window.TrackMeNowEngine = { name: 'TrackMeNow realtime', setScale: setScale, zoomBy: zoomBy, get scale() { return scale; } };
+  window.TrackMeNowEngine = {
+    name: 'TrackMeNow realtime',
+    setScale: setScale,
+    zoomBy: zoomBy,
+    get scale() { return scale; },
+    setEarthMode: function(mode) {
+      if (mode === 'globe') earthMode = 'globe';
+      else earthMode = 'flat';
+      if (scale === 'earth') enterEarth();
+    },
+    setDayNight: function(on) {
+      dayNight = !!on;
+      if (scale === 'earth') applyDayNight();
+      syncBar();
+    },
+    selectWeather: function(key) {
+      var weatherKeys=['live','radar','fires','events','quakes','dark','precip','wind','temp','humidity','pressure'];
+      if (weatherKeys.indexOf(key)<0) return;
+      weatherKeys.forEach(function(k){ activeWx[k]=false; });
+      activeWx[key]=true;
+      if (key==='dark') activeWx.satellite=true;
+      if (key==='live') activeWx.dark=false;
+      applyLayers();
+      if (['events','quakes'].indexOf(key)>=0) loadActivity();
+      if (['precip','wind','temp','humidity','pressure'].indexOf(key)>=0) refreshForecast();
+    },
+    setTerrain: function(on) {
+      if (!maplibre || scale !== 'earth') return;
+      try {
+        if (maplibre.getSource('terrainSource')) {
+          maplibre.setTerrain(on ? {source:'terrainSource',exaggeration:1.1} : null);
+          if (maplibre.getLayer('terrain-hillshade')) maplibre.setLayoutProperty('terrain-hillshade','visibility',on?'visible':'none');
+          if (on) maplibre.easeTo({pitch:55,duration:500});
+          else maplibre.easeTo({pitch:0,duration:500});
+        }
+      } catch(e) { console.warn('terrain',e); }
+    },
+    setStreet: function(on) {
+      if (!maplibre || scale !== 'earth') return;
+      try { if (maplibre.getLayer('street')) maplibre.setLayoutProperty('street','visibility',on?'visible':'none'); } catch(e) {}
+    },
+    toggleTransport: function(kind) { if (TP.kinds[kind]) { tpToggle(kind); return !!TP.on[kind]; } return false; },
+    searchObject: function(q) { return tmFindObject(q); }
+  };
 })();
