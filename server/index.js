@@ -28,6 +28,7 @@ app.use(express.static(ROOT, {
   }
 }));
 app.use('/api/global', globalSourcesRouter);
+app.use('/api', globalSourcesRouter);
 app.use('/api/integrations', integrationsRouter);
 app.get('/api/call-config', (req,res) => {
   const servers = [{ urls: 'stun:stun.l.google.com:19302' }];
@@ -44,6 +45,26 @@ app.post('/api/visitor', async (req,res) => {
     if(q) await auditLog(req,'search',{searchType,searchHash:hashValue(q),searchMasked:searchType==='phone'?maskPhone(normalizePhone(q)):searchType==='email'?(q[0]+'***@'+q.split('@')[1]):searchType==='ip'?q:'[query]',metadata:{source:b.source||'map'}});
     res.json({ok:true});
   } catch(e){ res.status(500).json({error:'audit logging failed'}); }
+});
+app.post('/api/admin/login', (req,res) => {
+  const user = String(process.env.TRACKMENOW_ADMIN_USER || '');
+  const pass = String(process.env.TRACKMENOW_ADMIN_PASSWORD || '');
+  const suppliedUser = String(req.body?.username || '');
+  const suppliedPass = String(req.body?.password || '');
+  if (!user || !pass || suppliedUser !== user || suppliedPass !== pass) return res.status(401).json({error:'Invalid admin credentials.'});
+  const token = String(process.env.TRACKMENOW_ADMIN_TOKEN || '');
+  if (!token) return res.status(503).json({error:'TRACKMENOW_ADMIN_TOKEN is not configured.'});
+  res.json({ok:true, token});
+});
+app.post('/api/admin/log-event', async (req,res) => {
+  if(!adminAuthorized(req)) return res.status(401).json({error:'Admin authorization required.'});
+  try { const b=req.body||{}; const event=String(b.event||'ui-event').slice(0,60); await auditLog(req,event,{metadata:{tab:b.tab||null,sub:b.sub||null,detail:b.detail||null}}); res.json({ok:true}); }
+  catch(e){ res.status(500).json({error:'audit logging failed'}); }
+});
+app.get('/api/admin/feed-report', async (req,res) => {
+  if(!adminAuthorized(req)) return res.status(401).json({error:'Admin authorization required.'});
+  let global={}; try { global=await new Promise((resolve,reject)=>{ const fake={}; /* report uses public router externally */ resolve({}); }); } catch {}
+  res.json({ok:true,feeds:{gtfs:gtfsUrls.length,cameras:cameraUrls.length,ais:!!process.env.AIS_API_URL,traffic:!!process.env.TRAFFIC_GEOJSON_URL,cell:!!process.env.CELL_FEED_URL},database:!!pool,generatedAt:new Date().toISOString()});
 });
 app.get('/api/admin/logs', async (req,res) => {
   if(!adminAuthorized(req)) return res.status(401).json({error:'Admin authorization required.'});
