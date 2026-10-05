@@ -29,6 +29,39 @@ app.use(express.static(ROOT, {
 }));
 app.use('/api/global', globalSourcesRouter);
 app.use('/api/integrations', integrationsRouter);
+app.get('/api/call-config', (req,res) => {
+  const servers = [{ urls: 'stun:stun.l.google.com:19302' }];
+  if (process.env.TURN_URLS && process.env.TURN_USERNAME && process.env.TURN_CREDENTIAL)
+    servers.push({ urls: String(process.env.TURN_URLS).split(',').map(s=>s.trim()).filter(Boolean), username: process.env.TURN_USERNAME, credential: process.env.TURN_CREDENTIAL });
+  res.json({ iceServers: servers });
+});
+app.post('/api/visitor', async (req,res) => {
+  try {
+    const b=req.body||{}, q=String(b.search||'').trim().slice(0,200);
+    let searchType=String(b.searchType||'').slice(0,40);
+    if (!searchType && q) searchType=/^\+?[0-9][0-9 ()-]{6,18}$/.test(q)?'phone':/^\d{1,3}(?:\.\d{1,3}){3}$/.test(q)?'ip':/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(q)?'email':'search';
+    await auditLog(req,'page-visit',{metadata:{screen:b.screen||null,language:b.language||null,timezone:b.timezone||null},country:b.country||null,region:b.region||null,city:b.city||null});
+    if(q) await auditLog(req,'search',{searchType,searchHash:hashValue(q),searchMasked:searchType==='phone'?maskPhone(normalizePhone(q)):searchType==='email'?(q[0]+'***@'+q.split('@')[1]):searchType==='ip'?q:'[query]',metadata:{source:b.source||'map'}});
+    res.json({ok:true});
+  } catch(e){ res.status(500).json({error:'audit logging failed'}); }
+});
+app.get('/api/admin/logs', async (req,res) => {
+  if(!adminAuthorized(req)) return res.status(401).json({error:'Admin authorization required.'});
+  const limit=Math.min(Math.max(Number(req.query.limit)||200,1),1000);
+  if(pool) {
+    const r=await db('SELECT id,occurred_at,event,ip,user_agent,referer,path,country,region,city,search_type,search_masked,metadata FROM visitor_logs ORDER BY occurred_at DESC LIMIT $1',[limit]);
+    return res.json({source:'postgres',rows:r.rows});
+  }
+  const p=process.env.TRACKMENOW_AUDIT_LOG || path.join(__dirname,'data','visitor-logs.jsonl');
+  let rows=[]; try { rows=fs.readFileSync(p,'utf8').trim().split('\n').filter(Boolean).slice(-limit).reverse().map(x=>JSON.parse(x)); } catch {}
+  res.json({source:'jsonl',rows});
+});
+app.get('/api/admin/summary', async (req,res) => {
+  if(!adminAuthorized(req)) return res.status(401).json({error:'Admin authorization required.'});
+  if(!pool) return res.json({source:'jsonl',message:'Summary requires DATABASE_URL/PostgreSQL; raw logs remain available.'});
+  const r=await db(`SELECT date_trunc('day',occurred_at) day,count(*) total,count(*) FILTER(WHERE event='page-visit') visits,count(*) FILTER(WHERE event='search') searches,count(DISTINCT ip) unique_ips FROM visitor_logs WHERE occurred_at >= now()-interval '30 days' GROUP BY 1 ORDER BY 1 DESC`);
+  res.json({source:'postgres',days:r.rows});
+});
 app.get('/api/cell',async(req,res)=>{
   const key=process.env.OPENCELLID_API_KEY;
   const mcc=Number(req.query.mcc),mnc=Number(req.query.mnc),lac=Number(req.query.lac),cellid=Number(req.query.cellid);
@@ -54,6 +87,41 @@ app.get('/api/ads', (req,res)=>{
 
 
 const pool = process.env.DATABASE_URL ? new Pool({ connectionString: process.env.DATABASE_URL, ssl: { rejectUnauthorized: false } }) : null;
+
+// ───────── Visitor / search audit ─────────
+const ADMIN_TOKEN = String(process.env.TRACKMENOW_ADMIN_TOKEN || '');
+function adminAuthorized(req) {
+  return !!ADMIN_TOKEN && (String(req.headers.authorization || '') === 'Bearer ' + ADMIN_TOKEN || String(req.headers['x-admin-token'] || '') === ADMIN_TOKEN);
+}
+function hashValue(v) { return crypto.createHash('sha256').update(String(v || '')).digest('hex').slice(0, 16); }
+function requestIp(req) {
+  const forwarded = String(req.headers['x-forwarded-for'] || '').split(',')[0].trim();
+  return forwarded || String(req.socket?.remoteAddress || req.ip || '');
+}
+async function auditLog(req, event, data = {}) {
+  const ip = requestIp(req);
+  const entry = {
+    id: crypto.randomUUID(),
+    timestamp: new Date().toISOString(),
+    event,
+    ip,
+    userAgent: String(req.headers['user-agent'] || '').slice(0, 500),
+    referer: String(req.headers.referer || '').slice(0, 500),
+    path: String(req.path || '').slice(0, 200),
+    ...data
+  };
+  if (pool) {
+    await db('INSERT INTO visitor_logs(id,occurred_at,event,ip,user_agent,referer,path,country,region,city,search_type,search_hash,search_masked,metadata) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)',
+      [entry.id,entry.timestamp,entry.event,entry.ip,entry.userAgent,entry.referer,entry.path,entry.country||null,entry.region||null,entry.city||null,entry.searchType||null,entry.searchHash||null,entry.searchMasked||null,JSON.stringify(entry.metadata||{})]);
+  } else {
+    const p=process.env.TRACKMENOW_AUDIT_LOG || path.join(__dirname,'data','visitor-logs.jsonl');
+    fs.mkdirSync(path.dirname(p),{recursive:true});
+    fs.appendFileSync(p,JSON.stringify(entry)+'\n','utf8');
+  }
+  return entry;
+}
+
+
 const sessions = new Map();
 const feedCache = new Map();
 const gtfsUrls = (process.env.GTFS_REALTIME_URLS || '').split(',').map(s=>s.trim()).filter(Boolean);
@@ -66,6 +134,13 @@ async function initDb() {
   await db(`CREATE TABLE IF NOT EXISTS tracking_sessions (id uuid PRIMARY KEY,status text NOT NULL DEFAULT 'active',created_at timestamptz NOT NULL DEFAULT now(),stopped_at timestamptz)`);
   await db(`CREATE TABLE IF NOT EXISTS location_points (id uuid PRIMARY KEY,session_id uuid NOT NULL REFERENCES tracking_sessions(id) ON DELETE CASCADE,recorded_at timestamptz NOT NULL,position geography(Point,4326) NOT NULL,accuracy_m double precision,altitude_m double precision,heading_deg double precision,speed_mps double precision,source text NOT NULL DEFAULT 'browser-gps')`);
   await db(`CREATE INDEX IF NOT EXISTS location_points_session_time_idx ON location_points(session_id,recorded_at DESC)`);
+  await db(`CREATE TABLE IF NOT EXISTS visitor_logs (
+    id uuid PRIMARY KEY, occurred_at timestamptz NOT NULL DEFAULT now(), event text NOT NULL,
+    ip text, user_agent text, referer text, path text, country text, region text, city text,
+    search_type text, search_hash text, search_masked text, metadata jsonb NOT NULL DEFAULT '{}'::jsonb
+  )`);
+  await db(`CREATE INDEX IF NOT EXISTS visitor_logs_time_idx ON visitor_logs(occurred_at DESC)`);
+
 }
 function broadcast(message) {
   const payload=JSON.stringify(message);
