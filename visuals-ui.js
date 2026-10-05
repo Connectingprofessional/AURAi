@@ -167,7 +167,7 @@ function drawVisuals(p){
  if(state.sub==='USER SHARED'){
    const u=el('input',{class:'tm-input',placeholder:'Paste a public/authorized image, video, live or recorded source URL'}),b=el('button',{class:'tm-action',type:'button'},'OPEN SHARED SOURCE');
    b.onclick=()=>{if(/^https:\/\//i.test(u.value.trim()))window.open(u.value.trim(),'_blank','noopener,noreferrer');else alert('Use a public HTTPS source URL.')};
-   p.append(el('div',{class:'tm-row'},u,b),status('The URL is opened at its original source. TrackMeNow does not upload or retain the media.'));
+   const row=el('div',{class:'tm-row'});row.append(u,b);p.append(row,status('The URL is opened at its original source. TrackMeNow does not upload or retain the media.'));
    return;
  }
  const load=()=>api('/api/global/visuals?category='+encodeURIComponent(state.sub)).catch(()=>api('/api/visuals?category='+encodeURIComponent(state.sub))).then(j=>{const g=el('div',{class:'tm-stack'});(j.sources||[]).forEach(s=>g.append(card((s.status||'SOURCE')+' · '+(s.title||s.type||'visual'),[s.provider,s.location,s.timestamp].filter(Boolean).join(' · '),()=>window.open(s.url,'_blank','noopener,noreferrer'),'OPEN SOURCE')));if(!g.children.length)g.append(card(state.sub==='HISTORY'?'NO SOURCE HISTORY':'NO CURRENT PUBLIC SOURCE',state.sub==='HISTORY'?'No source-provided historical metadata is available right now.':'No configured source is available. TrackMeNow does not invent or store media.'));p.append(g)}).catch(()=>p.append(status('Visual source registry unavailable.')));
