@@ -1117,7 +1117,7 @@
   function tpIcon(name, draw) {
     if (!maplibre || maplibre.hasImage(name)) return;
     const c = document.createElement('canvas'); c.width = c.height = 32; const x = c.getContext('2d');
-    x.fillStyle = TP.kinds[name === 'tm-air' ? 'air' : name === 'tm-ship' ? 'ships' : 'transit'].color; x.strokeStyle = 'rgba(0,10,20,.9)'; x.lineWidth = 1.6; x.lineJoin = 'round';
+    x.fillStyle = TP.kinds[name === 'tm-air' ? 'air' : name === 'tm-ship' ? 'ships' : name === 'tm-rail' ? 'rail' : 'transit'].color; x.strokeStyle = 'rgba(0,10,20,.9)'; x.lineWidth = 1.6; x.lineJoin = 'round';
     x.beginPath(); draw.forEach(function (p, i) { i ? x.lineTo(p[0], p[1]) : x.moveTo(p[0], p[1]); }); x.closePath(); x.fill(); x.stroke();
     maplibre.addImage(name, x.getImageData(0, 0, 32, 32));
   }
@@ -1275,8 +1275,8 @@
     let title = '';
     if (k === 'air') { title = row[6] || row[0]; rows.push(['ICAO24', row[0]], ['Country', row[7] || '—'], ['Altitude', f1(row[5]) + ' m · ' + f1(row[5] * 3.281) + ' ft'], ['Speed', f1(row[4] * 3.6) + ' km/h · ' + f1(row[4] * 1.944) + ' kn'], ['Heading', f1(row[3]) + '°']); }
     else if (k === 'ships') { title = row[5] || 'MMSI ' + row[0]; rows.push(['MMSI', row[0]], ['Speed', row[4] + ' kn · ' + f1(row[4] * 1.852) + ' km/h'], ['Course', f1(row[3]) + '°']); }
-    else if (k === 'transit') { title = row[5] || row[0]; rows.push(['Vehicle', row[0]], ['Route', row[6] || '—'], ['Speed', f1(row[4] * 3.6) + ' km/h'], ['Bearing', f1(row[3]) + '°']); }
-    else { title = 'Mobile towers'; const m = row[3]; rows.push(['Towers (≈28 km cell)', f1(row[2])], ['Networks', [m & 1 ? '2G' : '', m & 2 ? '3G' : '', m & 4 ? '4G' : '', m & 8 ? '5G' : ''].filter(Boolean).join(' · ') || '—']); }
+    else if (k === 'transit' || k === 'rail') { title = row[5] || row[0]; rows.push([k === 'rail' ? 'Train' : 'Vehicle', row[0]], ['Route', row[6] || '—'], ['Speed', f1(row[4] * 3.6) + ' km/h'], ['Bearing', f1(row[3]) + '°']); }
+    else { const m = row[3]; rows.push(['Towers (≈28 km cell)', f1(row[2])], ['Networks', [m & 1 ? '2G' : '', m & 2 ? '3G' : '', m & 4 ? '4G' : '', m & 8 ? '5G' : ''].filter(Boolean).join(' · ') || '—']); }
     if (pos) rows.push(['Position', pos[1].toFixed(4) + ', ' + pos[0].toFixed(4)]);
     const btn = 'border:1px solid rgba(255,255,255,.2);border-radius:8px;background:rgba(255,255,255,.08);color:#fff;padding:6px 10px;cursor:pointer;font:700 11px system-ui;margin-right:6px';
     c.innerHTML = '<div style="display:flex;justify-content:space-between;gap:8px"><b style="font-size:14px;color:' + TP.kinds[k].color + '">' + esc(title) + '</b><a data-tp="close" style="cursor:pointer;opacity:.7">✕</a></div>' +
@@ -1366,7 +1366,7 @@
       await Promise.all(['air', 'ships'].map(tpLoad));
     }
     let best = null, score = 0;
-    [['air', [6, 0]], ['ships', [5, 0]], ['transit', [5, 0]]].forEach(function (pair) {
+    [['air', [6, 0]], ['ships', [5, 0]], ['transit', [5, 0]], ['rail', [5, 0]]].forEach(function (pair) {
       const k = pair[0], d = TP.data[k]; if (!d) return;
       d.a.forEach(function (row, i) {
         pair[1].forEach(function (col) {
