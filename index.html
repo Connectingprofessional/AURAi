@@ -56,14 +56,26 @@ body{overflow:hidden;background:#05090d;color:#edf4f8;font-family:system-ui,sans
       }).catch(function(){});
   }
   function mobileLookup(q){
-    var base=window.TM_DEVICE_API_BASE||'';
-    if(!base){ setMobileStatus('Mobile lookup backend is not connected yet. Pairing API is ready in the TrackMeNow server build.'); return; }
-    fetch(base.replace(/\\/$/,'')+'/api/devices/search?phone='+encodeURIComponent(q))
-      .then(function(r){return r.json().then(function(j){return {ok:r.ok,j:j};});})
-      .then(function(x){
-        if(!x.ok){ setMobileStatus(x.j&&x.j.message||x.j&&x.j.error||'No consented device found.'); return; }
-        setMobileStatus('DEVICE FOUND: '+(x.j.maskedPhone||q)+' — pairing required before location is shown.');
-      }).catch(function(){ setMobileStatus('Mobile device service unavailable.'); });
+    /*
+      PHONE-ONLY SELF TEST:
+      The phone number is only the search input. GPS permission is requested
+      for THIS browser/device. It does not locate another person by number.
+    */
+    if(!navigator.geolocation){
+      setMobileStatus('GPS is unavailable in this browser.');
+      return;
+    }
+    setMobileStatus('Requesting GPS permission for this device…');
+    navigator.geolocation.getCurrentPosition(function(p){
+      var lat=p.coords.latitude, lon=p.coords.longitude;
+      window.map.flyTo({center:[lon,lat],zoom:15,duration:1400});
+      setMobileStatus('PHONE TEST: '+q+' — this browser/device is at '+lat.toFixed(6)+', '+lon.toFixed(6));
+    },function(err){
+      var msg='GPS permission was not granted.';
+      if(err && err.code===2) msg='This device could not determine its GPS position.';
+      if(err && err.code===3) msg='GPS request timed out. Try again.';
+      setMobileStatus(msg+' Phone-number lookup will require registration/authorization.');
+    },{enableHighAccuracy:true,maximumAge:5000,timeout:15000});
   }
   function setMobileStatus(msg){ var s=document.getElementById('status'); if(s) s.textContent=msg; }
   if(btn) btn.onclick=go;
