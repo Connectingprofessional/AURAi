@@ -11,7 +11,7 @@
 #tm-subbar::-webkit-scrollbar{display:none}
 .tm-sub{border:1px solid rgba(255,255,255,.09);background:rgba(255,255,255,.035);color:#b9c7cf;border-radius:5px;padding:5px 9px;font-size:9px;font-weight:750;white-space:nowrap;cursor:pointer}
 .tm-sub.active{color:#fff;border-color:rgba(69,168,255,.5);background:rgba(69,168,255,.12)}
-#tm-panel{display:none;position:absolute;left:10px;right:10px;bottom:78px;max-height:min(360px,45vh);overflow:auto;background:rgba(5,10,16,.98);border:1px solid rgba(150,190,220,.2);border-radius:10px;box-shadow:0 10px 40px rgba(0,0,0,.45);padding:12px}
+#tm-panel{display:none;position:static;margin:8px 10px 0;max-height:min(360px,45vh);overflow:auto;background:rgba(5,10,16,.98);border:1px solid rgba(150,190,220,.2);border-radius:10px;box-shadow:0 10px 40px rgba(0,0,0,.45);padding:12px}
 #tm-panel.open{display:block}
 .tm-panel-head{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:9px}
 .tm-panel-title{font-size:12px;font-weight:900;letter-spacing:.7px}
