@@ -98,7 +98,7 @@ function drawTransit(p){
  const g=el('div',{class:'tm-stack'});
  T.TRANSIT.forEach(k=>{const feed=transitMap[k];let desc=feed?'Uses the live '+feed.toUpperCase()+' transport layer.':'Dedicated live '+k.toLowerCase()+' feed is not currently configured.';
  const act=feed?()=>{const e=engine();if(e)e.toggleTransport(feed)}:()=>showSourceStatus(p,k);
- g.append(card(k,desc,act,feed?'TOGGLE LIVE':'SOURCE STATUS')});p.append(g);
+ g.append(card(k,desc,act,feed?'TOGGLE LIVE':'SOURCE STATUS'));});p.append(g);
 }
 function showSourceStatus(p,k){p.append(status(k+': no dedicated live feed is configured. TrackMeNow will not invent vehicle positions.'))}
 function drawWeather(p){
