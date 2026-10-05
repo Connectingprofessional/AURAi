@@ -224,7 +224,18 @@ app.post('/api/devices/register', (req, res) => {
   });
 });
 
+/* tiny in-memory rate limiter: blocks pairing-code guessing and bulk phone lookups */
+const rateHits = new Map();
+function rateLimited(req, bucket, max, windowMs) {
+  const key = bucket + ':' + (req.ip || '');
+  const now = Date.now(), h = (rateHits.get(key) || []).filter(t => now - t < windowMs);
+  h.push(now); rateHits.set(key, h);
+  if (rateHits.size > 5000) for (const [k, v] of rateHits) if (!v.some(t => now - t < windowMs)) rateHits.delete(k);
+  return h.length > max;
+}
+
 app.post('/api/devices/pair', (req, res) => {
+  if (rateLimited(req, 'pair', 8, 10 * 60 * 1000)) return res.status(429).json({ error: 'Too many pairing attempts. Try again in a few minutes.' });
   const code = String(req.body?.pairingCode || '').trim();
   const d = [...devices.values()].find(x => x.pairingCode === code);
   if (!d) return res.status(404).json({ error: 'Pairing code not found or already used.' });
@@ -272,13 +283,17 @@ app.get('/api/devices/search', (req, res) => {
 // consented GPS point without requiring Cloudflare. Do not use this route
 // for production; viewer authentication must be enforced before deployment.
 app.get('/api/devices/lookup', (req, res) => {
+  if (rateLimited(req, 'lookup', 30, 10 * 60 * 1000)) return res.status(429).json({ error: 'Too many lookups. Try again in a few minutes.' });
   const phone = normalizePhone(req.query?.phone);
   if (!phone) return res.status(400).json({ error: 'Enter a valid mobile number.' });
 
-  const d = [...devices.values()].find(x => x.phone === phone);
-  if (!d) return res.status(404).json({
+  /* a phone number alone never grants location: the caller must hold the viewer token issued by pairing */
+  const viewer = findDeviceByToken(bearer(req), 'viewerToken');
+  if (!viewer) return res.status(401).json({ error: 'Viewer authorization required. Pair the device with its one-time code first.' });
+  const d = viewer.phone === phone ? viewer : null;
+  if (!d) return res.status(403).json({
     found: false,
-    message: 'No consented TrackMeNow device is registered for this number.'
+    error: 'This viewer token is not authorized for that number.'
   });
 
   if (!d.latest) return res.json({

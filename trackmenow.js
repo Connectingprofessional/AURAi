@@ -1165,7 +1165,7 @@
   function tpPos(k, row, dt) { /* dead-reckon one row: returns [lon, lat, heading] */
     let lat = row[1], lon = row[2], h = row[3] || 0, v = k === 'ships' ? (row[4] || 0) * 0.514444 : (row[4] || 0);
     if (v > 0.5 && dt > 0) {
-      const d = v * Math.min(dt, 900), hr = h * Math.PI / 180;
+      const d = v * Math.min(dt, k === 'ships' ? 2700 : 900), hr = h * Math.PI / 180;
       lat += d * Math.cos(hr) / 111320; lon += d * Math.sin(hr) / (111320 * Math.max(0.05, Math.cos(lat * Math.PI / 180)));
     }
     return [lon, lat, h];
@@ -1179,12 +1179,12 @@
       const src = maplibre.getSource('tp-' + k), d = TP.data[k]; if (!src) return;
       if (!TP.on[k] || !d) { if (TP._drawn && TP._drawn[k]) { src.setData({ type: 'FeatureCollection', features: [] }); TP._drawn[k] = 0; } return; }
       (TP._drawn = TP._drawn || {})[k] = 1;
-      const dt = nowS - (d.t || nowS), stride = k === 'air' ? 1 : (z < 2.5 ? 6 : z < 3.5 ? 3 : z < 4.5 ? 2 : 1), feats = [];
+      const dt0 = nowS - (d.t || nowS), stride = k === 'air' ? 1 : (z < 2.5 ? 6 : z < 3.5 ? 3 : z < 4.5 ? 2 : 1), feats = [];
       for (let i = 0; i < d.a.length; i++) {
         const row = d.a[i], isSel = TP.sel && TP.sel.k === k && TP.sel.i === i;
         if (!isSel && stride > 1 && i % stride) continue;
         if (!wide && !isSel) { const la = row[1], lo = row[2]; if (la < s - padY || la > n + padY) continue; if (lo < w - padX || lo > e + padX) { if (!(w - padX < -180 || e + padX > 180)) continue; } }
-        const p = tpPos(k, row, dt); feats.push({ type: 'Feature', geometry: { type: 'Point', coordinates: [p[0], p[1]] }, properties: { i: i, h: p[2] } });
+        const p = tpPos(k, row, k === 'ships' && row[6] ? nowS - row[6] : dt0); feats.push({ type: 'Feature', geometry: { type: 'Point', coordinates: [p[0], p[1]] }, properties: { i: i, h: p[2] } });
         if (feats.length > 12000) break;
       }
       src.setData({ type: 'FeatureCollection', features: feats });
@@ -1197,7 +1197,7 @@
   function tpSelPos() {
     if (!TP.sel) return null; const d = TP.data[TP.sel.k]; if (!d) return null; const row = d.a[TP.sel.i]; if (!row) return null;
     if (TP.sel.k === 'cells') return [row[1], row[0]];
-    return tpPos(TP.sel.k, row, Date.now() / 1000 - (d.t || 0));
+    return tpPos(TP.sel.k, row, Date.now() / 1000 - (TP.sel.k === 'ships' && row[6] ? row[6] : (d.t || 0)));
   }
   function tpSelect(k, i, follow) {
     TP.sel = { k: k, i: +i }; TP.follow = !!follow; tpCard(); tpTick();

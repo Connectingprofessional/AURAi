@@ -9,7 +9,7 @@
  * Each section is independent: a failure is recorded in meta.json and the previous file (copied into the
  * output folder by the workflow) is kept, so one bad source never blanks the map.
  * Compact array rows keep the files small. Row layouts are documented next to each collector. */
-import { mkdir, writeFile } from 'node:fs/promises';
+import { mkdir, writeFile, readFile } from 'node:fs/promises';
 import WebSocket from 'ws';
 import GtfsRealtimeBindings from 'gtfs-realtime-bindings';
 
@@ -73,7 +73,7 @@ async function flights() {
   }
 }
 
-/* ── ships: [mmsi, lat, lon, course°, speed kn, name] ── */
+/* ── ships: [mmsi, lat, lon, course°, speed kn, name, unix time of the position] ── */
 function collectAis(key, seconds) {
   return new Promise((resolve, reject) => {
     const ships = new Map(); let settled = false, err = null;
@@ -90,7 +90,7 @@ function collectAis(key, seconds) {
         const lat = +(m.Latitude ?? md.latitude), lon = +(m.Longitude ?? md.longitude), mmsi = String(m.UserID ?? md.MMSI ?? '');
         if (!mmsi || !Number.isFinite(lat) || !Number.isFinite(lon) || Math.abs(lat) > 90 || Math.abs(lon) > 180) return;
         const cog = +m.Cog < 360 ? +m.Cog : (+m.TrueHeading < 360 ? +m.TrueHeading : 0), sog = +m.Sog < 102.3 ? +m.Sog : 0;
-        ships.set(mmsi, [+mmsi, r(lat, 4), r(lon, 4), r(cog, 0), r(sog, 1), String(md.ShipName || '').trim().slice(0, 28)]);
+        ships.set(mmsi, [+mmsi, r(lat, 4), r(lon, 4), r(cog, 0), r(sog, 1), String(md.ShipName || '').trim().slice(0, 28), now()]);
       } catch (x) { /* ignore malformed */ }
     });
     ws.on('error', (x) => { err = x.message || 'websocket error'; finish(); });
@@ -101,7 +101,13 @@ async function ships() {
   if (!E.AISSTREAM_API_KEY) throw new Error('skipped: AISSTREAM_API_KEY secret not set');
   const m = await collectAis(E.AISSTREAM_API_KEY, Number(E.AIS_SECONDS || 50));
   if (m.size < 50) throw new Error('only ' + m.size + ' vessels received');
-  return { t: now(), src: 'AISstream.io', a: [...m.values()].slice(0, 45000) };
+  /* AIS is sparse in a short listen: keep vessels from the previous snapshot (up to 45 min old) that were not heard this time */
+  let kept = 0;
+  try {
+    const prev = JSON.parse(await readFile(`${OUT}/ships.json`, 'utf8')), cut = now() - 2700;
+    for (const row of prev.a || []) { const t = row[6] || prev.t || 0; if (t >= cut && !m.has(String(row[0]))) { m.set(String(row[0]), [row[0], row[1], row[2], row[3], row[4], row[5], t]); kept++; } }
+  } catch (e) { /* no previous snapshot */ }
+  return { t: now(), src: 'AISstream.io', a: [...m.values()].slice(0, 60000) };
 }
 
 /* ── transit: [id, lat, lon, bearing°, speed m/s, label, route] ── */
