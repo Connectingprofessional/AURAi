@@ -36,6 +36,7 @@ function openAdmin(){window.open('./admin.html','_blank','noopener,noreferrer')}
 function logUi(event,tab,detail){api('/api/visitor',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({screen:'map',tab:tab,sub:state.sub,event:event,detail:detail})}).catch(()=>{})}
 function card(title,desc,action,label){const c=el('article',{class:'tm-card'});c.append(el('b',{},title));if(desc)c.append(el('p',{},desc));if(action){const b=el('button',{class:'tm-action',type:'button'},label||'OPEN');b.onclick=action;c.append(b)}return c}
 function status(text){const x=el('div',{class:'tm-status'},text);return x}
+function setStatus(text,ok){const p=document.querySelector('#tm-panel .tm-panel-body');if(!p)return;const old=p.querySelector('.tm-global-feed-status');if(old)old.remove();const x=status(text);x.classList.add('tm-global-feed-status',ok?'ok':'error');p.append(x)}
 function setPanelTitle(){const h=$('#tm-panel-title');if(h)h.textContent=state.tab+' / '+state.sub+(state.stack?' / '+state.stack:'')}
 function build(){
  const top=el('header',{id:'tm-top'});
