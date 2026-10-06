@@ -316,7 +316,7 @@ async function movement(req,env,url){
   if(layers.includes('ships'))jobs.push(movementShips(b,env));
   if(layers.includes('public-transport'))jobs.push(movementTransit(env));
   const results=await Promise.all(jobs),features=[],sources=[];
-  for(const r of results){features.push(...(r.features||[]));sources.push({source:r.source,status:r.status,count:(r.features||[]).length,observedAt:r.observedAt||nowIso(),...(r.error?{error:r.error}:{})});}
+  for(const r of results){features.push(...(r.features||[]));const layer=(r.features&&r.features[0]&&r.features[0].properties&&r.features[0].properties.layer)||((r.source||'').includes('OpenSky')?'flights':(r.source||'').includes('AIS')?'ships':(r.source||'').includes('GTFS')?'public-transport':'');sources.push({source:r.source,status:r.status,layer,count:(r.features||[]).length,observedAt:r.observedAt||nowIso(),...(r.error?{error:r.error}:{})});}
   const data={type:'FeatureCollection',features,sources,generatedAt:nowIso(),architecture:'real-source → Cloudflare Worker → map; no dead reckoning'};
   movementCache.set(key,{t:Date.now(),data});return json(req,env,data);
 }
