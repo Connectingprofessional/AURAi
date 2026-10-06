@@ -295,7 +295,24 @@ async function movementFlights(b, env) {
     if(out.length) return {features:out,source:'OpenSky ADS-B',status:'live',observedAt:nowIso()};
     throw new Error('OpenSky returned no aircraft in bbox');
   } catch(e) {
-    if(!env.AVIATIONSTACK_API_KEY) return {features:[],source:'OpenSky ADS-B',status:'error',error:e.message};    try {
+    // Public ADS-B fallback. This is still real observed aircraft data; it is
+    // not interpolated and is only used when OpenSky is unavailable.
+    try {
+      const clat=(b.minLat+b.maxLat)/2, clon=(b.minLon+b.maxLon)/2;
+      const km=Math.min(250,Math.max(25,Math.ceil(Math.max(b.maxLat-b.minLat,b.maxLon-b.minLon)*111/2)));
+      const rr=await fetch('https://api.adsb.lol/v2/point/'+encodeURIComponent(clat)+'/'+encodeURIComponent(clon)+'/'+encodeURIComponent(km),{headers:{Accept:'application/json'}});
+      if(rr.ok){
+        const aj=await rr.json(), ao=[];
+        for(const s of (aj.ac||[])){
+          const lat=Number(s.lat),lon=Number(s.lon);
+          if(!Number.isFinite(lat)||!Number.isFinite(lon)||lat<b.minLat||lat>b.maxLat||lon<b.minLon||lon>b.maxLon) continue;
+          const f=movementFeature(s.hex||s.icao||s.r||crypto.randomUUID(),lon,lat,{kind:'air',category:'air',layer:'flights',callsign:String(s.flight||s.call||'').trim(),icao24:String(s.hex||''),heading:num(s.track),speed:num(s.gs),altitude:num(s.alt_baro),observedAt:s.now?new Date(Number(s.now)*1000).toISOString():nowIso(),source:'ADSB.lol',sourceStatus:'live'});
+          if(f)ao.push(f);
+        }
+        if(ao.length) return {features:ao,source:'ADSB.lol',status:'live',observedAt:nowIso()};
+      }
+    }catch(fallbackError){}
+    if(!env.AVIATIONSTACK_API_KEY) return {features:[],source:'OpenSky ADS-B / ADSB.lol',status:'error',error:e.message};    try {
       const p=new URLSearchParams({access_key:env.AVIATIONSTACK_API_KEY,flight_status:'active',limit:'1000'});
       const r=await fetch('https://api.aviationstack.com/v1/flights?'+p); if(!r.ok) throw new Error('Aviationstack HTTP '+r.status);
       const j=await r.json(),out=[];
@@ -341,6 +358,30 @@ function gtfsVehicles(buf, feedMeta={}) {
   });
   return out;
 }
+async function movementMobility(env, kind) {
+  const raw = kind === 'taxi' ? env.TAXI_VEHICLE_URLS : env.GBFS_VEHICLE_URLS;
+  const urls = String(raw || '').split(',').map(s=>s.trim()).filter(Boolean).slice(0,30);
+  if(!urls.length) return {features:[],source:kind==='taxi'?'Taxi public/authorized GBFS':'GBFS vehicle_status',status:'feed-required',error:'No real-time '+kind+' vehicle feed is configured'};
+  const features=[], errors=[];
+  await Promise.all(urls.map(async (u)=>{
+    try{
+      const r=await fetch(u,{headers:{Accept:'application/json'}});
+      if(!r.ok) throw new Error('HTTP '+r.status);
+      const j=await r.json(), list=Array.isArray(j?.data?.vehicles)?j.data.vehicles:(Array.isArray(j?.vehicles)?j.vehicles:[]);
+      for(const v of list){
+        const lat=Number(v.lat??v.latitude), lon=Number(v.lon??v.longitude);
+        if(!Number.isFinite(lat)||!Number.isFinite(lon)) continue;
+        const id=String(v.vehicle_id||v.id||crypto.randomUUID());
+        const type=String(v.vehicle_type_id||v.vehicle_type||v.type||'').toLowerCase();
+        const mode=kind==='taxi'?'taxi':(/car|auto|scooter|moped/i.test(type)?'car':/bike|bicycle/i.test(type)?'bike':'transit');
+        const f=movementFeature(id,lon,lat,{kind:mode,category:mode,mode,layer:mode,vehicleId:id,heading:num(v.bearing),speed:num(v.speed),route:String(v.route_id||v.route||''),observedAt:v.last_reported?new Date(Number(v.last_reported)*1000).toISOString():nowIso(),source:'GBFS vehicle_status',sourceStatus:'live',feed:u});
+        if(f) features.push(f);
+      }
+    }catch(e){errors.push(u+' · '+(e.message||e));}
+  }));
+  return {features:features.slice(0,10000),source:kind==='taxi'?'Taxi public/authorized GBFS':'GBFS vehicle_status',status:features.length?'live':'no-current-vehicles',observedAt:nowIso(),error:features.length?undefined:(errors.slice(0,3).join(' | ')||'No current vehicle positions returned')};
+}
+
 async function movementTransit(env){
   let feeds=String(env.GTFS_RT_URLS||'').split(',').map(s=>s.trim()).filter(Boolean).map(url=>({url,label:'Configured GTFS-Realtime',rail:/rail|metro|subway|tram|train/i.test(url)}));
   if(!feeds.length&&env.MOBILITY_DB_REFRESH_TOKEN){
@@ -383,7 +424,10 @@ async function movement(req,env,url){
   const jobs=[];
   if(layers.includes('flights'))jobs.push(movementFlights(b,env));
   if(layers.includes('ships'))jobs.push(movementShips(b,env));
-  if(layers.includes('transit')||layers.includes('public-transport'))jobs.push(movementTransit(env));
+  if(layers.includes('transit')||layers.includes('public-transport')||layers.includes('rail'))jobs.push(movementTransit(env));
+  if(layers.includes('taxi'))jobs.push(movementMobility(env,'taxi'));
+  if(layers.includes('bike')||layers.includes('bikes'))jobs.push(movementMobility(env,'bike'));
+  if(layers.includes('car')||layers.includes('cars'))jobs.push(movementMobility(env,'car'));
   const results=await Promise.all(jobs),features=[],sources=[];
   const latestObserved=(arr)=>arr.reduce((m,f)=>{const t=Date.parse(f.properties?.observedAt||'');return Number.isFinite(t)&&t>m?t:m;},0);
   for(const r of results){
@@ -416,7 +460,7 @@ export default {
     if (req.method === 'OPTIONS') return new Response(null, { status: 204, headers: corsHeaders(req, env) });
     const url = new URL(req.url), parts = url.pathname.split('/').filter(Boolean);
     try {
-      if (url.pathname === '/health' || url.pathname === '/') return json(req, env, { ok: true, service: 'TrackMeNow API', provider: 'OpenCelliD', cell: !!env.OPENCELLID_API_KEY, devices: !!env.DB, transport: { movement: true, ais: !!env.AISSTREAM_API_KEY, mobilityDatabase: !!env.MOBILITY_DB_REFRESH_TOKEN, aviationstack: !!env.AVIATIONSTACK_API_KEY }, cameras: true, cameraCatalog: String(env.CAMERA_GEOJSON_URLS||'').split(',').filter(Boolean).length ? 'configured' : 'OpenSurveillanceDB', communication: !!env.DB });
+      if (url.pathname === '/health' || url.pathname === '/') return json(req, env, { ok: true, service: 'TrackMeNow API', provider: 'OpenCelliD', cell: !!env.OPENCELLID_API_KEY, devices: !!env.DB, transport: { movement: true, ais: !!env.AISSTREAM_API_KEY, mobilityDatabase: !!env.MOBILITY_DB_REFRESH_TOKEN, aviationstack: !!env.AVIATIONSTACK_API_KEY, gbfs: String(env.GBFS_VEHICLE_URLS||'').split(',').filter(Boolean).length > 0, taxi: String(env.TAXI_VEHICLE_URLS||'').split(',').filter(Boolean).length > 0 }, cameras: true, cameraCatalog: String(env.CAMERA_GEOJSON_URLS||'').split(',').filter(Boolean).length ? 'configured' : 'OpenSurveillanceDB', communication: !!env.DB, space: { iss: true, satellites: !!env.N2YO_API_KEY }, earthObservation: true });
       if (url.pathname === '/api/db-test') {
         if (!env.DB) return json(req, env, { ok: false, database: 'binding-missing', error: 'D1 binding DB is not available.' }, 500);
         const r = await env.DB.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name IN ('devices', 'telemetry', 'rate_limits') ORDER BY name").all();
@@ -477,6 +521,19 @@ export default {
         });
       }
       if (url.pathname.startsWith('/api/call/')) { const cr=await callApi(req,env,url); if(cr)return cr; }
+      if (url.pathname === '/api/sources' && req.method === 'GET') {
+        const b=movementBbox(url.searchParams.get('bbox')||'-180,-85,180,85');
+        if(!b) return json(req,env,{ok:false,error:'Valid bbox is required'},400);
+        const layers='flights,ships,transit,rail,taxi,bike,car';
+        const mv=await movement(req,env,new URL(req.url+'').searchParams?new URL(req.url):url);
+        return json(req,env,{ok:true,generatedAt:nowIso(),bbox:[b.minLon,b.minLat,b.maxLon,b.maxLat],sources:mv.sources||[],counts:(mv.features||[]).reduce((a,f)=>{const k=f.properties?.kind||f.properties?.layer||'other';a[k]=(a[k]||0)+1;return a;},{}),configuration:{camera:String(env.CAMERA_GEOJSON_URLS||'').split(',').filter(Boolean).length>0?'configured':'OpenSurveillanceDB catalog',gbfs:String(env.GBFS_VEHICLE_URLS||'').split(',').filter(Boolean).length>0,taxi:String(env.TAXI_VEHICLE_URLS||'').split(',').filter(Boolean).length>0}});
+      }
+      if (url.pathname === '/api/space/iss' && req.method === 'GET') {
+        try { const r=await fetch('https://api.wheretheiss.at/v1/satellites/25544',{headers:{Accept:'application/json'}}); if(!r.ok) throw new Error('ISS HTTP '+r.status); const j=await r.json(); return json(req,env,{ok:true,source:'Where The ISS / public ISS telemetry',observedAt:nowIso(),feature:{type:'Feature',geometry:{type:'Point',coordinates:[Number(j.longitude),Number(j.latitude)]},properties:{kind:'space-station',name:'ISS',altitude:Number(j.altitude),velocity:Number(j.velocity),visibility:j.visibility,source:'Where The ISS',sourceStatus:'live'}}}); } catch(e){ return json(req,env,{ok:false,error:e.message},502); }
+      }
+      if (url.pathname === '/api/earth-observation' && req.method === 'GET') {
+        return json(req,env,{ok:true,source:'NASA GIBS / Copernicus public Earth observation',layers:[{id:'viirs-true-color',provider:'NASA GIBS',status:'public-near-real-time',url:'https://gibs.earthdata.nasa.gov/wmts/epsg3857/best/VIIRS_SNPP_CorrectedReflectance_TrueColor/default/'},{id:'viirs-fires',provider:'NASA GIBS',status:'public-near-real-time',url:'https://gibs.earthdata.nasa.gov/wmts/epsg3857/best/VIIRS_SNPP_Thermal_Anomalies_375m_Day/default/'},{id:'sentinel',provider:'Copernicus Sentinel',status:'public-data',url:'https://dataspace.copernicus.eu/'}],policy:'TrackMeNow uses the source data through its own map layers; reference websites are not embedded.'});
+      }
       if (url.pathname === '/api/movement' && req.method === 'GET') return await movement(req, env, url);
       if (url.pathname === '/api/cameras' && req.method === 'GET') return await cameras(req, env, url);
       if (url.pathname === '/api/cell' && req.method === 'GET') return await cellLookup(req, env, url);
