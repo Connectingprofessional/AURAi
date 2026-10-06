@@ -97,8 +97,7 @@ async function cellLookup(req, env, url) {
 
 /* ───────── device API ───────── */
 const devOut = (d) => ({ id: d.id, phone: d.phone, label: d.label });
-async function devices(req, env, url, parts) {
-  const method = req.method, sub = parts[2] || '', id = parts[2] && parts[3] ? parts[2] : null, act = parts[3] || '';
+async function devices(req, env, url, parts) {  const method = req.method, sub = parts[2] || '', id = parts[2] && parts[3] ? parts[2] : null, act = parts[3] || '';
   const byPhone = (phone, activeOnly = true) => { const [a, b] = phoneForms(phone); return env.DB.prepare('SELECT * FROM devices WHERE phone IN (?, ?)' + (activeOnly ? ' AND revoked_at IS NULL' : '') + ' LIMIT 1').bind(a, b).first(); };
 
   if (method === 'POST' && sub === 'register') {
@@ -197,8 +196,7 @@ async function devices(req, env, url, parts) {
     await env.DB.prepare('DELETE FROM telemetry WHERE device_id = ?').bind(id).run();
     return json(req, env, { revoked: true });
   }
-  return json(req, env, { error: 'Route not found' }, 404);
-}
+  return json(req, env, { error: 'Route not found' }, 404);}
 
 
 /* Public camera feed adapter. Consumes only explicitly configured public GeoJSON sources. */
@@ -297,8 +295,7 @@ function gtfsVehicles(buf, feedMeta={}) {
       if(ef===4&&ew===2)pbFields(ev,(vf,vw,vv)=>{
         if(vf===2&&vw===2)pbFields(vv,(pf,pw,pv)=>{if(pf===1)p.lat=Number(pv);if(pf===2)p.lon=Number(pv);if(pf===3)p.bearing=Number(pv);if(pf===5)p.speed=Number(pv);});
         if(vf===5&&vw===0)ts=Number(vv);
-        if(vf===8&&vw===2)pbFields(vv,(df,dw,dv)=>{if(df===1)vid=pbText(dv);});
-        if(vf===1&&vw===2)pbFields(vv,(tf,tw,tv)=>{if(tf===5)route=pbText(tv);});
+        if(vf===8&&vw===2)pbFields(vv,(df,dw,dv)=>{if(df===1)vid=pbText(dv);});        if(vf===1&&vw===2)pbFields(vv,(tf,tw,tv)=>{if(tf===5)route=pbText(tv);});
       });
     });
     if(pos&&Number.isFinite(pos.lat)&&Number.isFinite(pos.lon)){
@@ -385,7 +382,7 @@ export default {
     if (req.method === 'OPTIONS') return new Response(null, { status: 204, headers: corsHeaders(req, env) });
     const url = new URL(req.url), parts = url.pathname.split('/').filter(Boolean);
     try {
-      if (url.pathname === '/health' || url.pathname === '/') return json(req, env, { ok: true, service: 'TrackMeNow API', provider: 'OpenCelliD', cell: !!env.OPENCELLID_API_KEY, devices: !!env.DB, transport: { movement: true, ais: !!env.AISSTREAM_API_KEY, mobilityDatabase: !!env.MOBILITY_DB_REFRESH_TOKEN, aviationstack: !!env.AVIATIONSTACK_API_KEY }, cameras: !!env.CAMERA_GEOJSON_URLS } });
+      if (url.pathname === '/health' || url.pathname === '/') return json(req, env, { ok: true, service: 'TrackMeNow API', provider: 'OpenCelliD', cell: !!env.OPENCELLID_API_KEY, devices: !!env.DB, transport: { movement: true, ais: !!env.AISSTREAM_API_KEY, mobilityDatabase: !!env.MOBILITY_DB_REFRESH_TOKEN, aviationstack: !!env.AVIATIONSTACK_API_KEY }, cameras: !!env.CAMERA_GEOJSON_URLS });
       if (url.pathname === '/api/db-test') {
         if (!env.DB) return json(req, env, { ok: false, database: 'binding-missing', error: 'D1 binding DB is not available.' }, 500);
         const r = await env.DB.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name IN ('devices', 'telemetry', 'rate_limits') ORDER BY name").all();
@@ -397,8 +394,7 @@ export default {
       if (url.pathname === '/api/visitor' && req.method === 'POST') {
         try { const b=await readBody(req); await adminLog(env,req,b.event||'page-visit',b.tab||'',b.sub||'',b.detail||b.screen||''); return json(req,env,{ok:true}); } catch(e) { return json(req,env,{ok:false,error:'audit logging failed'},500); }
       }
-      if (url.pathname === '/api/admin/login' && req.method === 'POST') {
-        const b=await readBody(req);
+      if (url.pathname === '/api/admin/login' && req.method === 'POST') {        const b=await readBody(req);
         if(!env.ADMIN_USER || !env.ADMIN_PASSWORD) return json(req,env,{error:'Admin credentials are not configured on the Worker.'},503);
         if(String(b.username||'')!==String(env.ADMIN_USER)||String(b.password||'')!==String(env.ADMIN_PASSWORD)) return json(req,env,{error:'Invalid admin credentials.'},401);
         await ensureAdminTables(env);
