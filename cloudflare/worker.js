@@ -46,7 +46,8 @@ async function limited(env, req, bucket, max, windowSec) {
   return row.n + 1 > max;
 }
 
-async function readBody(req) { try { return await req.json(); } catch (e) { return {}; } }\nasync function ensureAdminTables(env) {
+async function readBody(req) { try { return await req.json(); } catch (e) { return {}; } }
+async function ensureAdminTables(env) {
   if (!env.DB) return;
   await env.DB.prepare('CREATE TABLE IF NOT EXISTS admin_sessions (token_hash TEXT PRIMARY KEY, expires_at TEXT NOT NULL)').run();
   await env.DB.prepare('CREATE TABLE IF NOT EXISTS admin_logs (id TEXT PRIMARY KEY, occurred_at TEXT NOT NULL, event TEXT NOT NULL, ip TEXT, tab TEXT, sub TEXT, detail TEXT)').run();
