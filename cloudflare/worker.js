@@ -201,6 +201,34 @@ async function devices(req, env, url, parts) {
 }
 
 
+/* Public camera feed adapter. Consumes only explicitly configured public GeoJSON sources. */
+const cameraCache = new Map();
+const CAMERA_TTL = 15000;
+function cameraBbox(v){const a=String(v||'').split(',').map(Number);if(a.length!==4||a.some(x=>!Number.isFinite(x)))return null;const [minLon,minLat,maxLon,maxLat]=a;if(minLon < -180||maxLon>180||minLat < -90||maxLat>90||minLon>=maxLon||minLat>=maxLat)return null;return {minLon,minLat,maxLon,maxLat};}
+async function movementCameras(b,env){
+ const urls=String(env.CAMERA_GEOJSON_URLS||'').split(',').map(s=>s.trim()).filter(Boolean);
+ if(!urls.length)return {features:[],sources:[{source:'Configured public camera GeoJSON',layer:'cameras',status:'feed-required',count:0,observedAt:null,error:'No camera feed configured'}]};
+ const out=[],errors=[];
+ for(const sourceUrl of urls.slice(0,20)){try{
+   const r=await fetch(sourceUrl,{headers:{Accept:'application/geo+json,application/json'}});if(!r.ok)throw new Error('HTTP '+r.status);
+   const j=await r.json();
+   for(const f of (Array.isArray(j?.features)?j.features:[])){
+     const c=f?.geometry?.coordinates||[],lon=Number(c[0]),lat=Number(c[1]);
+     if(!Number.isFinite(lon)||!Number.isFinite(lat)||lon<b.minLon||lon>b.maxLon||lat<b.minLat||lat>b.maxLat)continue;
+     const p=f.properties||{};
+     out.push({type:'Feature',id:String(f.id||p.id||crypto.randomUUID()),geometry:{type:'Point',coordinates:[lon,lat]},properties:{type:'camera',category:'camera',layer:'cameras',title:String(p.title||p.name||p.label||'Public camera'),provider:String(p.provider||p.source||'Public source'),location:String(p.location||p.road||p.city||''),imageUrl:String(p.imageUrl||p.image_url||p.snapshot||''),streamUrl:String(p.streamUrl||p.stream_url||p.url||''),sourceUrl:String(p.sourceUrl||p.source_url||sourceUrl),observedAt:String(p.observedAt||p.observed_at||p.timestamp||nowIso()),status:String(p.status||'PUBLIC'),license:String(p.license||'')}});
+   }
+ }catch(e){errors.push(sourceUrl+' · '+(e.message||e));}}
+ const latest=out.reduce((m,f)=>{const t=Date.parse(f.properties.observedAt);return Number.isFinite(t)&&t>m?t:m},0);
+ return {features:out.slice(0,20000),sources:[{source:'Configured public camera GeoJSON',layer:'cameras',status:out.length?'live':'no-current-cameras',count:out.length,observedAt:latest?new Date(latest).toISOString():null,error:out.length?undefined:(errors.slice(0,3).join(' | ')||'No camera observations returned')}]};
+}
+async function cameras(req,env,url){
+ const b=cameraBbox(url.searchParams.get('bbox'));if(!b)return json(req,env,{ok:false,error:'Valid bbox is required'},400);
+ const key=[b.minLon,b.minLat,b.maxLon,b.maxLat].join('|'),hit=cameraCache.get(key);if(hit&&Date.now()-hit.t<CAMERA_TTL)return json(req,env,hit.data);
+ const r=await movementCameras(b,env),data={type:'FeatureCollection',features:r.features||[],sources:r.sources||[],generatedAt:nowIso(),architecture:'public camera feed to Worker to map; no media storage'};
+ cameraCache.set(key,{t:Date.now(),data});return json(req,env,data);
+}
+
 /* Transport secrets are synced from GitHub Actions before deployment. */
 /* ───────── live transport movement API ─────────
  * This path reads current observations directly from upstream services.
@@ -357,7 +385,7 @@ export default {
     if (req.method === 'OPTIONS') return new Response(null, { status: 204, headers: corsHeaders(req, env) });
     const url = new URL(req.url), parts = url.pathname.split('/').filter(Boolean);
     try {
-      if (url.pathname === '/health' || url.pathname === '/') return json(req, env, { ok: true, service: 'TrackMeNow API', provider: 'OpenCelliD', cell: !!env.OPENCELLID_API_KEY, devices: !!env.DB, transport: { movement: true, ais: !!env.AISSTREAM_API_KEY, mobilityDatabase: !!env.MOBILITY_DB_REFRESH_TOKEN, aviationstack: !!env.AVIATIONSTACK_API_KEY } });
+      if (url.pathname === '/health' || url.pathname === '/') return json(req, env, { ok: true, service: 'TrackMeNow API', provider: 'OpenCelliD', cell: !!env.OPENCELLID_API_KEY, devices: !!env.DB, transport: { movement: true, ais: !!env.AISSTREAM_API_KEY, mobilityDatabase: !!env.MOBILITY_DB_REFRESH_TOKEN, aviationstack: !!env.AVIATIONSTACK_API_KEY }, cameras: !!env.CAMERA_GEOJSON_URLS } });
       if (url.pathname === '/api/db-test') {
         if (!env.DB) return json(req, env, { ok: false, database: 'binding-missing', error: 'D1 binding DB is not available.' }, 500);
         const r = await env.DB.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name IN ('devices', 'telemetry', 'rate_limits') ORDER BY name").all();
@@ -416,6 +444,7 @@ export default {
         });
       }
       if (url.pathname === '/api/movement' && req.method === 'GET') return await movement(req, env, url);
+      if (url.pathname === '/api/cameras' && req.method === 'GET') return await cameras(req, env, url);
       if (url.pathname === '/api/cell' && req.method === 'GET') return await cellLookup(req, env, url);
       if (parts[0] === 'api' && parts[1] === 'devices') {
         if (!env.DB) return json(req, env, { error: 'D1 database binding "DB" is not configured on the Worker.' }, 503);
