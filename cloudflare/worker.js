@@ -382,6 +382,64 @@ async function movementMobility(env, kind) {
   return {features:features.slice(0,10000),source:kind==='taxi'?'Taxi public/authorized GBFS':'GBFS vehicle_status',status:features.length?'live':'no-current-vehicles',observedAt:nowIso(),error:features.length?undefined:(errors.slice(0,3).join(' | ')||'No current vehicle positions returned')};
 }
 
+/* Reference-derived global transit/environment discovery. We reproduce public functionality, not proprietary site code. */
+const OVERPASS_URLS=['https://overpass-api.de/api/interpreter','https://overpass.kumi.systems/api/interpreter'];
+const REF_SOURCES=[
+ {id:'travic',name:'TRAVIC',capabilities:['global-transit-discovery','vehicle-visualization','station-search'],policy:'behavior-reference'},
+ {id:'geops',name:'GeoP GeOps Mobility',capabilities:['global-transit-realtime','route-and-stop-discovery','vehicle-visualization'],policy:'public-service-reference'},
+ {id:'trackmymetro',name:'TrackMyMetro',capabilities:['metro-network-search','station-search','route-planning'],policy:'india-metro-reference'},
+ {id:'routemetro',name:'RouteMetro',capabilities:['metro-route-map','fare-route-workflow'],policy:'metro-reference'},
+ {id:'yometro',name:'YoMetro',capabilities:['metro-network-directory','station-search','route-planning'],policy:'metro-reference'},
+ {id:'globalnaturewatch',name:'Global Nature Watch',capabilities:['forest-change','nature-monitoring','environmental-layers'],policy:'environment-reference'},
+ {id:'uber',name:'Uber',capabilities:['ride-request-workflow'],policy:'handoff-only-no-scraping'},
+ {id:'landcarbonlab',name:'Land Carbon Lab',capabilities:['land-change','carbon','land-use-data'],policy:'environment-reference'},
+ {id:'noaa-earth-realtime',name:'NOAA Earth Real-Time',capabilities:['live-satellite-imagery','clouds','storms','weather-earth'],policy:'public-imagery-reference'},
+ {id:'google-earth',name:'Google Earth',capabilities:['3d-globe','terrain','earth-exploration'],policy:'behavior-reference'},
+ {id:'copernicus-sentinel',name:'Copernicus Sentinel',capabilities:['earth-observation','satellite-imagery','catalog-discovery'],policy:'open-data-reference'},
+ {id:'argos',name:'ARGOS',capabilities:['global-map','live-object-layers','source-inspection','camera-and-transport-discovery'],policy:'behavior-reference'}
+];
+function referenceRegistry(){return REF_SOURCES.map(x=>({...x,implemented:true,embedding:false}));}
+function overpassQuery(b){
+ const q='[out:json][timeout:20];(node["public_transport"~"station|stop_position"]('+b.minLat+','+b.minLon+','+b.maxLat+','+b.maxLon+');node["railway"~"station|halt|tram_stop|subway_entrance"]('+b.minLat+','+b.minLon+','+b.maxLat+','+b.maxLon+'););out body;';
+ return q;
+}
+async function transitDiscovery(req,env,url){
+ const b=movementBbox(url.searchParams.get('bbox')||'-180,-85,180,85');
+ if(!b)return json(req,env,{ok:false,error:'Valid bbox is required'},400);
+ const mode=String(url.searchParams.get('mode')||'all').toLowerCase();
+ const key=[b.minLon,b.minLat,b.maxLon,b.maxLat,mode].join('|');
+ const cache=globalThis.__tmTransitDiscovery||(globalThis.__tmTransitDiscovery=new Map());
+ const hit=cache.get(key);if(hit&&Date.now()-hit.t<60000)return json(req,env,hit.data);
+ let body=null,last='';
+ for(const endpoint of OVERPASS_URLS){try{
+   const r=await fetch(endpoint,{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded','Accept':'application/json'},body:'data='+encodeURIComponent(overpassQuery(b))});
+   if(!r.ok)throw new Error('HTTP '+r.status);
+   body=await r.json();break;
+ }catch(e){last=e.message||String(e);}}
+ if(!body)return json(req,env,{ok:false,error:'Transit station discovery unavailable',detail:last},502);
+ const features=[];
+ for(const n of (body.elements||[])){
+   const p=n.tags||{},rail=String(p.railway||'').toLowerCase(),pt=String(p.public_transport||'').toLowerCase();
+   const isMetro=/subway|station|tram/.test(rail+pt)||/metro|subway|rapid transit|rrts/i.test(String(p.name||'')+' '+String(p.operator||''));
+   const kind=isMetro?'metro':(/rail|train|station|halt/.test(rail)?'rail':(/bus|stop_position|platform/.test(pt+rail)?'bus':'transit'));
+   if(mode!=='all'&&mode!=='transit'&&kind!==mode)continue;
+   if(!Number.isFinite(Number(n.lat))||!Number.isFinite(Number(n.lon)))continue;
+   features.push({type:'Feature',id:'osm-'+n.id,geometry:{type:'Point',coordinates:[Number(n.lon),Number(n.lat)]},properties:{kind,category:kind,layer:'transit-stations',name:String(p.name||'Unnamed stop'),network:String(p.network||p.operator||''),operator:String(p.operator||''),ref:String(p.ref||''),railway:String(p.railway||''),publicTransport:String(p.public_transport||''),source:'OpenStreetMap / Overpass',sourceStatus:'live-query',observedAt:nowIso()}});
+ }
+ const data={ok:true,type:'FeatureCollection',features:features.slice(0,15000),generatedAt:nowIso(),source:'OpenStreetMap / Overpass',sourceStatus:'live-query',references:['TRAVIC','GeoP GeOps Mobility','TrackMyMetro','RouteMetro','YoMetro']};
+ cache.set(key,{t:Date.now(),data});
+ return json(req,env,data);
+}
+async function environmentCatalog(req,env,url){
+ const sources=[
+  {id:'gnw',name:'Global Nature Watch',status:'catalog',url:'https://data.globalforestwatch.org/api/search/v1/collections'},
+  {id:'lcl',name:'Land Carbon Lab',status:'catalog',url:'https://datasets.wri.org/teams/land-carbon-lab'},
+  {id:'noaa',name:'NOAA Earth Real-Time',status:'live-imagery',url:'https://www.nesdis.noaa.gov/imagery/satellite-maps/earth-real-time'},
+  {id:'copernicus',name:'Copernicus Sentinel',status:'open-earth-observation',url:'https://dataspace.copernicus.eu/'}
+ ];
+ let gnw=null;try{const r=await fetch(sources[0].url,{headers:{Accept:'application/json'}});if(r.ok)gnw=await r.json();}catch(e){}
+ return json(req,env,{ok:true,generatedAt:nowIso(),sources,gnwCatalogAvailable:!!gnw,policy:'TrackMeNow renders licensed/public data through its own layers and does not embed the reference websites.'});
+}
 async function movementTransit(env){
   let feeds=String(env.GTFS_RT_URLS||'').split(',').map(s=>s.trim()).filter(Boolean).map(url=>({url,label:'Configured GTFS-Realtime',rail:/rail|metro|subway|tram|train/i.test(url)}));
   if(!feeds.length&&env.MOBILITY_DB_REFRESH_TOKEN){
@@ -460,7 +518,7 @@ export default {
     if (req.method === 'OPTIONS') return new Response(null, { status: 204, headers: corsHeaders(req, env) });
     const url = new URL(req.url), parts = url.pathname.split('/').filter(Boolean);
     try {
-      if (url.pathname === '/health' || url.pathname === '/') return json(req, env, { ok: true, service: 'TrackMeNow API', provider: 'OpenCelliD', cell: !!env.OPENCELLID_API_KEY, devices: !!env.DB, transport: { movement: true, ais: !!env.AISSTREAM_API_KEY, mobilityDatabase: !!env.MOBILITY_DB_REFRESH_TOKEN, aviationstack: !!env.AVIATIONSTACK_API_KEY, gbfs: String(env.GBFS_VEHICLE_URLS||'').split(',').filter(Boolean).length > 0, taxi: String(env.TAXI_VEHICLE_URLS||'').split(',').filter(Boolean).length > 0 }, cameras: true, cameraCatalog: String(env.CAMERA_GEOJSON_URLS||'').split(',').filter(Boolean).length ? 'configured' : 'OpenSurveillanceDB', communication: !!env.DB, space: { iss: true, satellites: !!env.N2YO_API_KEY }, earthObservation: true });
+      if (url.pathname === '/health' || url.pathname === '/') return json(req, env, { ok: true, service: 'TrackMeNow API', provider: 'OpenCelliD', cell: !!env.OPENCELLID_API_KEY, devices: !!env.DB, transport: { movement: true, ais: !!env.AISSTREAM_API_KEY, mobilityDatabase: !!env.MOBILITY_DB_REFRESH_TOKEN, aviationstack: !!env.AVIATIONSTACK_API_KEY, gbfs: String(env.GBFS_VEHICLE_URLS||'').split(',').filter(Boolean).length > 0, taxi: String(env.TAXI_VEHICLE_URLS||'').split(',').filter(Boolean).length > 0 }, cameras: true, cameraCatalog: String(env.CAMERA_GEOJSON_URLS||'').split(',').filter(Boolean).length ? 'configured-live-feed' : 'feed-required', communication: !!env.DB, space: { iss: true, satellites: !!env.N2YO_API_KEY }, earthObservation: true });
       if (url.pathname === '/api/db-test') {
         if (!env.DB) return json(req, env, { ok: false, database: 'binding-missing', error: 'D1 binding DB is not available.' }, 500);
         const r = await env.DB.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name IN ('devices', 'telemetry', 'rate_limits') ORDER BY name").all();
@@ -541,6 +599,9 @@ export default {
       if (url.pathname === '/api/earth-observation' && req.method === 'GET') {
         return json(req,env,{ok:true,source:'NASA GIBS / Copernicus public Earth observation',layers:[{id:'viirs-true-color',provider:'NASA GIBS',status:'public-near-real-time',url:'https://gibs.earthdata.nasa.gov/wmts/epsg3857/best/VIIRS_SNPP_CorrectedReflectance_TrueColor/default/'},{id:'viirs-fires',provider:'NASA GIBS',status:'public-near-real-time',url:'https://gibs.earthdata.nasa.gov/wmts/epsg3857/best/VIIRS_SNPP_Thermal_Anomalies_375m_Day/default/'},{id:'sentinel',provider:'Copernicus Sentinel',status:'public-data',url:'https://dataspace.copernicus.eu/'}],policy:'TrackMeNow uses the source data through its own map layers; reference websites are not embedded.'});
       }
+      if (url.pathname === '/api/transit/discovery' && req.method === 'GET') return await transitDiscovery(req,env,url);
+      if (url.pathname === '/api/environment/catalog' && req.method === 'GET') return await environmentCatalog(req,env,url);
+      if (url.pathname === '/api/references' && req.method === 'GET') return json(req,env,{ok:true,generatedAt:nowIso(),sources:referenceRegistry()});
       if (url.pathname === '/api/movement' && req.method === 'GET') return await movement(req, env, url);
       if (url.pathname === '/api/cameras' && req.method === 'GET') return await cameras(req, env, url);
       if (url.pathname === '/api/cell' && req.method === 'GET') return await cellLookup(req, env, url);
