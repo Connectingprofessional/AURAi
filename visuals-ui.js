@@ -76,22 +76,21 @@ function mapAction(k){
 }
 function drawSpace(p){
  const planetActions={'SOLAR SYSTEM':'solar','EARTH':'earth3d','MOON':'moon','MARS':'mars'};
- p.append(status('SPACE combines the 3D planetary engine with satellite and Earth-observation source layers. Live orbital/space telemetry is shown only when a configured public source is available.'));
+ p.append(status('SPACE is powered by TrackMeNow source adapters. Reference websites are not embedded; their public data is normalized by the backend and rendered here.'));
  const g=el('div',{class:'tm-stack'});
  if(planetActions[state.sub]){
    const k=state.sub;
    g.append(card(k,k==='EARTH'?'Return to the live Earth globe.':k==='SOLAR SYSTEM'?'Open the Solar System orbital view.':'Open the interactive '+k.toLowerCase()+' view.',()=>{const e=engine();if(e)e.setScale(planetActions[k]);},'OPEN 3D'));
  } else if(state.sub==='SATELLITES'){
-   g.append(card('SATELLITES','Dedicated orbital-object layer. TrackMeNow will show public satellite observations when a configured source is available; it will not invent positions.',null,'SOURCE STATUS'));
-   g.append(card('EARTH-OBSERVATION SATELLITES','NOAA and Copernicus Sentinel imagery/observations are grouped here as Earth Observation.',()=>{state.sub='EARTH OBSERVATION';render()},'OPEN EARTH OBSERVATION'));
+   g.append(card('SATELLITES','TrackMeNow satellite layer. Current orbital positions require a configured orbital-position provider; no positions are fabricated.',async()=>{try{const j=await api('/api/space/iss');const f=j.feature;if(f&&map())map().flyTo({center:f.geometry.coordinates,zoom:5});p.append(status('ISS · LIVE · '+new Date(j.observedAt).toLocaleTimeString()));}catch(e){p.append(status('Satellite source unavailable: '+e.message));}},'TEST ISS LIVE'));
+   g.append(card('SOURCE CONFIG','Add N2YO_API_KEY on the Worker for broader satellite coverage. ISS remains available from a public live source.',null,'BACKEND'));
  } else if(state.sub==='ISS / SPACE STATIONS'){
-   g.append(card('ISS / SPACE STATIONS','Dedicated public orbital tracking layer for space stations.',null,'SOURCE STATUS'));
+   g.append(card('ISS LIVE POSITION','Fetch the current ISS position from the TrackMeNow Worker.',async()=>{try{const j=await api('/api/space/iss');const f=j.feature;if(f&&map())map().flyTo({center:f.geometry.coordinates,zoom:5});p.append(status('ISS · '+f.geometry.coordinates[1].toFixed(3)+', '+f.geometry.coordinates[0].toFixed(3)+' · '+new Date(j.observedAt).toLocaleTimeString()));}catch(e){p.append(status('ISS source unavailable: '+e.message));}},'GET LIVE POSITION'));
  } else if(state.sub==='EARTH OBSERVATION'){
-   g.append(card('NOAA EARTH REAL-TIME','Public satellite imagery and Earth-observation products.',()=>window.open('https://www.nesdis.noaa.gov/imagery/satellite-maps/earth-real-time','_blank','noopener,noreferrer'),'OPEN SOURCE'));
-   g.append(card('COPERNICUS SENTINEL','Public Earth-observation satellite data and services.',()=>window.open('https://sentinels.copernicus.eu/','_blank','noopener,noreferrer'),'OPEN SOURCE'));
-   g.append(card('SATELLITE MAP','Use the TrackMeNow satellite basemap.',()=>{const e=engine();if(e)e.selectWeather('dark');},'SHOW MAP'));
+   api('/api/earth-observation').then(j=>{(j.layers||[]).forEach(s=>g.append(card(s.id.toUpperCase(),s.provider+' · '+s.status,()=>{if(s.id==='viirs-true-color'){const e=engine();if(e)e.selectWeather('live');}else if(s.id==='viirs-fires'){const e=engine();if(e)e.selectWeather('fires');}},'SHOW ON MAP')))}).catch(e=>g.append(status('Earth-observation backend unavailable: '+e.message)));
+   g.append(card('SATELLITE BASEMAP','Use the TrackMeNow satellite basemap, separate from cameras and visual references.',()=>{const e=engine();if(e)e.selectWeather('dark');},'MAP'));
  } else if(state.sub==='SPACE WEATHER'){
-   g.append(card('SPACE WEATHER','Reserved for public solar, geomagnetic and space-weather feeds.',null,'SOURCE STATUS'));
+   g.append(card('SPACE WEATHER','Backend slot for solar and geomagnetic feeds. No reference website is embedded.',null,'SOURCE STATUS'));
  }
  p.append(g);
 }
@@ -191,7 +190,7 @@ function drawVisuals(p){
    const row=el('div',{class:'tm-row'});row.append(u,b);p.append(row,status('The URL is opened at its original source. TrackMeNow does not upload or retain the media.'));
    return;
  }
- const load=()=>api('/api/global/visuals?category='+encodeURIComponent(state.sub)).catch(()=>api('/api/visuals?category='+encodeURIComponent(state.sub))).then(j=>{const g=el('div',{class:'tm-stack'});(j.sources||[]).forEach(s=>g.append(card((s.status||'SOURCE')+' · '+(s.title||s.type||'visual'),[s.provider,s.location,s.timestamp].filter(Boolean).join(' · '),()=>window.open(s.url,'_blank','noopener,noreferrer'),'OPEN SOURCE')));if(!g.children.length)g.append(card(state.sub==='HISTORY'?'NO SOURCE HISTORY':'NO CURRENT PUBLIC SOURCE',state.sub==='HISTORY'?'No source-provided historical metadata is available right now.':'No configured source is available. TrackMeNow does not invent or store media.'));p.append(g)}).catch(()=>p.append(status('Visual source registry unavailable.')));
+ const load=()=>api('/api/visuals?category='+encodeURIComponent(state.sub)).then(j=>{const g=el('div',{class:'tm-stack'});(j.sources||[]).forEach(s=>g.append(card((s.status||'SOURCE')+' · '+(s.title||s.type||'visual'),[s.provider,s.location,s.timestamp].filter(Boolean).join(' · '),null,'BACKEND SOURCE')));if(!g.children.length)g.append(card(state.sub==='HISTORY'?'NO SOURCE HISTORY':'NO CURRENT PUBLIC SOURCE',state.sub==='HISTORY'?'No source-provided historical metadata is available right now.':'No configured source is available. TrackMeNow does not invent or store media.'));p.append(g)}).catch(e=>p.append(status('Visual source registry unavailable: '+e.message)));
  load();
 }
 function drawMore(p){
@@ -202,9 +201,16 @@ function drawMore(p){
 }
 function drawSources(p){
  const g=el('div',{class:'tm-stack'});
- [['AIR','OpenSky Network (ADSB.lol fallback)'],['SHIPS','AISstream.io (AIS)'],['TRANSIT (BUS/METRO)','GTFS-Realtime via Mobility Database'],['RAILWAY','Dedicated railway GTFS-Realtime feeds, where configured'],['MOBILE TOWERS','OpenCelliD weekly density grid'],['TAXI, CAR, BIKES','No public real-time feed exists — not simulated']]
-   .forEach(([k,v])=>g.append(card(k,v,null,'')));
- p.append(status('Published every ~6 minutes (air/ships/transit/rail) or weekly (mobile towers) from GitHub Actions.'),g);
+ const m=map(), b=m?m.getBounds():null, bbox=b?[b.getWest(),b.getSouth(),b.getEast(),b.getNorth()].join(','):'-180,-85,180,85';
+ api('/api/sources?bbox='+encodeURIComponent(bbox)).then(j=>{
+   (j.sources||[]).forEach(s=>g.append(card((s.layer||'SOURCE').toUpperCase(),(s.source||'Unknown')+' · '+(s.status||'unknown')+' · '+(Number(s.count||0)).toLocaleString()+' objects'+(s.observedAt?' · observed '+new Date(s.observedAt).toLocaleTimeString():''),null,s.error?'SOURCE ERROR':'LIVE SOURCE')));
+   const c=j.configuration||{};
+   g.append(card('CAMERAS',c.camera==='configured'?'Configured public camera feed':'Catalog only · no live video feed is claimed',null,'BACKEND'));
+   g.append(card('TAXI',c.taxi?'Configured real-time taxi feed':'No authorized/public taxi vehicle feed configured',null,'BACKEND'));
+   g.append(card('GBFS',c.gbfs?'Configured real-time mobility feed':'No GBFS vehicle feed configured',null,'BACKEND'));
+   p.append(g);
+ }).catch(e=>p.append(status('Source registry unavailable: '+e.message)));
+ p.append(status('Reference websites are never embedded. Each layer must have a real backend source, observation timestamp and source status.'));
 }
 function drawStatus(p){
  p.append(status('Checking the Worker, the database and each live transport layer…'));
