@@ -98,7 +98,6 @@ async function cellLookup(req, env, url) {
 /* ───────── device API ───────── */
 const devOut = (d) => ({ id: d.id, phone: d.phone, label: d.label });
 async function devices(req, env, url, parts) {  const method = req.method, sub = parts[2] || '', id = parts[2] && parts[3] ? parts[2] : null, act = parts[3] || '';  const byPhone = (phone, activeOnly = true) => { const [a, b] = phoneForms(phone); return env.DB.prepare('SELECT * FROM devices WHERE phone IN (?, ?)' + (activeOnly ? ' AND revoked_at IS NULL' : '') + ' LIMIT 1').bind(a, b).first(); };
-
   if (method === 'POST' && sub === 'register') {
     if (await limited(env, req, 'register', 10, 3600)) return json(req, env, { error: 'Too many registrations. Try later.' }, 429);
     const b = await readBody(req), phone = normalizePhone(b.phone), label = String(b.label || '').trim().slice(0, 80);
@@ -197,8 +196,7 @@ async function devices(req, env, url, parts) {  const method = req.method, sub =
   }
   return json(req, env, { error: 'Route not found' }, 404);}
 
-/* Public camera feed adapter. Consumes only explicitly configured public GeoJSON sources. */
-const cameraCache = new Map();
+/* Public camera feed adapter. Consumes only explicitly configured public GeoJSON sources. */const cameraCache = new Map();
 const CAMERA_TTL = 15000;
 function cameraBbox(v){const a=String(v||'').split(',').map(Number);if(a.length!==4||a.some(x=>!Number.isFinite(x)))return null;const [minLon,minLat,maxLon,maxLat]=a;if(minLon < -180||maxLon>180||minLat < -90||maxLat>90||minLon>=maxLon||minLat>=maxLat)return null;return {minLon,minLat,maxLon,maxLat};}
 async function movementCameras(b,env){
@@ -259,7 +257,7 @@ async function callApi(req,env,url){
  }
  if(req.method==='POST'&&url.pathname==='/api/call/leave'){
    const b=await readBody(req),rid=String(b.room||room),pid=String(b.peer||peer);
-   if(rid&&pid){const r=await env.DB.prepare('SELECT * FROM call_rooms WHERE room_id=?').bind(rid).first();if(r){const other=r.peer_a===pid?r.peer_b:r.peer_a;if(r.peer_a===pid)await env.DB.prepare('UPDATE call_rooms SET peer_a=?,updated_at=? WHERE room_id=?').bind(r.peer_b,null,nowIso(),rid).run();else if(r.peer_b===pid)await env.DB.prepare('UPDATE call_rooms SET peer_b=NULL,updated_at=? WHERE room_id=?').bind(nowIso(),rid).run();await env.DB.prepare('DELETE FROM call_signals WHERE room_id=? AND (from_peer=? OR to_peer=?)').bind(rid,pid,pid).run();if(!other)await env.DB.prepare('DELETE FROM call_rooms WHERE room_id=?').bind(rid).run();}}
+   if(rid&&pid){const r=await env.DB.prepare('SELECT * FROM call_rooms WHERE room_id=?').bind(rid).first();if(r){const other=r.peer_a===pid?r.peer_b:r.peer_a;if(r.peer_a===pid)await env.DB.prepare('UPDATE call_rooms SET peer_a=?,peer_b=NULL,updated_at=? WHERE room_id=?').bind(r.peer_b,nowIso(),rid).run();else if(r.peer_b===pid)await env.DB.prepare('UPDATE call_rooms SET peer_b=NULL,updated_at=? WHERE room_id=?').bind(nowIso(),rid).run();await env.DB.prepare('DELETE FROM call_signals WHERE room_id=? AND (from_peer=? OR to_peer=?)').bind(rid,pid,pid).run();if(!other)await env.DB.prepare('DELETE FROM call_rooms WHERE room_id=?').bind(rid).run();}}
    return json(req,env,{ok:true});
  }
  return null;
@@ -297,8 +295,7 @@ async function movementFlights(b, env) {
     if(out.length) return {features:out,source:'OpenSky ADS-B',status:'live',observedAt:nowIso()};
     throw new Error('OpenSky returned no aircraft in bbox');
   } catch(e) {
-    if(!env.AVIATIONSTACK_API_KEY) return {features:[],source:'OpenSky ADS-B',status:'error',error:e.message};
-    try {
+    if(!env.AVIATIONSTACK_API_KEY) return {features:[],source:'OpenSky ADS-B',status:'error',error:e.message};    try {
       const p=new URLSearchParams({access_key:env.AVIATIONSTACK_API_KEY,flight_status:'active',limit:'1000'});
       const r=await fetch('https://api.aviationstack.com/v1/flights?'+p); if(!r.ok) throw new Error('Aviationstack HTTP '+r.status);
       const j=await r.json(),out=[];
@@ -397,8 +394,7 @@ async function movement(req,env,url){
       ...(r.error?{error:r.error}:{} )
     }];
     for(const ss of rs){
-      const s={...ss};
-      if(!s.observedAt && rf.length){const subset=rf.filter(f=>!s.layer||f.properties?.layer===s.layer||f.properties?.kind===s.layer);const t=latestObserved(subset);if(t)s.observedAt=new Date(t).toISOString();}
+      const s={...ss};      if(!s.observedAt && rf.length){const subset=rf.filter(f=>!s.layer||f.properties?.layer===s.layer||f.properties?.kind===s.layer);const t=latestObserved(subset);if(t)s.observedAt=new Date(t).toISOString();}
       sources.push(s);
     }
     const allowed=rf.filter(f=>{
@@ -420,7 +416,7 @@ export default {
     if (req.method === 'OPTIONS') return new Response(null, { status: 204, headers: corsHeaders(req, env) });
     const url = new URL(req.url), parts = url.pathname.split('/').filter(Boolean);
     try {
-      if (url.pathname === '/health' || url.pathname === '/') return json(req, env, { ok: true, service: 'TrackMeNow API', provider: 'OpenCelliD', cell: !!env.OPENCELLID_API_KEY, devices: !!env.DB, transport: { movement: true, ais: !!env.AISSTREAM_API_KEY, mobilityDatabase: !!env.MOBILITY_DB_REFRESH_TOKEN, aviationstack: !!env.AVIATIONSTACK_API_KEY }, cameras: !!env.CAMERA_GEOJSON_URLS });
+      if (url.pathname === '/health' || url.pathname === '/') return json(req, env, { ok: true, service: 'TrackMeNow API', provider: 'OpenCelliD', cell: !!env.OPENCELLID_API_KEY, devices: !!env.DB, transport: { movement: true, ais: !!env.AISSTREAM_API_KEY, mobilityDatabase: !!env.MOBILITY_DB_REFRESH_TOKEN, aviationstack: !!env.AVIATIONSTACK_API_KEY }, cameras: true, cameraCatalog: String(env.CAMERA_GEOJSON_URLS||'').split(',').filter(Boolean).length ? 'configured' : 'OpenSurveillanceDB', communication: !!env.DB });
       if (url.pathname === '/api/db-test') {
         if (!env.DB) return json(req, env, { ok: false, database: 'binding-missing', error: 'D1 binding DB is not available.' }, 500);
         const r = await env.DB.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name IN ('devices', 'telemetry', 'rate_limits') ORDER BY name").all();
