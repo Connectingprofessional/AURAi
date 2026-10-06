@@ -1302,6 +1302,10 @@
       '<div><span style="opacity:.65">Status</span> '+esc(String(p.sourceStatus||'LIVE'))+'</div>'+
       '<div><span style="opacity:.65">Observed</span> '+esc(observed)+'</div>'+
       (p.speed_mps!=null?'<div><span style="opacity:.65">Speed</span> '+esc(String(Math.round(Number(p.speed_mps)*3.6)))+' km/h</div>':'')+
+      (p.altitude!=null?'<div><span style="opacity:.65">Altitude</span> '+esc(String(Math.round(Number(p.altitude)))+' m')+'</div>':'')+
+      (p.route?'<div><span style="opacity:.65">Route</span> '+esc(String(p.route))+'</div>':'')+
+      (p.vehicleId?'<div><span style="opacity:.65">Vehicle</span> '+esc(String(p.vehicleId))+'</div>':'')+
+      (p.heading!=null?'<div><span style="opacity:.65">Heading</span> '+esc(String(Math.round(Number(p.heading)))+'°')+'</div>':'')+
       (pos?'<div><span style="opacity:.65">Position</span> '+pos[1].toFixed(4)+', '+pos[0].toFixed(4)+'</div>':'')+
       '<div style="opacity:.5;font-size:10px;margin-top:6px">Position source: server observation. No dead reckoning.</div>'+
       '<div style="margin-top:10px"><button data-tp="zoom" style="border:1px solid rgba(255,255,255,.2);border-radius:8px;background:rgba(255,255,255,.08);color:#fff;padding:6px 10px;cursor:pointer">Zoom to</button>'+
