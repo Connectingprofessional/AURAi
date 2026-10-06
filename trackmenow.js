@@ -1136,7 +1136,7 @@
     kinds: {
       air: { label: 'AIR', noun: 'aircraft', layer: 'flights', icon: 'tm-air', color: '#58c8ff' },
       ships: { label: 'SHIPS', noun: 'vessels', layer: 'ships', icon: 'tm-ship', color: '#43e0a0' },
-      transit: { label: 'TRANSIT', noun: 'vehicles', layer: 'bus', icon: 'tm-bus', color: '#ffb347' },
+      transit: { label: 'TRANSIT', noun: 'vehicles', layer: 'transit', icon: 'tm-bus', color: '#ffb347' },
       rail: { label: 'RAIL', noun: 'trains', layer: 'rail', icon: 'tm-rail', color: '#ffcf66' },
       cells: { label: 'MOBILE', noun: 'tower cells', layer: 'cells', color: '#d28bff' }
     },
@@ -1174,8 +1174,8 @@
         const mode = String(p.mode || '').toLowerCase();
         const k = cat === 'flight' || cat === 'aircraft' || cat === 'air' ? 'air'
           : cat === 'ship' || cat === 'vessel' ? 'ships'
-          : cat === 'rail' || mode === 'rail' ? 'rail'
-          : cat === 'public-transport' || cat === 'transit' || cat === 'bus' || mode === 'bus' ? 'transit' : null;
+          : cat === 'rail' || mode === 'rail' || String(p.layer || '').toLowerCase() === 'rail' ? 'rail'
+          : cat === 'public-transport' || cat === 'transit' || cat === 'bus' || mode === 'bus' || mode === 'transit' || String(p.layer || '').toLowerCase() === 'transit' ? 'transit' : null;
         if (!k || !f.geometry || !Array.isArray(f.geometry.coordinates)) return;
         const c = f.geometry.coordinates;
         if (!Number.isFinite(Number(c[0])) || !Number.isFinite(Number(c[1]))) return;
@@ -1380,7 +1380,7 @@
   function applyLayers() {
     if (!maplibre) return;
     try {
-      if (maplibre.getLayer('sat')) maplibre.setLayoutProperty('sat', 'visibility', activeWx.dark ? 'none' : 'visible');
+      if (maplibre.getLayer('sat')) maplibre.setLayoutProperty('sat', 'visibility', activeWx.satellite && !activeWx.dark ? 'visible' : 'none');
       if (maplibre.getLayer('dark')) maplibre.setLayoutProperty('dark', 'visibility', activeWx.dark ? 'visible' : 'none');
       if (maplibre.getLayer('gibs-live')) maplibre.setLayoutProperty('gibs-live', 'visibility', activeWx.live && !activeWx.dark ? 'visible' : 'none');
       if (maplibre.getLayer('radar')) maplibre.setLayoutProperty('radar', 'visibility', activeWx.radar ? 'visible' : 'none');
