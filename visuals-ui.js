@@ -104,6 +104,9 @@ function drawTransit(p){
  const sim=el('button',{type:'button',class:'tm-action'},'RUN TRANSPORT SIMULATION');
  sim.onclick=()=>{const e=engine();if(e&&e.startTransportSimulation)e.startTransportSimulation();};
  p.append(sim);
+ const all=el('button',{type:'button',class:'tm-action'},'SHOW ALL TRANSPORT');
+ all.onclick=()=>{const e=engine();if(e&&e.showAllTransport)e.showAllTransport();};
+ p.append(all);
 }
 function showSourceStatus(p,k){p.append(status(k+': no dedicated live feed is configured. TrackMeNow will not invent vehicle positions.'))}
 function drawWeather(p){
