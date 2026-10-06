@@ -1489,6 +1489,9 @@
       }
     });
     maplibre.on('load', function () {
+      try { var bs=document.getElementById('tm-boot-status'); if(bs) bs.textContent='MAP ONLINE · LOADING LIVE LAYERS'; } catch(e) {}
+      try { setTimeout(function(){ var b=document.getElementById('tm-boot'); if(b) b.classList.add('ready'); }, 950); } catch(e) {}
+
       try { maplibre.resize(); } catch (e) {}
       try { tpSetup(); } catch (e) { console.warn('transport layers', e); }
       applyLayers(); loadActivity();
