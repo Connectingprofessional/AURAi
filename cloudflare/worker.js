@@ -200,12 +200,119 @@ async function devices(req, env, url, parts) {
   return json(req, env, { error: 'Route not found' }, 404);
 }
 
+
+/* ───────── live transport movement API ─────────
+ * This path reads current observations directly from upstream services.
+ * It never advances a vehicle between observations. */
+const movementCache = new Map();
+const MOVEMENT_TTL = 10000;
+function movementBbox(v) {
+  const a = String(v || '').split(',').map(Number);
+  if (a.length !== 4 || a.some(x => !Number.isFinite(x))) return null;
+  const [minLon,minLat,maxLon,maxLat]=a;
+  if (minLon < -180 || maxLon > 180 || minLat < -90 || maxLat > 90 || minLon >= maxLon || minLat >= maxLat) return null;
+  return {minLon,minLat,maxLon,maxLat};
+}
+function movementFeature(id, lon, lat, props={}) {
+  if (![lon,lat].every(Number.isFinite) || lon < -180 || lon > 180 || lat < -90 || lat > 90) return null;
+  return { type:'Feature', id:String(id || crypto.randomUUID()), geometry:{type:'Point',coordinates:[lon,lat]}, properties:props };
+}
+async function movementFlights(b, env) {
+  const q=new URLSearchParams({lamin:String(b.minLat),lomin:String(b.minLon),lamax:String(b.maxLat),lomax:String(b.maxLon)});
+  try {
+    const r=await fetch('https://opensky-network.org/api/states/all?'+q,{headers:{Accept:'application/json'}});
+    if(!r.ok) throw new Error('OpenSky HTTP '+r.status);
+    const j=await r.json(), out=[];
+    for(const s of (j.states||[])){
+      const lat=Number(s[6]),lon=Number(s[5]); if(!Number.isFinite(lat)||!Number.isFinite(lon)||s[8]) continue;
+      const f=movementFeature(s[0],lon,lat,{kind:'air',layer:'flights',callsign:String(s[1]||'').trim(),icao24:s[0],heading:num(s[10]),speed:num(s[9]),altitude:num(s[7]),observedAt:j.time?new Date(Number(j.time)*1000).toISOString():nowIso(),source:'OpenSky ADS-B',sourceStatus:'live'});
+      if(f) out.push(f);
+    }
+    if(out.length) return {features:out,source:'OpenSky ADS-B',status:'live',observedAt:nowIso()};
+    throw new Error('OpenSky returned no aircraft in bbox');
+  } catch(e) {
+    if(!env.AVIATIONSTACK_API_KEY) return {features:[],source:'OpenSky ADS-B',status:'error',error:e.message};
+    try {
+      const p=new URLSearchParams({access_key:env.AVIATIONSTACK_API_KEY,flight_status:'active',limit:'1000'});
+      const r=await fetch('https://api.aviationstack.com/v1/flights?'+p); if(!r.ok) throw new Error('Aviationstack HTTP '+r.status);
+      const j=await r.json(),out=[];
+      for(const f of (j.data||[])){const l=f.live||{},lat=Number(l.latitude),lon=Number(l.longitude);if(!Number.isFinite(lat)||!Number.isFinite(lon))continue;const x=movementFeature(f.flight?.icao||f.flight?.iata||f.flight?.number,lon,lat,{kind:'air',layer:'flights',callsign:String(f.flight?.iata||f.flight?.number||'').trim(),heading:num(l.direction),speed:num(l.speed_horizontal),altitude:num(l.altitude),observedAt:nowIso(),source:'Aviationstack',sourceStatus:'live'});if(x)out.push(x);}
+      return {features:out,source:'Aviationstack',status:out.length?'live':'no-current-vehicles',observedAt:nowIso(),error:out.length?undefined:'No positioned aircraft returned'};
+    } catch(x) { return {features:[],source:'Aviationstack',status:'error',error:x.message}; }
+  }
+}
+async function movementShips(b, env) {
+  if(!env.AISSTREAM_API_KEY) return {features:[],source:'AISstream.io',status:'feed-required',error:'AISSTREAM_API_KEY is not configured on the Worker'};
+  const url=env.AIS_WS_URL||'wss://stream.aisstream.io/v0/stream';
+  return await new Promise(resolve=>{
+    let done=false; const ships=new Map(), finish=(result)=>{if(done)return;done=true;try{ws.close();}catch(e){};resolve(result)};
+    let ws; try{ws=new WebSocket(url)}catch(e){return resolve({features:[],source:'AISstream.io',status:'error',error:e.message})}
+    const timer=setTimeout(()=>finish({features:[...ships.values()],source:'AISstream.io',status:ships.size?'live':'no-current-vehicles',observedAt:nowIso()}),3000);
+    ws.addEventListener('open',()=>ws.send(JSON.stringify({APIKey:env.AISSTREAM_API_KEY,BoundingBoxes:[[[b.minLat,b.minLon],[b.maxLat,b.maxLon]]],FilterMessageTypes:['PositionReport','StandardClassBPositionReport']})));
+    ws.addEventListener('message',ev=>{try{const e=JSON.parse(ev.data),m=e.Message?.PositionReport||e.Message?.StandardClassBPositionReport,md=e.MetaData||{};if(!m)return;const lat=Number(m.Latitude??md.latitude),lon=Number(m.Longitude??md.longitude),id=String(m.UserID??md.MMSI??'');if(!id)return;const f=movementFeature(id,lon,lat,{kind:'ship',layer:'ships',name:String(md.ShipName||'').trim(),heading:num(m.Cog),speed:num(m.Sog),mmsi:id,observedAt:nowIso(),source:'AISstream.io',sourceStatus:'live'});if(f)ships.set(id,f)}catch(e){}}); 
+    ws.addEventListener('error',ev=>{clearTimeout(timer);finish({features:[],source:'AISstream.io',status:'error',error:'AIS stream connection failed'})});
+  });
+}
+function pbReadVarint(a,i){let v=0,n=0;while(i<a.length&&n<10){const b=a[i++];v+=Number(b&127)*2**(7*n);if(!(b&128))return [v,i];n++;}return [null,i]}
+function pbFields(a,cb){let i=0;while(i<a.length){const [key,ni]=pbReadVarint(a,i);if(key===null)break;i=ni;const field=Math.floor(key/8),wire=key%8;let value=null;if(wire===0){[value,i]=pbReadVarint(a,i)}else if(wire===1){if(i+8>a.length)break;value=new DataView(a.buffer,a.byteOffset+i,8).getFloat64(0,true);i+=8}else if(wire===2){const [len,pi]=pbReadVarint(a,i);if(len===null||pi+len>a.length)break;value=a.subarray(pi,pi+len);i=pi+len}else if(wire===5){if(i+4>a.length)break;value=new DataView(a.buffer,a.byteOffset+i,4).getFloat32(0,true);i+=4}else if(wire===3){let depth=1;while(i<a.length&&depth){const [k,p]=pbReadVarint(a,i);if(k===null)break;i=p;const w=k%8;if(w===3)depth++;else if(w===4)depth--;else if(w===0){[,i]=pbReadVarint(a,i)}else if(w===1)i+=8;else if(w===2){const [l,p2]=pbReadVarint(a,i);i=p2+(l||0)}else if(w===5)i+=4}}else if(w===4)break;else break;cb(field,wire,value)}
+}
+const td=new TextDecoder();
+function pbText(v){return v instanceof Uint8Array?td.decode(v):String(v??'')}
+function gtfsVehicles(buf){
+  const out=[];
+  pbFields(buf,(f,w,v)=>{
+    if(f!==2||w!==2)return;
+    let entity=v, id='', pos=null, ts=null, label='',vid='',route='';
+    pbFields(entity,(ef,ew,ev)=>{
+      if(ef===1&&ew===2)id=pbText(ev);
+      if(ef===4&&ew===2)pbFields(ev,(vf,vw,vv)=>{
+        if(vf===3&&vw===2)pbFields(vv,(pf,pw,pv)=>{if(pf===1||pf===2||pf===3){}});
+        if(vf===3&&vw===2){const p={};pbFields(vv,(pf,pw,pv)=>{if(pf===1)p.lat=Number(pv);if(pf===2)p.lon=Number(pv);if(pf===3)p.bearing=Number(pv);if(pf===5)p.speed=Number(pv)});pos=p}
+        if(vf===6&&vw===0)ts=Number(vv);
+        if(vf===2&&vw===2)pbFields(vv,(df,dw,dv)=>{if(df===1)vid=pbText(dv);if(df===2)label=pbText(dv)});
+        if(vf===1&&vw===2)pbFields(vv,(tf,tw,tv)=>{if(tf===5)route=pbText(tv)});
+      });
+    });
+    if(pos&&Number.isFinite(pos.lat)&&Number.isFinite(pos.lon)){const ftr=movementFeature(vid||id,pos.lon,pos.lat,{kind:'transit',layer:'public-transport',label,vehicleId:vid||id,route,heading:num(pos.bearing),speed:num(pos.speed),observedAt:ts?new Date(ts*1000).toISOString():nowIso(),source:'GTFS-Realtime',sourceStatus:'live'});if(ftr)out.push(ftr)}
+  });
+  return out;
+}
+async function movementTransit(env){
+  let urls=String(env.GTFS_RT_URLS||'').split(',').map(s=>s.trim()).filter(Boolean);
+  if(!urls.length&&env.MOBILITY_DB_REFRESH_TOKEN){
+    try{
+      const r=await fetch('https://api.mobilitydatabase.org/v1/tokens',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({refresh_token:env.MOBILITY_DB_REFRESH_TOKEN})});
+      if(!r.ok)throw new Error('Mobility Database token HTTP '+r.status);
+      const t=await r.json(),access=t.access_token;
+      if(access){const lr=await fetch('https://api.mobilitydatabase.org/v1/gtfs_rt_feeds?entity_types=vp&status=active&limit=30',{headers:{Authorization:'Bearer '+access,Accept:'application/json'}});if(lr.ok){const list=await lr.json();urls=(Array.isArray(list)?list:[]).map(f=>f.source_info?.producer_url).filter(Boolean).slice(0,20)}}
+    }catch(e){return {features:[],source:'Mobility Database / GTFS-Realtime',status:'error',error:e.message}}
+  }
+  if(!urls.length)return {features:[],source:'GTFS-Realtime',status:'feed-required',error:'No GTFS_RT_URLS or Mobility Database token configured'};
+  const all=[];
+  await Promise.all(urls.map(async u=>{try{const r=await fetch(u,{headers:{Accept:'application/x-protobuf,application/octet-stream'}});if(!r.ok)return;all.push(...gtfsVehicles(new Uint8Array(await r.arrayBuffer())))}catch(e){}}));
+  return {features:all.slice(0,10000),source:'GTFS-Realtime'+(env.MOBILITY_DB_REFRESH_TOKEN?' via Mobility Database':''),status:all.length?'live':'no-current-vehicles',observedAt:nowIso(),feeds:urls.length};
+}
+async function movement(req,env,url){
+  const b=movementBbox(url.searchParams.get('bbox'));if(!b)return json(req,env,{ok:false,error:'Valid bbox=minLon,minLat,maxLon,maxLat is required'},400);
+  const layers=String(url.searchParams.get('layers')||'flights,ships,public-transport').split(',').map(s=>s.trim());
+  const key=[b.minLon,b.minLat,b.maxLon,b.maxLat,layers.sort().join(',')].join('|'),hit=movementCache.get(key);
+  if(hit&&Date.now()-hit.t<MOVEMENT_TTL)return json(req,env,hit.data);
+  const jobs=[];
+  if(layers.includes('flights'))jobs.push(movementFlights(b,env));
+  if(layers.includes('ships'))jobs.push(movementShips(b,env));
+  if(layers.includes('public-transport'))jobs.push(movementTransit(env));
+  const results=await Promise.all(jobs),features=[],sources=[];
+  for(const r of results){features.push(...(r.features||[]));sources.push({source:r.source,status:r.status,count:(r.features||[]).length,observedAt:r.observedAt||nowIso(),...(r.error?{error:r.error}:{})});}
+  const data={type:'FeatureCollection',features,sources,generatedAt:nowIso(),architecture:'real-source → Cloudflare Worker → map; no dead reckoning'};
+  movementCache.set(key,{t:Date.now(),data});return json(req,env,data);
+}
+
 export default {
   async fetch(req, env) {
     if (req.method === 'OPTIONS') return new Response(null, { status: 204, headers: corsHeaders(req, env) });
     const url = new URL(req.url), parts = url.pathname.split('/').filter(Boolean);
     try {
-      if (url.pathname === '/health' || url.pathname === '/') return json(req, env, { ok: true, service: 'TrackMeNow Cell API', provider: 'OpenCelliD', cell: !!env.OPENCELLID_API_KEY, devices: !!env.DB });
+      if (url.pathname === '/health' || url.pathname === '/') return json(req, env, { ok: true, service: 'TrackMeNow API', provider: 'OpenCelliD', cell: !!env.OPENCELLID_API_KEY, devices: !!env.DB, transport: { movement: true, ais: !!env.AISSTREAM_API_KEY, mobilityDatabase: !!env.MOBILITY_DB_REFRESH_TOKEN, aviationstack: !!env.AVIATIONSTACK_API_KEY } });
       if (url.pathname === '/api/db-test') {
         if (!env.DB) return json(req, env, { ok: false, database: 'binding-missing', error: 'D1 binding DB is not available.' }, 500);
         const r = await env.DB.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name IN ('devices', 'telemetry', 'rate_limits') ORDER BY name").all();
@@ -263,6 +370,7 @@ export default {
           labels: ['LIVE','RECORDED','ARCHIVED','USER SHARED','SOURCE OFFLINE']
         });
       }
+      if (url.pathname === '/api/movement' && req.method === 'GET') return await movement(req, env, url);
       if (url.pathname === '/api/cell' && req.method === 'GET') return await cellLookup(req, env, url);
       if (parts[0] === 'api' && parts[1] === 'devices') {
         if (!env.DB) return json(req, env, { error: 'D1 database binding "DB" is not configured on the Worker.' }, 503);
