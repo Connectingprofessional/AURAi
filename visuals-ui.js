@@ -238,15 +238,22 @@ function drawMore(p){
 function drawSources(p){
  const g=el('div',{class:'tm-stack'});
  const m=map(), b=m?m.getBounds():null, bbox=b?[b.getWest(),b.getSouth(),b.getEast(),b.getNorth()].join(','):'-180,-85,180,85';
- api('/api/sources?bbox='+encodeURIComponent(bbox)).then(j=>{
+ Promise.all([
+   api('/api/sources?bbox='+encodeURIComponent(bbox)),
+   api('/api/references'),
+   api('/api/environment/catalog')
+ ]).then(([j,r,e])=>{
    (j.sources||[]).forEach(s=>g.append(card((s.layer||'SOURCE').toUpperCase(),(s.source||'Unknown')+' · '+(s.status||'unknown')+' · '+(Number(s.count||0)).toLocaleString()+' objects'+(s.observedAt?' · observed '+new Date(s.observedAt).toLocaleTimeString():''),null,s.error?'SOURCE ERROR':'LIVE SOURCE')));
    const c=j.configuration||{};
-   g.append(card('CAMERAS',c.camera==='configured'?'Configured public camera feed':'Catalog only · no live video feed is claimed',null,'BACKEND'));
+   g.append(card('CAMERAS',c.camera==='configured'?'Configured public camera feed':'No live camera feed configured; catalogue data is not claimed as video',null,'BACKEND'));
    g.append(card('TAXI',c.taxi?'Configured real-time taxi feed':'No authorized/public taxi vehicle feed configured',null,'BACKEND'));
    g.append(card('GBFS',c.gbfs?'Configured real-time mobility feed':'No GBFS vehicle feed configured',null,'BACKEND'));
+   g.append(card('REFERENCE IMPLEMENTATION','Public behavior from TRAVIC, GeoP GeOps Mobility, TrackMyMetro, RouteMetro, YoMetro, Global Nature Watch, Uber, Land Carbon Lab, NOAA Earth Real-Time, Google Earth, Copernicus Sentinel and ARGOS is represented through TrackMeNow adapters/UI workflows. Reference sites are not embedded.',null,'SOURCE POLICY'));
+   (r.sources||[]).forEach(x=>g.append(card(x.name,x.capabilities.join(' · '),null,x.policy==='handoff-only-no-scraping'?'HANDOFF':'ADAPTER')));
+   (e.sources||[]).forEach(x=>g.append(card(x.name,x.status+' · '+x.url,null,'EARTH / ENV')));
    p.append(g);
- }).catch(e=>p.append(status('Source registry unavailable: '+e.message)));
- p.append(status('Reference websites are never embedded. Each layer must have a real backend source, observation timestamp and source status.'));
+ }).catch(err=>p.append(status('Source registry unavailable: '+err.message)));
+ p.append(status('Reference websites are used as functional and data-discovery references. TrackMeNow fetches permitted public data through its own backend adapters; it does not iframe or copy their private code.'));
 }
 function drawStatus(p){
  p.append(status('Checking the Worker, the database and each live transport layer…'));
