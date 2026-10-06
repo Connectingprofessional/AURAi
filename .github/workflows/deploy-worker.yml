@@ -28,6 +28,8 @@ jobs:
           MOBILITY_DB_REFRESH_TOKEN: ${{ secrets.MOBILITY_DB_REFRESH_TOKEN }}
           N2YO_API_KEY: ${{ secrets.N2YO_API_KEY }}
           OPENCELLID_API_KEY: ${{ secrets.OPENCELLID_API_KEY }}
+          ADMIN_USER: ${{ secrets.ADMIN_USER }}
+          ADMIN_PASSWORD: ${{ secrets.ADMIN_PASSWORD }}
         run: |
           set -euo pipefail
           if [ -n "${AISSTREAM_API_KEY:-}" ]; then printf '%s' "$AISSTREAM_API_KEY" | npx wrangler@latest secret put AISSTREAM_API_KEY; fi
@@ -35,6 +37,8 @@ jobs:
           if [ -n "${MOBILITY_DB_REFRESH_TOKEN:-}" ]; then printf '%s' "$MOBILITY_DB_REFRESH_TOKEN" | npx wrangler@latest secret put MOBILITY_DB_REFRESH_TOKEN; fi
           if [ -n "${N2YO_API_KEY:-}" ]; then printf '%s' "$N2YO_API_KEY" | npx wrangler@latest secret put N2YO_API_KEY; fi
           if [ -n "${OPENCELLID_API_KEY:-}" ]; then printf '%s' "$OPENCELLID_API_KEY" | npx wrangler@latest secret put OPENCELLID_API_KEY; fi
+          if [ -n "${ADMIN_USER:-}" ]; then printf '%s' "$ADMIN_USER" | npx wrangler@latest secret put ADMIN_USER; fi
+          if [ -n "${ADMIN_PASSWORD:-}" ]; then printf '%s' "$ADMIN_PASSWORD" | npx wrangler@latest secret put ADMIN_PASSWORD; fi
 
       - name: Deploy
         uses: cloudflare/wrangler-action@v3
