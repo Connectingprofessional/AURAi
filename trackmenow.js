@@ -1563,6 +1563,8 @@
 
   async function setScale(next) {
     const previousScale = scale;
+    const earth3d = next === 'earth3d';
+    if (earth3d) { next = 'earth'; earthMode = 'globe'; }
     scale = next; markChrome();
     try { localStorage.setItem('tm-scale', scale); } catch (e) {}
     if (scale === 'universe' || scale === 'solar') {
@@ -1591,7 +1593,7 @@
 
   /* Keep the existing map controls; the standalone Universe landing screen is removed. */
   try { scale = localStorage.getItem('tm-scale') || 'earth'; } catch (e) {}
-  if (['moon', 'mars', 'solar'].indexOf(scale) < 0) scale = 'earth';
+  if (['earth', 'moon', 'mars', 'solar'].indexOf(scale) < 0) scale = 'earth';
   setStatus('STARTING…', true);
   injectChrome();
   setScale(scale);
