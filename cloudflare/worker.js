@@ -201,7 +201,7 @@ const CAMERA_TTL = 15000;
 function cameraBbox(v){const a=String(v||'').split(',').map(Number);if(a.length!==4||a.some(x=>!Number.isFinite(x)))return null;const [minLon,minLat,maxLon,maxLat]=a;if(minLon < -180||maxLon>180||minLat < -90||maxLat>90||minLon>=maxLon||minLat>=maxLat)return null;return {minLon,minLat,maxLon,maxLat};}
 async function movementCameras(b,env){
  const configured=String(env.CAMERA_GEOJSON_URLS||'').split(',').map(s=>s.trim()).filter(Boolean);
- const urls=configured.length?configured:['https://opensurveillancedb.org/api/cameras?bbox='+encodeURIComponent([b.minLon,b.minLat,b.maxLon,b.maxLat].join(','))];
+ const urls=configured;
  const out=[],errors=[];
  for(const sourceUrl of urls.slice(0,20)){try{
    const r=await fetch(sourceUrl,{headers:{Accept:'application/geo+json,application/json'}});if(!r.ok)throw new Error('HTTP '+r.status);
@@ -214,7 +214,7 @@ async function movementCameras(b,env){
    }
  }catch(e){errors.push(sourceUrl+' · '+(e.message||e));}}
  const latest=out.reduce((m,f)=>{const t=Date.parse(f.properties.observedAt);return Number.isFinite(t)&&t>m?t:m},0);
- return {features:out.slice(0,20000),sources:[{source:configured.length?'Configured public camera GeoJSON':'OpenSurveillanceDB public camera catalog',layer:'cameras',status:out.length?'live':'no-current-cameras',count:out.length,observedAt:latest?new Date(latest).toISOString():null,error:out.length?undefined:(errors.slice(0,3).join(' | ')||'No camera observations returned')}]};
+ return {features:out.slice(0,20000),sources:[{source:'TrackMeNow live camera feeds',layer:'cameras',status:out.length?'live':'feed-required',count:out.length,observedAt:latest?new Date(latest).toISOString():null,error:out.length?undefined:(configured.length?'Configured camera feeds returned no current frames':'No live camera feed configured. Reference catalogues are not displayed as camera video.')}]};
 }
 async function cameras(req,env,url){
  const b=cameraBbox(url.searchParams.get('bbox'));if(!b)return json(req,env,{ok:false,error:'Valid bbox is required'},400);
