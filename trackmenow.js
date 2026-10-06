@@ -1411,11 +1411,11 @@
     destroyViews();
     if (!fromSolar) showSolar(false);
     if (!window.maplibregl) throw new Error('MapLibre missing');
-    await loadRV();
-    const radarPath = rvFrames.length ? rvHost + rvFrames[rvIndex].path + '/256/{z}/{x}/{y}/2/1_1.png' : null;
     const useGlobe = earthMode === 'globe';
-    const date = await resolveGibsDate();
-    const gibsAvailable = !!date;
+    // The base map must never wait for optional weather/radar services.
+    const date = gibsDateStr(-1);
+    const gibsAvailable = false;
+    const radarPath = null;
     updateTimeLabel();
     const style = {
       version: 8,
@@ -1482,6 +1482,27 @@
       }
       if (activeForecastMode()) refreshForecast().catch(function () {});
       if (dayNight) terminatorTimer = setInterval(function () { applyDayNight(); }, 60000);
+      // Optional live services load after the base map is already visible.
+      Promise.resolve().then(function(){ return loadRV(); }).then(function(){
+        if (activeWx.radar && rvFrames.length && maplibre) {
+          var path = rvHost + rvFrames[rvIndex].path + '/256/{z}/{x}/{y}/2/1_1.png';
+          try {
+            if (!maplibre.getSource('radar')) {
+              maplibre.addSource('radar',{type:'raster',tileSize:256,tiles:[path]});
+              maplibre.addLayer({id:'radar',type:'raster',source:'radar',paint:{'raster-opacity':0.75}});
+            }
+          } catch(e) {}
+        }
+      }).catch(function() {});
+      Promise.resolve().then(function(){ return resolveGibsDate(); }).then(function(realDate){
+        if (!realDate || !maplibre) return;
+        try {
+          if (maplibre.getSource('gibs')) {
+            maplibre.getSource('gibs').setTiles([gibsTileUrl(realDate)]);
+            if (maplibre.getLayer('gibs-live')) maplibre.setLayoutProperty('gibs-live','visibility',activeWx.live&&!activeWx.dark?'visible':'none');
+          }
+        } catch(e) {}
+      }).catch(function() {});
     });
     maplibre.on('moveend', function () {
       if (forecastTimer) clearTimeout(forecastTimer);
