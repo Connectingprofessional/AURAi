@@ -1,0 +1,27 @@
+name: Deploy Cloudflare Worker
+
+# Removes the manual copy-paste step: whenever cloudflare/worker.js or wrangler.toml change on main,
+# this publishes them to the real wispy-bush-9aee Worker, so the live backend always matches this repo.
+# One-time setup (Settings -> Secrets and variables -> Actions):
+#   CLOUDFLARE_API_TOKEN  - a token with "Edit Cloudflare Workers" permission (My Profile -> API Tokens)
+#   CLOUDFLARE_ACCOUNT_ID - Workers & Pages -> Overview -> Account ID (right sidebar)
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'cloudflare/worker.js'
+      - 'cloudflare/wrangler.toml'
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Deploy
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          workingDirectory: cloudflare
+          command: deploy

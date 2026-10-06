@@ -1660,6 +1660,19 @@
       try { if (maplibre.getLayer('street')) maplibre.setLayoutProperty('street','visibility',on?'visible':'none'); } catch(e) {}
     },
     toggleTransport: function(kind) { if (TP.kinds[kind]) { tpToggle(kind); return !!TP.on[kind]; } return false; },
+    transportOn: function(kind) { return !!TP.on[kind]; },
+    transportStatus: function() { /* per-layer counts/age for the UI's own STATUS panel, from data already in memory */
+      return Object.keys(TP.kinds).map(function (k) {
+        var d = TP.data[k], def = TP.kinds[k], row = { kind: k, label: def.label, on: !!TP.on[k], loaded: !!d, error: TP.err[k] || null };
+        if (d) {
+          var ageS = Math.max(0, Date.now() / 1000 - (d.t || Date.parse(d.generated) / 1000 || 0));
+          row.count = k === 'cells' ? (d.total || 0) : d.a.length;
+          row.ageMinutes = Math.round(ageS / 60);
+          row.source = d.src || def.label;
+        }
+        return row;
+      });
+    },
     searchObject: function(q) { return tmFindObject(q); }
   };
 })();

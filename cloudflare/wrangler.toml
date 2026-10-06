@@ -10,7 +10,7 @@ VISUALS_PUBLIC_SOURCE_URLS = ""
 
 [[d1_databases]]
 binding = "DB"
-database_name = "trackmenow"
-database_id = "PASTE-YOUR-D1-DATABASE-ID-HERE"   # printed by: npx wrangler d1 create trackmenow
+database_name = "trackmenow-devices"
+database_id = "68be1d07-3168-4765-8a7d-ff2e4a72394f"
 
 # Secrets (never put values in this file): npx wrangler secret put OPENCELLID_API_KEY; npx wrangler secret put ADMIN_USER; npx wrangler secret put ADMIN_PASSWORD

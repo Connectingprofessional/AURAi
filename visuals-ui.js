@@ -175,9 +175,29 @@ function drawVisuals(p){
 }
 function drawMore(p){
  if(state.sub==='ADMIN')return p.append(card('ADMIN LOGS','Open the protected admin audit dashboard.',openAdmin,'OPEN ADMIN'));
- if(state.sub==='SOURCES')return api('/api/sources').then(j=>p.append(card('SOURCE STATUS',JSON.stringify(j),null,''))).catch(()=>p.append(status('Source status unavailable.')));
- if(state.sub==='STATUS')return Promise.all([api('/health').catch(e=>({error:e.message})),api('/api/global/status').catch(e=>({error:e.message}))]).then(x=>p.append(card('SYSTEM STATUS',JSON.stringify(x),null,'')));
+ if(state.sub==='SOURCES')return drawSources(p);
+ if(state.sub==='STATUS')return drawStatus(p);
  p.append(card('SETTINGS','Map, privacy, live-source and communication settings belong here. Current defaults keep public media live and unstored.',null,''));
+}
+function drawSources(p){
+ const g=el('div',{class:'tm-stack'});
+ [['AIR','OpenSky Network (ADSB.lol fallback)'],['SHIPS','AISstream.io (AIS)'],['TRANSIT (BUS/METRO)','GTFS-Realtime via Mobility Database'],['RAILWAY','Dedicated railway GTFS-Realtime feeds, where configured'],['MOBILE TOWERS','OpenCelliD weekly density grid'],['TAXI, CAR, BIKES','No public real-time feed exists — not simulated']]
+   .forEach(([k,v])=>g.append(card(k,v,null,'')));
+ p.append(status('Published every ~6 minutes (air/ships/transit/rail) or weekly (mobile towers) from GitHub Actions.'),g);
+}
+function drawStatus(p){
+ p.append(status('Checking the Worker, the database and each live transport layer…'));
+ Promise.all([api('/health').catch(e=>({ok:false,error:e.message})),api('/api/db-test').catch(e=>({ok:false,error:e.message}))]).then(([h,d])=>{
+   p.innerHTML='';
+   const g=el('div',{class:'tm-stack'});
+   g.append(card('WORKER',h.ok?'Reachable · cell lookup '+(h.cell?'configured':'needs OPENCELLID_API_KEY')+' · device API '+(h.devices?'configured':'needs the DB binding'):'Not reachable: '+(h.error||'unknown error'),null,''));
+   g.append(card('DATABASE',d.ok?'Connected'+(d.pairingExpiryColumn===false?' (run the migration SQL)':''):'Not connected: '+(d.error||'unknown error'),null,''));
+   const e=engine();
+   (e&&e.transportStatus?e.transportStatus():[]).forEach(r=>{
+     g.append(card(r.label,r.loaded?r.count.toLocaleString()+' '+(r.kind==='cells'?'towers':'live')+' · '+r.ageMinutes+' min old'+(r.on?'':' (off)'):(r.error?'Not loaded: '+r.error:'Not loaded yet'),null,''));
+   });
+   p.append(g);
+ }).catch(()=>{p.innerHTML='';p.append(status('Status unavailable right now.'))});
 }
 function drawSearch(p){const i=el('input',{class:'tm-input',id:'tm-panel-search',placeholder:'Search anything…'}),b=el('button',{class:'tm-action',type:'button'},'SEARCH');b.onclick=()=>doSearch(i.value);i.onkeydown=e=>{if(e.key==='Enter')doSearch(i.value)};const row=el('div',{class:'tm-row'});row.append(i,b);p.append(row,status('Places, coordinates, aircraft, IP, device and cell identifiers are supported where a live source exists.'))}
 async function doSearch(q){q=String(q||'').trim();if(!q)return;try{if(/^\+?[0-9][0-9 ()-]{6,18}$/.test(q)){state.tab='TRACK';state.sub='DEVICE';state.panel=true;render();return}
