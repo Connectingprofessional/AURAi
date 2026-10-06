@@ -263,7 +263,7 @@ function gtfsVehicles(buf){
   const out=[];
   pbFields(buf,(f,w,v)=>{
     if(f!==2||w!==2)return;
-    let entity=v, id='', pos=null, ts=null, label='',vid='',route='';
+    let entity=v, id='', pos=null, ts=null, label='',vid='',route='',routeType=null;
     pbFields(entity,(ef,ew,ev)=>{
       if(ef===1&&ew===2)id=pbText(ev);
       if(ef===4&&ew===2)pbFields(ev,(vf,vw,vv)=>{
@@ -271,10 +271,10 @@ function gtfsVehicles(buf){
         if(vf===3&&vw===2){const p={};pbFields(vv,(pf,pw,pv)=>{if(pf===1)p.lat=Number(pv);if(pf===2)p.lon=Number(pv);if(pf===3)p.bearing=Number(pv);if(pf===5)p.speed=Number(pv)});pos=p}
         if(vf===6&&vw===0)ts=Number(vv);
         if(vf===2&&vw===2)pbFields(vv,(df,dw,dv)=>{if(df===1)vid=pbText(dv);if(df===2)label=pbText(dv)});
-        if(vf===1&&vw===2)pbFields(vv,(tf,tw,tv)=>{if(tf===5)route=pbText(tv)});
+        if(vf===1&&vw===2)pbFields(vv,(tf,tw,tv)=>{if(tf===5)route=pbText(tv);if(tf===8&&tw===0)routeType=Number(tv)});
       });
     });
-    if(pos&&Number.isFinite(pos.lat)&&Number.isFinite(pos.lon)){const ftr=movementFeature(vid||id,pos.lon,pos.lat,{kind:'transit',layer:'public-transport',label,vehicleId:vid||id,route,heading:num(pos.bearing),speed:num(pos.speed),observedAt:ts?new Date(ts*1000).toISOString():nowIso(),source:'GTFS-Realtime',sourceStatus:'live'});if(ftr)out.push(ftr)}
+    if(pos&&Number.isFinite(pos.lat)&&Number.isFinite(pos.lon)){const isRail=[0,1,2,5,6,7,12].includes(routeType);const isBoat=routeType===4;const ftr=movementFeature(vid||id,pos.lon,pos.lat,{kind:isRail?'rail':isBoat?'ship':'transit',layer:isRail?'rail':isBoat?'ships':'public-transport',label,vehicleId:vid||id,route,routeType,heading:num(pos.bearing),speed:num(pos.speed),observedAt:ts?new Date(ts*1000).toISOString():nowIso(),source:'GTFS-Realtime',sourceStatus:'live'});if(ftr)out.push(ftr)}
   });
   return out;
 }
@@ -295,7 +295,8 @@ async function movementTransit(env){
 }
 async function movement(req,env,url){
   const b=movementBbox(url.searchParams.get('bbox'));if(!b)return json(req,env,{ok:false,error:'Valid bbox=minLon,minLat,maxLon,maxLat is required'},400);
-  const layers=String(url.searchParams.get('layers')||'flights,ships,public-transport').split(',').map(s=>s.trim());
+  const requestedLayers=String(url.searchParams.get('layers')||'flights,ships,public-transport').split(',').map(s=>s.trim()).filter(Boolean);
+  const layers=[...new Set(requestedLayers.map(k=>k==='transit'||k==='rail'?'public-transport':k))];
   const key=[b.minLon,b.minLat,b.maxLon,b.maxLat,layers.sort().join(',')].join('|'),hit=movementCache.get(key);
   if(hit&&Date.now()-hit.t<MOVEMENT_TTL)return json(req,env,hit.data);
   const jobs=[];
