@@ -598,10 +598,46 @@ export default {
         try { const r=await fetch('https://api.wheretheiss.at/v1/satellites/25544',{headers:{Accept:'application/json'}}); if(!r.ok) throw new Error('ISS HTTP '+r.status); const j=await r.json(); return json(req,env,{ok:true,source:'Where The ISS / public ISS telemetry',observedAt:nowIso(),feature:{type:'Feature',geometry:{type:'Point',coordinates:[Number(j.longitude),Number(j.latitude)]},properties:{kind:'space-station',name:'ISS',altitude:Number(j.altitude),velocity:Number(j.velocity),visibility:j.visibility,source:'Where The ISS',sourceStatus:'live'}}}); } catch(e){ return json(req,env,{ok:false,error:e.message},502); }
       }
       if (url.pathname === '/api/space/satellites' && req.method === 'GET') {
-        if(!env.N2YO_API_KEY) return json(req,env,{ok:false,error:'N2YO_API_KEY is not configured. ISS remains available without it.'},503);
-        const lat=Number(url.searchParams.get('lat')||28.6139),lon=Number(url.searchParams.get('lon')||77.2090),alt=Number(url.searchParams.get('alt')||0),category=Number(url.searchParams.get('category')||0),seconds=Math.min(120,Math.max(1,Number(url.searchParams.get('seconds')||60)));
-        const u='https://api.n2yo.com/rest/v1/satellite/above/'+encodeURIComponent(lat)+'/'+encodeURIComponent(lon)+'/'+encodeURIComponent(alt)+'/'+encodeURIComponent(seconds)+'/'+encodeURIComponent(category)+'?apiKey='+encodeURIComponent(env.N2YO_API_KEY);
-        try{const r=await fetch(u,{headers:{Accept:'application/json'}});const j=await r.json();if(!r.ok)throw new Error(j.error||('N2YO HTTP '+r.status));return json(req,env,{ok:true,source:'N2YO',observedAt:nowIso(),observer:{lat,lon,alt},satellites:j.above||[],info:j.info||null});}catch(e){return json(req,env,{ok:false,error:e.message},502);}
+        /*
+         * N2YO "above" uses a SEARCH RADIUS in degrees (0-90), not seconds.
+         * Keep the API key server-side and never expose it to the browser.
+         */
+        if(!env.N2YO_API_KEY) return json(req,env,{
+          ok:false,
+          status:'feed-required',
+          source:'N2YO',
+          error:'Satellite feed is not configured on the TrackMeNow Worker.',
+          code:'N2YO_API_KEY_MISSING',
+          issAvailable:true
+        },503);
+        const lat=Number(url.searchParams.get('lat')||28.6139),
+              lon=Number(url.searchParams.get('lon')||77.2090),
+              alt=Number(url.searchParams.get('alt')||0),
+              category=Number(url.searchParams.get('category')||0),
+              radiusRaw=url.searchParams.get('radius') ?? url.searchParams.get('seconds') ?? '90',
+              radius=Math.min(90,Math.max(0,Number(radiusRaw)));
+        if(!Number.isFinite(lat)||lat < -90||lat > 90||!Number.isFinite(lon)||lon < -180||lon > 180||!Number.isFinite(alt)||!Number.isFinite(category)||!Number.isFinite(radius)){
+          return json(req,env,{ok:false,status:'bad-request',source:'N2YO',error:'Invalid satellite observer or search-radius parameters.'},400);
+        }
+        const u='https://api.n2yo.com/rest/v1/satellite/above/'+encodeURIComponent(lat)+'/'+encodeURIComponent(lon)+'/'+encodeURIComponent(alt)+'/'+encodeURIComponent(radius)+'/'+encodeURIComponent(category)+'?apiKey='+encodeURIComponent(env.N2YO_API_KEY);
+        try{
+          const r=await fetch(u,{headers:{Accept:'application/json'}});
+          const j=await r.json().catch(()=>({}));
+          if(!r.ok) throw new Error(j.error||('N2YO HTTP '+r.status));
+          return json(req,env,{
+            ok:true,
+            status:'live',
+            source:'N2YO',
+            observedAt:nowIso(),
+            observer:{lat,lon,alt},
+            searchRadius:radius,
+            category,
+            satellites:j.above||[],
+            info:j.info||null
+          });
+        }catch(e){
+          return json(req,env,{ok:false,status:'upstream-error',source:'N2YO',error:e.message,issAvailable:true},502);
+        }
       }
       if (url.pathname === '/api/earth-observation' && req.method === 'GET') {
         return json(req,env,{ok:true,source:'NASA GIBS / Copernicus public Earth observation',layers:[{id:'viirs-true-color',provider:'NASA GIBS',status:'public-near-real-time',url:'https://gibs.earthdata.nasa.gov/wmts/epsg3857/best/VIIRS_SNPP_CorrectedReflectance_TrueColor/default/'},{id:'viirs-fires',provider:'NASA GIBS',status:'public-near-real-time',url:'https://gibs.earthdata.nasa.gov/wmts/epsg3857/best/VIIRS_SNPP_Thermal_Anomalies_375m_Day/default/'},{id:'sentinel',provider:'Copernicus Sentinel',status:'public-data',url:'https://dataspace.copernicus.eu/'}],policy:'TrackMeNow uses the source data through its own map layers; reference websites are not embedded.'});
