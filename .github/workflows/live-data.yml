@@ -1,6 +1,6 @@
 name: Live transport data
 # Publishes fresh aircraft, ships and public-transport positions to the live-data branch.
-# The site projects each reported position between fresh observations so icons keep moving.
+# The collector stores observed source positions only. The frontend must not interpolate or dead-reckon vehicles.
 # Secrets: AISSTREAM_API_KEY, AVIATIONSTACK_API_KEY, MOBILITY_DB_REFRESH_TOKEN
 on:
   push:
