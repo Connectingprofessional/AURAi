@@ -274,7 +274,7 @@ function gtfsVehicles(buf, feedMeta={}) {
       });
     });
     if(pos&&Number.isFinite(pos.lat)&&Number.isFinite(pos.lon)){
-      const rail=!!feedMeta.rail,kind=rail?'rail':'transit',layer=rail?'rail':'public-transport';
+      const rail=!!feedMeta.rail,kind=rail?'rail':'transit',layer=rail?'rail':'transit';
       const ftr=movementFeature(vid||id,pos.lon,pos.lat,{kind,category:kind,mode:kind,layer,vehicleId:vid||id,route,heading:num(pos.bearing),speed:num(pos.speed),observedAt:ts?new Date(ts*1000).toISOString():nowIso(),source:'GTFS-Realtime',sourceStatus:'live',feed:feedMeta.label||''});
       if(ftr)out.push(ftr);
     }
@@ -317,7 +317,7 @@ async function movementTransit(env){
 async function movement(req,env,url){
   const b=movementBbox(url.searchParams.get('bbox'));if(!b)return json(req,env,{ok:false,error:'Valid bbox=minLon,minLat,maxLon,maxLat is required'},400);
   const requestedLayers=String(url.searchParams.get('layers')||'flights,ships,public-transport').split(',').map(s=>s.trim()).filter(Boolean);
-  const layers=[...new Set(requestedLayers)];
+  const layers=[...new Set(requestedLayers.map(function(x){return x==='public-transport'?'transit':x;}))];
   const key=[b.minLon,b.minLat,b.maxLon,b.maxLat,layers.sort().join(',')].join('|'),hit=movementCache.get(key);
   if(hit&&Date.now()-hit.t<MOVEMENT_TTL)return json(req,env,hit.data);
   const jobs=[];
@@ -343,7 +343,7 @@ async function movement(req,env,url){
       if(layer==='flights') return layers.includes('flights');
       if(layer==='ships') return layers.includes('ships');
       if(kind==='rail'||layer==='rail') return layers.includes('rail');
-      if(kind==='transit'||layer==='transit'||layer==='public-transport') return layers.includes('transit');
+      if(kind==='transit'||layer==='transit'||layer==='public-transport') return layers.includes('transit') || layers.includes('public-transport');
       return true;
     });
     features.push(...allowed);
