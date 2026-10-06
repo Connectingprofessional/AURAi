@@ -524,9 +524,10 @@ export default {
       if (url.pathname === '/api/sources' && req.method === 'GET') {
         const b=movementBbox(url.searchParams.get('bbox')||'-180,-85,180,85');
         if(!b) return json(req,env,{ok:false,error:'Valid bbox is required'},400);
-        const layers='flights,ships,transit,rail,taxi,bike,car';
-        const mv=await movement(req,env,new URL(req.url+'').searchParams?new URL(req.url):url);
-        return json(req,env,{ok:true,generatedAt:nowIso(),bbox:[b.minLon,b.minLat,b.maxLon,b.maxLat],sources:mv.sources||[],counts:(mv.features||[]).reduce((a,f)=>{const k=f.properties?.kind||f.properties?.layer||'other';a[k]=(a[k]||0)+1;return a;},{}),configuration:{camera:String(env.CAMERA_GEOJSON_URLS||'').split(',').filter(Boolean).length>0?'configured':'OpenSurveillanceDB catalog',gbfs:String(env.GBFS_VEHICLE_URLS||'').split(',').filter(Boolean).length>0,taxi:String(env.TAXI_VEHICLE_URLS||'').split(',').filter(Boolean).length>0}});
+        const q=new URLSearchParams({bbox:[b.minLon,b.minLat,b.maxLon,b.maxLat].join(','),layers:'flights,ships,transit,rail,taxi,bike,car'});
+        const movementUrl=new URL('https://example.com/api/movement?'+q.toString());
+        const mv=await movement(req,env,movementUrl);
+        return json(req,env,{ok:true,generatedAt:nowIso(),bbox:[b.minLon,b.minLat,b.maxLon,b.maxLat],sources:mv.sources||[],counts:(mv.features||[]).reduce((a,f)=>{const k=f.properties?.kind||f.properties?.layer||'other';a[k]=(a[k]||0)+1;return a;},{}),configuration:{camera:String(env.CAMERA_GEOJSON_URLS||'').split(',').filter(Boolean).length>0?'configured':'catalog-only',gbfs:String(env.GBFS_VEHICLE_URLS||'').split(',').filter(Boolean).length>0,taxi:String(env.TAXI_VEHICLE_URLS||'').split(',').filter(Boolean).length>0}});
       }
       if (url.pathname === '/api/space/iss' && req.method === 'GET') {
         try { const r=await fetch('https://api.wheretheiss.at/v1/satellites/25544',{headers:{Accept:'application/json'}}); if(!r.ok) throw new Error('ISS HTTP '+r.status); const j=await r.json(); return json(req,env,{ok:true,source:'Where The ISS / public ISS telemetry',observedAt:nowIso(),feature:{type:'Feature',geometry:{type:'Point',coordinates:[Number(j.longitude),Number(j.latitude)]},properties:{kind:'space-station',name:'ISS',altitude:Number(j.altitude),velocity:Number(j.velocity),visibility:j.visibility,source:'Where The ISS',sourceStatus:'live'}}}); } catch(e){ return json(req,env,{ok:false,error:e.message},502); }
