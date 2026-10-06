@@ -27,6 +27,9 @@
 .tm-tab:hover,.tm-tab.active{color:#fff;background:rgba(69,168,255,.13)}
 #tm-subbar{height:32px;display:flex;align-items:center;gap:6px;padding:0 8px;border-top:1px solid rgba(255,255,255,.06);overflow-x:auto;scrollbar-width:none}
 .tm-sub{border:1px solid rgba(255,255,255,.09);background:rgba(255,255,255,.035);color:#b9c7cf;border-radius:5px;padding:5px 9px;font-size:9px;font-weight:800;white-space:nowrap;cursor:pointer}
+#tm-subbar .tm-sub{display:inline-flex!important;align-items:center!important;justify-content:center!important;flex:0 0 auto!important;min-width:max-content!important;line-height:20px!important;box-sizing:border-box!important;user-select:none!important;pointer-events:auto!important;position:relative!important;z-index:2!important}
+#tm-subbar{position:relative;z-index:2200;min-width:0!important;white-space:nowrap!important}
+#tm-subbar .tm-sub:hover{background:rgba(69,168,255,.18);color:#fff}
 .tm-sub.active{color:#fff;border-color:rgba(69,168,255,.5);background:rgba(69,168,255,.12)}
 .tm-zoom-common{position:absolute;right:9px;top:4px;display:flex;gap:3px}
 .tm-zoom-common button{width:25px;height:25px;border:1px solid rgba(255,255,255,.12);border-radius:5px;background:rgba(255,255,255,.045);color:#fff;font-weight:900;cursor:pointer}
