@@ -1157,7 +1157,7 @@
   function tpMovementUrl() {
     const bbox = tpBbox();
     if (!bbox) return null;
-    return TP_API_BASE.replace(/\\/$/, '') + '/api/movement?bbox=' + encodeURIComponent(bbox) +
+    return TP_API_BASE.replace(/\/$/, '') + '/api/movement?bbox=' + encodeURIComponent(bbox) +
       '&layers=' + encodeURIComponent(tpLayers() || 'flights,ships,rail,bus') + '&t=' + Date.now();
   }
   async function tpLoad() {
