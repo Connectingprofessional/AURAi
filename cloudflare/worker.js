@@ -201,6 +201,7 @@ async function devices(req, env, url, parts) {
 }
 
 
+/* Transport secrets are synced from GitHub Actions before deployment. */
 /* ───────── live transport movement API ─────────
  * This path reads current observations directly from upstream services.
  * It never advances a vehicle between observations. */
