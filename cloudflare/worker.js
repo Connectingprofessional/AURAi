@@ -565,7 +565,6 @@ export default {
           {title:'NOAA Earth Real-Time',provider:'NOAA NESDIS',url:'https://www.nesdis.noaa.gov/imagery/satellite-maps/earth-real-time'},
           {title:'Copernicus Sentinel',provider:'European Union / Copernicus',url:'https://sentinels.copernicus.eu/'},
           {title:'NASA GIBS',provider:'NASA Earthdata',url:'https://worldview.earthdata.nasa.gov/'},
-          {title:'Public Camera Atlas',provider:'OpenSurveillanceDB',url:'https://opensurveillancedb.org/'}
         ];
         const configured = String(env.VISUALS_PUBLIC_SOURCE_URLS || '').split(',').map(s => s.trim()).filter(Boolean);
         const sources = category === 'SOURCE HISTORY' ? [] : (configured.length ? configured.map((source, i) => ({
