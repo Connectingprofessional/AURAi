@@ -14,7 +14,7 @@ const T={
  MORE:['ADMIN','SOURCES','STATUS','SETTINGS']
 };
 const state={tab:'MAP',sub:'OVERVIEW',stack:null,period:'DAY',panel:false};
-let gps={watch:null,session:null,marker:null}, historyTimer=null;
+let gps={watch:null,session:null,marker:null,lastFix:0,lastAccuracy:null,error:''}, historyTimer=null;
 const $=(s)=>document.querySelector(s);
 function el(tag,attrs={},txt){const x=document.createElement(tag);Object.keys(attrs).forEach(k=>x.setAttribute(k,attrs[k]));if(txt!==undefined)x.textContent=txt;return x}
 function api(path,opt){return fetch(API+path,Object.assign({cache:'no-store'},opt||{})).then(async r=>{const j=await r.json().catch(()=>({}));if(!r.ok)throw Object.assign(new Error(j.error||('HTTP '+r.status)),{status:r.status,data:j});return j})}
@@ -141,7 +141,7 @@ function drawTrack(p){
  if(state.sub==='HISTORY')return drawHistory(p);
  if(state.sub==='GEOFENCE')return drawGeofence(p);
 }
-function drawGps(p){const hasDevice=!!localStorage.getItem('tmDeviceId')&&!!localStorage.getItem('tmDeviceToken');const c=card('LIVE GPS',isLocal?'Permission-based browser GPS. Local sessions are stored by the tracking API.':'Permission-based browser GPS. On GitHub Pages, consented device telemetry is stored through the TrackMeNow Worker/D1 history API.',startGps,gps.watch?'STOP LIVE GPS':'START LIVE GPS');p.append(c);p.append(status(gps.session?'SESSION / DEVICE '+gps.session:(hasDevice?'CONSENTED DEVICE READY':'CONSENTED DEVICE REQUIRED')))}
+function drawGps(p){const hasDevice=!!localStorage.getItem('tmDeviceId')&&!!localStorage.getItem('tmDeviceToken');const c=card('LIVE GPS',isLocal?'Permission-based browser GPS. Local sessions are stored by the tracking API.':'Permission-based browser GPS. On GitHub Pages, consented device telemetry is stored through the TrackMeNow Worker/D1 history API.',startGps,gps.watch?'STOP LIVE GPS':'START LIVE GPS');p.append(c);const live=gps.lastFix?'GPS: LIVE · ±'+Math.round(gps.lastAccuracy||0)+' m · updated '+Math.max(0,Math.round((Date.now()-gps.lastFix)/1000))+'s ago':(gps.error?'GPS: ERROR · '+gps.error:'GPS: WAITING FOR FIX');p.append(status(live+' · '+(gps.session?'SESSION / DEVICE '+gps.session:(hasDevice?'CONSENTED DEVICE READY':'CONSENTED DEVICE REQUIRED'))))}
 async function startGps(){
  if(gps.watch!==null){navigator.geolocation.clearWatch(gps.watch);gps.watch=null;if(isLocal&&gps.session)await api('/api/sessions/'+gps.session+'/stop',{method:'POST'}).catch(()=>{});render();return}
  try{
@@ -149,12 +149,17 @@ async function startGps(){
    if(!isLocal&&!deviceId){const phone=prompt('Enter the mobile number for this consenting device:');if(!phone)return;if(!confirm('I own this device and consent to live GPS tracking.'))return;const j=await api('/api/devices/register',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({phone,label:'TrackMeNow Live GPS',consent:true})});deviceId=j.deviceId;deviceToken=j.deviceToken;localStorage.setItem('tmDeviceId',deviceId);localStorage.setItem('tmDeviceToken',deviceToken);alert('Consent registered. Pairing code: '+j.pairingCode+'\nKeep this code private; use it to authorize a viewer.')}
    if(isLocal){const s=await api('/api/sessions',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});gps.session=s.id}
    else gps.session=deviceId;
-   gps.watch=navigator.geolocation.watchPosition(async pos=>{
+   const publish=async(pos)=>{
      const q=pos.coords, body={lat:q.latitude,lon:q.longitude,accuracy:q.accuracy,altitude:q.altitude,heading:q.heading,speed:q.speed,source:'browser-gps',timestamp:new Date(pos.timestamp).toISOString()};
      if(isLocal)await api('/api/sessions/'+gps.session+'/location',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)}).catch(()=>{});
      else await api('/api/devices/'+gps.session+'/telemetry',{method:'POST',headers:{'Content-Type':'application/json'},Authorization:'Bearer '+deviceToken,body:JSON.stringify(body)}).catch(()=>{});
      const m=map();if(m&&window.maplibregl){if(!gps.marker)gps.marker=new maplibregl.Marker({color:'#43e0a0'}).setLngLat([q.longitude,q.latitude]).addTo(m);else gps.marker.setLngLat([q.longitude,q.latitude]);m.flyTo({center:[q.longitude,q.latitude],zoom:Math.max(m.getZoom(),12),duration:400})}
-   },e=>console.warn(e),{enableHighAccuracy:true,maximumAge:3000,timeout:15000});render();
+     gps.lastFix=Date.now(); gps.lastAccuracy=q.accuracy;
+   };
+   const onError=e=>{gps.error=(e&&e.message)||'Unable to acquire GPS';console.warn(e);render();};
+   navigator.geolocation.getCurrentPosition(publish,onError,{enableHighAccuracy:true,maximumAge:0,timeout:15000});
+   gps.watch=navigator.geolocation.watchPosition(publish,onError,{enableHighAccuracy:true,maximumAge:3000,timeout:15000});
+   render();
  }catch(e){alert(e.message)}
 }
 function drawIp(p){const input=el('input',{class:'tm-input',placeholder:'IP address or MY IP'}),b=el('button',{class:'tm-action',type:'button'},'LOOK UP');b.onclick=async()=>{try{const path=/^my ip$/i.test(input.value)?'/api/integrations/ip/my':'/api/integrations/ip/lookup?ip='+encodeURIComponent(input.value);const j=await api(path);if(Number.isFinite(+j.latitude)&&Number.isFinite(+j.longitude)&&map())map().flyTo({center:[+j.longitude,+j.latitude],zoom:7});}catch(e){alert(e.message)}};const row=el('div',{class:'tm-row'});row.append(input,b);p.append(row,status('IP location is approximate; it is not device GPS.'))}
