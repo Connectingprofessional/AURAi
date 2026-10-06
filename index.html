@@ -5,12 +5,14 @@
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>TrackMeNow — Global Intelligence</title>
 <link rel="stylesheet" href="./vendor/maplibre-gl/maplibre-gl.css">
-<link rel="stylesheet" href="./visuals.css?v=atlas-live-atlas-7">
+<link rel="stylesheet" href="./visuals.css?v=atlas-live-atlas-8">
 <style>
 *{box-sizing:border-box}html,body{height:100%;margin:0;width:100%}
 body{overflow:hidden;background:#05090d;color:#edf4f8;font-family:system-ui,-apple-system,Segoe UI,sans-serif}
 #map{position:fixed;inset:0 0 var(--tm-dock-h,74px) 0;z-index:1;background:#0a1520}
 #legacy-controls,#status{display:none!important}
+#status.tm-show{display:block!important;position:fixed;left:12px;bottom:88px;z-index:50;max-width:min(420px,90vw);
+  background:rgba(8,16,24,.92);border:1px solid #2a4a5c;border-radius:10px;padding:10px 12px;font:12px/1.4 system-ui}
 </style>
 </head>
 <body>
@@ -18,8 +20,9 @@ body{overflow:hidden;background:#05090d;color:#edf4f8;font-family:system-ui,-app
 <div id="legacy-controls"><div class="topbar"><div class="brand">TRACK<span>ME</span>NOW</div><input id="searchInput"><button id="searchBtn" type="button">Search</button><button id="gpsBtn" type="button">GPS</button><button id="adminBtn" type="button">Admin</button></div></div>
 <div id="status">Starting…</div>
 <script src="./vendor/maplibre-gl/maplibre-gl.js"></script>
-<script src="./trackmenow-transport-fix.js?v=7"></script>
-<script src="./trackmenow.js?v=atlas-live-atlas-7"></script>
-<script src="./visuals-ui.js?v=atlas-live-atlas-7"></script>
+<script src="./trackmenow-transport-fix.js?v=8"></script>
+<script src="./trackmenow-traffic.js?v=8"></script>
+<script src="./trackmenow.js?v=atlas-live-atlas-8"></script>
+<script src="./visuals-ui.js?v=atlas-live-atlas-8"></script>
 </body>
 </html>
