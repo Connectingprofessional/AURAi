@@ -46,6 +46,7 @@ jobs:
           cp water-effect.js _site/water-effect.js
           cp visuals-ui.js _site/visuals-ui.js
           cp visuals.css _site/visuals.css
+          cp rtc-call.html _site/rtc-call.html
           cp -r vendor/maplibre-gl/. _site/vendor/maplibre-gl/
 
           test -s _site/index.html
