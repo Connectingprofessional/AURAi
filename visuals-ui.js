@@ -93,22 +93,30 @@ function drawSpace(p){
    const k=state.sub;
    g.append(card(k,k==='EARTH'?'Return to the live Earth globe.':k==='SOLAR SYSTEM'?'Open the Solar System orbital view.':'Open the interactive '+k.toLowerCase()+' view.',()=>{const e=engine();if(e)e.setScale(planetActions[k]);},'OPEN 3D'));
  } else if(state.sub==='SATELLITES'){
+   const satelliteStatus=(text,kind='info')=>{
+     const old=p.querySelectorAll('.tm-space-feed-status');old.forEach(x=>x.remove());
+     const x=status(text);x.classList.add('tm-space-feed-status',kind);p.append(x);
+   };
    const loadSatellites=async()=>{
      try{
        const m=map(),c=m?m.getCenter():{lat:28.6139,lng:77.209};
-       const j=await api('/api/space/satellites?lat='+encodeURIComponent(c.lat)+'&lon='+encodeURIComponent(c.lng)+'&seconds=90&category=0');
+       const j=await api('/api/space/satellites?lat='+encodeURIComponent(c.lat)+'&lon='+encodeURIComponent(c.lng)+'&radius=90&category=0');
        if(!m)throw new Error('Map unavailable');
        const feats=(j.satellites||[]).filter(s=>Number.isFinite(Number(s.satlat))&&Number.isFinite(Number(s.satlng))).map(s=>({type:'Feature',geometry:{type:'Point',coordinates:[Number(s.satlng),Number(s.satlat)]},properties:{name:s.satname||s.satid,id:s.satid,altitude:s.satalt,source:'N2YO',sourceStatus:'live'}}));
        if(!m.getSource('tm-satellites'))m.addSource('tm-satellites',{type:'geojson',data:{type:'FeatureCollection',features:feats}});
        else m.getSource('tm-satellites').setData({type:'FeatureCollection',features:feats});
        if(!m.getLayer('tm-satellites'))m.addLayer({id:'tm-satellites',type:'circle',source:'tm-satellites',paint:{'circle-radius':['interpolate',['linear'],['zoom'],1,2,5,4,10,6],'circle-color':'#b7f36b','circle-stroke-color':'#071018','circle-stroke-width':1}});
        setStatus('SATELLITES · '+feats.length+' live orbital objects · N2YO',true);
+       satelliteStatus('N2YO · LIVE · '+feats.length.toLocaleString()+' orbital objects · radius 90°');
        if(feats[0])m.flyTo({center:feats[0].geometry.coordinates,zoom:3,duration:700});
-     }catch(e){p.append(status('Satellite source unavailable: '+e.message));}
+     }catch(e){
+       const d=e.data||{};
+       satelliteStatus(d.code==='N2YO_API_KEY_MISSING'?'SATELLITES · FEED REQUIRED · Configure N2YO_API_KEY on the Worker. ISS remains independently available.':'SATELLITES · '+(d.status||'SOURCE ERROR')+' · '+e.message,'error');
+     }
    };
-   g.append(card('SATELLITES','Fetch current orbital positions through the TrackMeNow Worker.',loadSatellites,'LOAD LIVE SATELLITES'));
-   g.append(card('ISS','Fetch the current ISS position from the public ISS source.',async()=>{try{const j=await api('/api/space/iss');const f=j.feature;if(f&&map())map().flyTo({center:f.geometry.coordinates,zoom:5});setStatus('ISS · LIVE · '+new Date(j.observedAt).toLocaleTimeString(),true);}catch(e){p.append(status('ISS source unavailable: '+e.message));}},'LOAD LIVE ISS'));
-   g.append(card('SOURCE CONFIG','Broader satellite coverage uses N2YO through a Worker secret. The map never embeds the reference website.',null,'BACKEND'));
+   g.append(card('SATELLITES','Fetch current orbital positions through the TrackMeNow Worker → N2YO. The browser never receives the API key.',loadSatellites,'LOAD LIVE SATELLITES'));
+   g.append(card('ISS','Fetch the current ISS position from the public ISS source.',async()=>{try{const j=await api('/api/space/iss');const f=j.feature;if(f&&map())map().flyTo({center:f.geometry.coordinates,zoom:5});setStatus('ISS · LIVE · '+new Date(j.observedAt).toLocaleTimeString(),true);satelliteStatus('ISS · LIVE · '+new Date(j.observedAt).toLocaleTimeString());}catch(e){satelliteStatus('ISS · SOURCE ERROR · '+e.message,'error');}},'LOAD LIVE ISS'));
+   g.append(card('SOURCE CONFIG','N2YO is a server-side feed. If the Worker secret is absent, satellites are explicitly marked FEED REQUIRED; ISS remains independent.',()=>satelliteStatus('N2YO · '+(window.__tmN2yoStatus||'STATUS AVAILABLE WHEN SATELLITE FEED IS CALLED')),'SOURCE STATUS'));
  } else if(state.sub==='ISS / SPACE STATIONS'){
    g.append(card('ISS LIVE POSITION','Fetch the current ISS position from the TrackMeNow Worker.',async()=>{try{const j=await api('/api/space/iss');const f=j.feature;if(f&&map())map().flyTo({center:f.geometry.coordinates,zoom:5});p.append(status('ISS · '+f.geometry.coordinates[1].toFixed(3)+', '+f.geometry.coordinates[0].toFixed(3)+' · '+new Date(j.observedAt).toLocaleTimeString()));}catch(e){p.append(status('ISS source unavailable: '+e.message));}},'GET LIVE POSITION'));
  } else if(state.sub==='EARTH OBSERVATION'){
