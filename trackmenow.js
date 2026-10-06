@@ -1130,9 +1130,12 @@
       ships: { label: 'SHIPS', noun: 'vessels', layer: 'ships', icon: 'tm-ship', color: '#43e0a0' },
       transit: { label: 'TRANSIT', noun: 'vehicles', layer: 'transit', icon: 'tm-bus', color: '#ffb347' },
       rail: { label: 'RAIL', noun: 'trains', layer: 'rail', icon: 'tm-rail', color: '#ffcf66' },
+      taxi: { label: 'TAXI', noun: 'taxis', layer: 'taxi', icon: null, color: '#ff8bd1' },
+      car: { label: 'CAR', noun: 'cars', layer: 'car', icon: null, color: '#ffb347' },
+      bike: { label: 'BIKES', noun: 'bikes', layer: 'bike', icon: null, color: '#8be9ff' },
       cells: { label: 'MOBILE', noun: 'tower cells', layer: 'cells', color: '#d28bff' }
     },
-    on: { air: true, ships: true, transit: true, rail: true, cells: false },
+    on: { air: true, ships: true, transit: true, rail: true, taxi: false, car: false, bike: false, cells: false },
     data: {}, err: {}, sel: null, follow: false, timer: null, refresh: null,
     lastFetch: 0, fetching: false, sources: []
   };
@@ -1161,7 +1164,7 @@
       const r = await fetch(url, { cache: 'no-store' });
       if (!r.ok) throw new Error('movement API HTTP ' + r.status);
       const j = await r.json(), receivedAt = Date.now();
-      const grouped = { air: [], ships: [], transit: [], rail: [] };
+      const grouped = { air: [], ships: [], transit: [], rail: [], taxi: [], car: [], bike: [] };
       (j.features || []).forEach(function(f) {
         const p = f.properties || {}, cat = String(p.category || p.kind || '').toLowerCase();
         const mode = String(p.mode || '').toLowerCase();
@@ -1169,6 +1172,9 @@
         const k = cat === 'flight' || cat === 'aircraft' || cat === 'air' || layer === 'flights' ? 'air'
           : cat === 'ship' || cat === 'vessel' || layer === 'ships' ? 'ships'
           : cat === 'rail' || mode === 'rail' || layer === 'rail' ? 'rail'
+          : cat === 'taxi' || layer === 'taxi' ? 'taxi'
+          : cat === 'car' || layer === 'car' ? 'car'
+          : cat === 'bike' || cat === 'bicycle' || layer === 'bike' || layer === 'bicycle' ? 'bike'
           : cat === 'public-transport' || cat === 'transit' || cat === 'bus' || mode === 'bus' || mode === 'transit' || layer === 'transit' || layer === 'public-transport' ? 'transit' : null;
         if (!k || !f.geometry || !Array.isArray(f.geometry.coordinates)) return;
         const c = f.geometry.coordinates;
@@ -1236,9 +1242,12 @@
     tpIcon('tm-bus', [[16,4],[27,28],[16,22],[5,28]]);
     tpIcon('tm-rail', [[6,8],[26,8],[26,25],[22,25],[20,29],[12,29],[10,25],[6,25]]);
     const empty = {type:'FeatureCollection',features:[]};
-    ['air','ships','transit','rail'].forEach(function(k){
+    ['air','ships','transit','rail','taxi','car','bike'].forEach(function(k){
       if(!maplibre.getSource('tp-'+k)) maplibre.addSource('tp-'+k,{type:'geojson',data:empty});
-      if(!maplibre.getLayer('tp-'+k)) maplibre.addLayer({id:'tp-'+k,type:'symbol',source:'tp-'+k,layout:{'icon-image':TP.kinds[k].icon,'icon-rotate':['get','h'],'icon-rotation-alignment':'map','icon-allow-overlap':true,'icon-ignore-placement':true,'icon-size':['interpolate',['linear'],['zoom'],1,.3,6,.55,11,.9]}});
+      if(!maplibre.getLayer('tp-'+k)){
+        if(TP.kinds[k].icon) maplibre.addLayer({id:'tp-'+k,type:'symbol',source:'tp-'+k,layout:{'icon-image':TP.kinds[k].icon,'icon-rotate':['get','h'],'icon-rotation-alignment':'map','icon-allow-overlap':true,'icon-ignore-placement':true,'icon-size':['interpolate',['linear'],['zoom'],1,.3,6,.55,11,.9]}});
+        else maplibre.addLayer({id:'tp-'+k,type:'circle',source:'tp-'+k,paint:{'circle-radius':['interpolate',['linear'],['zoom'],1,2.5,6,4,12,6],'circle-color':TP.kinds[k].color,'circle-stroke-color':'#071018','circle-stroke-width':1.5,'circle-opacity':.9}});
+      }
       maplibre.on('click','tp-'+k,function(e){const f=e.features&&e.features[0];if(f)tpSelect(k,f.properties.i,false);});
       maplibre.on('mouseenter','tp-'+k,function(){maplibre.getCanvas().style.cursor='pointer';});
       maplibre.on('mouseleave','tp-'+k,function(){maplibre.getCanvas().style.cursor='';});
@@ -1280,7 +1289,7 @@
   function tpPos(k,feature){const c=feature&&feature.geometry&&feature.geometry.coordinates;if(!c)return null;return [Number(c[0]),Number(c[1]),Number(feature.properties&&feature.properties.h||0)];}
   function tpTick(){
     if(!maplibre||!maplibre.isStyleLoaded||!maplibre.getSource('tp-sel'))return;
-    ['air','ships','transit','rail'].forEach(function(k){const src=maplibre.getSource('tp-'+k),d=TP.data[k];if(!src)return;src.setData({type:'FeatureCollection',features:d&&TP.on[k]?d.features:[]});});
+    ['air','ships','transit','rail','taxi','car','bike'].forEach(function(k){const src=maplibre.getSource('tp-'+k),d=TP.data[k];if(!src)return;src.setData({type:'FeatureCollection',features:d&&TP.on[k]?d.features:[]});});
     const sel=maplibre.getSource('tp-sel'),cur=tpSelPos();
     sel.setData(cur?{type:'FeatureCollection',features:[{type:'Feature',geometry:{type:'Point',coordinates:[cur[0],cur[1]]},properties:{}}]}:{type:'FeatureCollection',features:[]});
     if(cur&&TP.follow)maplibre.easeTo({center:[cur[0],cur[1]],duration:900,essential:true});
