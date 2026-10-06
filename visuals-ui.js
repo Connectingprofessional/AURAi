@@ -5,8 +5,8 @@ const API=(location.hostname==='localhost'||location.hostname==='127.0.0.1')?loc
 const isLocal=location.hostname==='localhost'||location.hostname==='127.0.0.1';
 const T={
  MAP:['OVERVIEW','LAYERS','SEARCH'],
- SPACE:['SOLAR SYSTEM','EARTH','MOON','MARS'],
- TRANSIT:['AIR','SHIP','TAXI','RAILWAY','BOAT','PERSONAL JET','METRO','CAR','BIKES'],
+ SPACE:['SOLAR SYSTEM','EARTH','MOON','MARS','SATELLITES','ISS / SPACE STATIONS','EARTH OBSERVATION','SPACE WEATHER'],
+ TRANSIT:['ALL TRANSPORT','AIR','SHIP','TAXI','BUS','RAILWAY','METRO','BOAT','PERSONAL JET','CAR','BIKES'],
  WEATHER:['NATURAL CALAMITIES','WEATHER REPORT'],
  COMMUNICATION:['WEBRTC','PHONE'],
  TRACK:['GPS','IP','CELL','DEVICE','HISTORY','GEOFENCE','CONSENT'],
@@ -75,38 +75,43 @@ function mapAction(k){
  if(k==='3D')e.setEarthMode('globe');
 }
 function drawSpace(p){
- const items={'SOLAR SYSTEM':['SOLAR SYSTEM','EARTH','MOON','MARS'],EARTH:['EARTH'],MOON:['MOON'],MARS:['MARS']}[state.sub]||[];
- p.append(status('Space uses the existing TrackMeNow 3D engine. Earth, Moon and Mars are rendered as interactive 3D planetary views; Universe and Solar System use the orbital view.'));
+ const planetActions={'SOLAR SYSTEM':'solar','EARTH':'earth3d','MOON':'moon','MARS':'mars'};
+ p.append(status('SPACE combines the 3D planetary engine with satellite and Earth-observation source layers. Live orbital/space telemetry is shown only when a configured public source is available.'));
  const g=el('div',{class:'tm-stack'});
- items.forEach(k=>{
-   const desc = k==='EARTH' ? 'Return to live Earth map.' :
-     k==='MOON' ? 'Open 3D Moon.' :
-     k==='MARS' ? 'Open 3D Mars.' :
-     k==='SOLAR SYSTEM' ? 'Open the Solar System view.' :
-     'Open the Universe view.';
-   const action = ()=>{
-     const e=engine();
-     if(!e) return;
-     if(k==='EARTH') e.setScale('earth3d');
-     else e.setScale(k==='SOLAR SYSTEM' ? 'solar' : k.toLowerCase());
-   };
-   g.append(card(k,desc,action,'OPEN 3D'));
- });
+ if(planetActions[state.sub]){
+   const k=state.sub;
+   g.append(card(k,k==='EARTH'?'Return to the live Earth globe.':k==='SOLAR SYSTEM'?'Open the Solar System orbital view.':'Open the interactive '+k.toLowerCase()+' view.',()=>{const e=engine();if(e)e.setScale(planetActions[k]);},'OPEN 3D'));
+ } else if(state.sub==='SATELLITES'){
+   g.append(card('SATELLITES','Dedicated orbital-object layer. TrackMeNow will show public satellite observations when a configured source is available; it will not invent positions.',null,'SOURCE STATUS'));
+   g.append(card('EARTH-OBSERVATION SATELLITES','NOAA and Copernicus Sentinel imagery/observations are grouped here as Earth Observation.',()=>{state.sub='EARTH OBSERVATION';render()},'OPEN EARTH OBSERVATION'));
+ } else if(state.sub==='ISS / SPACE STATIONS'){
+   g.append(card('ISS / SPACE STATIONS','Dedicated public orbital tracking layer for space stations.',null,'SOURCE STATUS'));
+ } else if(state.sub==='EARTH OBSERVATION'){
+   g.append(card('NOAA EARTH REAL-TIME','Public satellite imagery and Earth-observation products.',()=>window.open('https://www.nesdis.noaa.gov/imagery/satellite-maps/earth-real-time','_blank','noopener,noreferrer'),'OPEN SOURCE'));
+   g.append(card('COPERNICUS SENTINEL','Public Earth-observation satellite data and services.',()=>window.open('https://sentinels.copernicus.eu/','_blank','noopener,noreferrer'),'OPEN SOURCE'));
+   g.append(card('SATELLITE MAP','Use the TrackMeNow satellite basemap.',()=>{const e=engine();if(e)e.selectWeather('dark');},'SHOW MAP'));
+ } else if(state.sub==='SPACE WEATHER'){
+   g.append(card('SPACE WEATHER','Reserved for public solar, geomagnetic and space-weather feeds.',null,'SOURCE STATUS'));
+ }
  p.append(g);
 }
-const transitMap={AIR:'air',SHIP:'ships',RAILWAY:'rail',BOAT:'ships', 'PERSONAL JET':'air',TAXI:null,METRO:'transit',CAR:null,BIKES:null};
+const transitMap={AIR:'air',SHIP:'ships',RAILWAY:'rail',BOAT:'ships','PERSONAL JET':'air',TAXI:null,BUS:'transit',METRO:'transit',CAR:null,BIKES:null};
 function drawTransit(p){
- p.append(status('LIVE uses upstream observations. SIMULATION is only a pipeline test and is always labelled SIM. No simulated position is presented as realtime.'));
+ p.append(status('ALL TRANSPORT is the default view. Selecting a specific mode filters the globe to that mode only. Live data is source-labelled; simulation is a separate test mode.'));
  const g=el('div',{class:'tm-stack'});
- T.TRANSIT.forEach(k=>{const feed=transitMap[k];let desc=feed?'Uses the live '+feed.toUpperCase()+' transport layer.':'Dedicated live '+k.toLowerCase()+' feed is not currently configured.';
- const act=feed?()=>{const e=engine();if(e&&e.activateTransport)e.activateTransport(feed);else if(e)e.toggleTransport(feed)}:()=>showSourceStatus(p,k);
- g.append(card(k,desc,act,feed?'SHOW LIVE':'SOURCE STATUS'));});
+ T.TRANSIT.forEach(k=>{
+   if(k==='ALL TRANSPORT'){
+     g.append(card(k,'Restore every available transport layer on the globe.',()=>{const e=engine();if(e&&e.showAllTransport)e.showAllTransport();},'SHOW ALL'));
+     return;
+   }
+   const feed=transitMap[k];
+   const desc=feed?'Filter the globe to live '+k.toLowerCase()+' observations from the '+feed.toUpperCase()+' transport layer.':'No dedicated global live '+k.toLowerCase()+' feed is currently configured; TrackMeNow will not invent positions.';
+   const act=feed?()=>{const e=engine();if(e&&e.activateTransport)e.activateTransport(feed);}:()=>showSourceStatus(p,k);
+   g.append(card(k,desc,act,feed?'SHOW ONLY':'SOURCE STATUS'));
+ });
  const sim=el('button',{type:'button',class:'tm-action'},'RUN TRANSPORT SIMULATION');
  sim.onclick=()=>{const e=engine();if(e&&e.startTransportSimulation)e.startTransportSimulation();};
  p.append(sim);
- const all=el('button',{type:'button',class:'tm-action'},'SHOW ALL TRANSPORT');
- all.onclick=()=>{const e=engine();if(e&&e.showAllTransport)e.showAllTransport();};
- p.append(all);
 }
 function showSourceStatus(p,k){p.append(status(k+': no dedicated live feed is configured. TrackMeNow will not invent vehicle positions.'))}
 function drawWeather(p){
