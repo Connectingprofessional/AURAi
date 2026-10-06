@@ -51,6 +51,8 @@ async function ensureAdminTables(env) {
   if (!env.DB) return;
   await env.DB.prepare('CREATE TABLE IF NOT EXISTS admin_sessions (token_hash TEXT PRIMARY KEY, expires_at TEXT NOT NULL)').run();
   await env.DB.prepare('CREATE TABLE IF NOT EXISTS admin_logs (id TEXT PRIMARY KEY, occurred_at TEXT NOT NULL, event TEXT NOT NULL, ip TEXT, tab TEXT, sub TEXT, detail TEXT)').run();
+  const cols = ['user_agent TEXT','referer TEXT','city TEXT','region TEXT','country TEXT'];
+  for (const col of cols) { try { await env.DB.prepare('ALTER TABLE admin_logs ADD COLUMN '+col).run(); } catch (e) {} }
 }
 async function adminSession(req, env) {
   const tok = req.headers.get('X-Admin-Token') || bearer(req);
@@ -62,7 +64,14 @@ async function adminSession(req, env) {
 const requestIp = (req) => req.headers.get('CF-Connecting-IP') || '';
 async function adminLog(env, req, event, tab='', sub='', detail='') {
   await ensureAdminTables(env);
-  await env.DB.prepare('INSERT INTO admin_logs(id,occurred_at,event,ip,tab,sub,detail) VALUES(?,?,?,?,?,?,?)').bind(crypto.randomUUID(),nowIso(),String(event||'ui-event').slice(0,80),requestIp(req),String(tab||'').slice(0,80),String(sub||'').slice(0,80),String(detail||'').slice(0,500)).run();
+  await env.DB.prepare('INSERT INTO admin_logs(id,occurred_at,event,ip,tab,sub,detail,user_agent,referer,city,region,country) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)')
+    .bind(
+      crypto.randomUUID(), nowIso(), String(event||'ui-event').slice(0,80), requestIp(req),
+      String(tab||'').slice(0,80), String(sub||'').slice(0,80), String(detail||'').slice(0,500),
+      String(req.headers.get('User-Agent')||'').slice(0,500),
+      String(req.headers.get('Referer')||'').slice(0,500),
+      String(req.cf?.city||'').slice(0,120), String(req.cf?.region||'').slice(0,120), String(req.cf?.country||'').slice(0,20)
+    ).run();
 }
 
 const deviceByDeviceToken = async (env, tok) => (tok ? env.DB.prepare('SELECT * FROM devices WHERE device_token_hash = ? AND revoked_at IS NULL').bind(await sha256(tok)).first() : null);
@@ -561,15 +570,10 @@ export default {
         const allowed = ['LIVE','CAMERAS','WEBCAMS','IMAGES','VIDEOS','CLIPS','SOURCE HISTORY'];
         const category = allowed.includes(String(url.searchParams.get('category') || 'LIVE').toUpperCase())
           ? String(url.searchParams.get('category') || 'LIVE').toUpperCase() : 'LIVE';
-        const defaults = [
-          {title:'NOAA Earth Real-Time',provider:'NOAA NESDIS',url:'https://www.nesdis.noaa.gov/imagery/satellite-maps/earth-real-time'},
-          {title:'Copernicus Sentinel',provider:'European Union / Copernicus',url:'https://sentinels.copernicus.eu/'},
-          {title:'NASA GIBS',provider:'NASA Earthdata',url:'https://worldview.earthdata.nasa.gov/'},
-        ];
         const configured = String(env.VISUALS_PUBLIC_SOURCE_URLS || '').split(',').map(s => s.trim()).filter(Boolean);
-        const sources = category === 'SOURCE HISTORY' ? [] : (configured.length ? configured.map((source, i) => ({
+        const sources = category === 'SOURCE HISTORY' ? [] : configured.map((source, i) => ({
           id:'configured-'+i,type:'public',status:category==='LIVE'?'LIVE':'SOURCE',title:'Configured public visual source',provider:'TrackMeNow public source adapter',url:source,category
-        })) : defaults.map((s,i)=>({...s,id:'default-'+i,type:'public',status:'PUBLIC',category})));
+        }));
         return json(req, env, {
           ok: true, storage: 'none',
           policy: 'TrackMeNow does not store or copy public visual media.',
