@@ -1184,7 +1184,7 @@
         props.smoothing = 'visual only between server observations';
         grouped[k].push({
           type: 'Feature',
-          geometry: { type: 'Point', coordinates: [Number(c[0]), Number(c[1])],
+          geometry: { type: 'Point', coordinates: [Number(c[0]), Number(c[1])] },
           properties: props
         });
       });
