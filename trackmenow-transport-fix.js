@@ -1,15 +1,7 @@
-/* TrackMeNow transport UX fix
- *
- * Modes (segregated):
- *   Air     → only aircraft
- *   Ships   → only vessels
- *   Transit → only buses/trams
- *   Rail    → only trains
- *   Taxi    → no Uber/Ola public fleet (honest status)
- *   SHOW ALL → restore stacked layers
- *   Satellite → basemap only (does not delete transport data)
- *
- * Movement API sparse → GitHub live-data branch fallback.
+/* TrackMeNow transport fix v7
+ * Default: Air + Ships + Transit + Rail ON together (not exclusive wipe)
+ * Bottom bar / panel: toggle layers (stack). SHOW ALL restores full set.
+ * Sparse /api/movement → GitHub live-data branch.
  */
 (function () {
   'use strict';
@@ -17,7 +9,7 @@
     'https://raw.githubusercontent.com/Connectingprofessional/TrackMenow/live-data';
   var cache = {};
   var cacheAt = 0;
-  var savedOn = null;
+  var DEFAULT_ON = { air: true, ships: true, transit: true, rail: true, taxi: false, car: false, bike: false };
 
   function rowsToFeatures(kind, payload) {
     var rows = (payload && payload.a) || [];
@@ -68,7 +60,7 @@
 
   async function ensureLive(kinds) {
     var now = Date.now();
-    if (now - cacheAt < 60000 && Object.keys(cache).length) return cache;
+    if (now - cacheAt < 45000 && Object.keys(cache).length) return cache;
     var files = { air: 'flights.json', ships: 'ships.json', transit: 'transit.json', rail: 'rail.json' };
     var list = kinds && kinds.length ? kinds : Object.keys(files);
     await Promise.all(list.map(async function (k) {
@@ -109,14 +101,14 @@
     try {
       var u = new URL(url, location.href);
       var layers = (u.searchParams.get('layers') || '').split(',').map(function (s) { return s.trim(); }).filter(Boolean);
-      if (!layers.length) return ['air', 'ships', 'transit'];
+      if (!layers.length) return ['air', 'ships', 'transit', 'rail'];
       var map = { flights: 'air', ships: 'ships', transit: 'transit', rail: 'rail' };
       return layers.map(function (l) {
         if (map[l]) return map[l];
         if (l === 'public-transport') return 'transit';
         return l;
       });
-    } catch (e) { return ['air', 'ships', 'transit']; }
+    } catch (e) { return ['air', 'ships', 'transit', 'rail']; }
   }
 
   var origFetch = window.fetch;
@@ -130,11 +122,19 @@
       var j = null;
       try { j = await clone.json(); } catch (e) { return res; }
       var feats = (j && j.features) || [];
-      if (feats.length >= 5) return res;
       var kinds = parseLayers(url).filter(function (k) {
         return k === 'air' || k === 'ships' || k === 'transit' || k === 'rail';
       });
-      if (!kinds.length) kinds = ['air', 'ships', 'transit'];
+      if (!kinds.length) kinds = ['air', 'ships', 'transit', 'rail'];
+      var needFill = feats.length < 20;
+      if (!needFill) {
+        var hasAir = feats.some(function (f) {
+          var p = f.properties || {};
+          return p.kind === 'air' || p.category === 'flight' || p.layer === 'flights';
+        });
+        if (kinds.indexOf('air') >= 0 && !hasAir) needFill = true;
+      }
+      if (!needFill) return res;
       var bbox = parseBbox(url);
       await ensureLive(kinds);
       var merged = [];
@@ -143,7 +143,7 @@
         var pack = cache[k];
         if (!pack) return;
         var list = filterBbox(pack.features, bbox);
-        if (list.length > 5000) list = list.slice(0, 5000);
+        if (list.length > 6000) list = list.slice(0, 6000);
         merged = merged.concat(list);
         sources.push({
           layer: k === 'air' ? 'flights' : k,
@@ -153,6 +153,7 @@
           observedAt: new Date().toISOString()
         });
       });
+      console.log('[TM] movement fill', kinds.join(','), '\u2192', merged.length);
       return new Response(JSON.stringify({
         ok: true,
         type: 'FeatureCollection',
@@ -162,12 +163,12 @@
         architecture: 'github-live-data-fallback'
       }), { status: 200, headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' } });
     }).catch(function () {
-      return ensureLive(['air', 'ships', 'transit']).then(function () {
+      return ensureLive(['air', 'ships', 'transit', 'rail']).then(function () {
         var kinds = parseLayers(url);
         var bbox = parseBbox(url);
         var merged = [];
         kinds.forEach(function (k) {
-          if (cache[k]) merged = merged.concat(filterBbox(cache[k].features, bbox).slice(0, 5000));
+          if (cache[k]) merged = merged.concat(filterBbox(cache[k].features, bbox).slice(0, 6000));
         });
         return new Response(JSON.stringify({
           ok: true, type: 'FeatureCollection', features: merged,
@@ -179,76 +180,59 @@
     });
   };
 
-  function snapshotOn(eng) {
-    var o = {};
-    ['air', 'ships', 'transit', 'rail', 'taxi', 'car', 'bike'].forEach(function (k) {
-      try { o[k] = !!eng.transportOn(k); } catch (e) { o[k] = false; }
-    });
-    return o;
-  }
-
-  function applyExclusive(eng, kind) {
-    var cur = snapshotOn(eng);
-    var onCount = Object.keys(cur).filter(function (k) { return cur[k]; }).length;
-    if (onCount > 1) savedOn = cur;
-    ['air', 'ships', 'transit', 'rail', 'taxi', 'car', 'bike'].forEach(function (k) {
-      if (eng.transportOn(k)) eng.toggleTransport(k);
-    });
-    if (kind && !eng.transportOn(kind)) eng.toggleTransport(kind);
-  }
-
-  function restoreAll(eng) {
-    var target = savedOn || { air: true, ships: true, transit: true, rail: false, taxi: false, car: false, bike: false };
+  function setLayers(eng, target) {
     ['air', 'ships', 'transit', 'rail', 'taxi', 'car', 'bike'].forEach(function (k) {
       var want = !!target[k];
-      var isOn = !!eng.transportOn(k);
-      if (want !== isOn) eng.toggleTransport(k);
+      var isOn = false;
+      try { isOn = !!eng.transportOn(k); } catch (e) {}
+      if (want !== isOn && typeof eng.toggleTransport === 'function') {
+        eng.toggleTransport(k);
+      }
     });
   }
 
   function patchEngine() {
     var eng = window.TrackMeNowEngine;
-    if (!eng || eng.__tmExclusivePatch) return !!eng;
-    eng.__tmExclusivePatch = true;
+    if (!eng || eng.__tmStackPatch) return !!eng;
+    eng.__tmStackPatch = true;
 
     eng.activateTransport = function (kind) {
       if (typeof eng.toggleTransport !== 'function') return false;
-      if (kind === 'taxi' || kind === 'car') {
-        applyExclusive(eng, kind);
-        var st = document.getElementById('status');
-        if (st) {
-          st.innerHTML = '<span style="color:#ffb347">●</span> TAXI/CAB · Uber and Ola do not publish free live fleet positions for third-party maps. Partner APIs only. No scraping.';
-        }
-        return true;
-      }
-      applyExclusive(eng, kind);
+      if (!eng.transportOn(kind)) eng.toggleTransport(kind);
       return true;
     };
 
     eng.showAllTransport = function () {
-      if (typeof eng.toggleTransport !== 'function') return false;
-      restoreAll(eng);
+      setLayers(eng, DEFAULT_ON);
       return true;
     };
 
-    console.log('[TM] exclusive Air/Ships/Transit + SHOW ALL restore');
+    setTimeout(function () {
+      try { setLayers(eng, DEFAULT_ON); } catch (e) {}
+    }, 1500);
+    setTimeout(function () {
+      try { setLayers(eng, DEFAULT_ON); } catch (e) {}
+    }, 4000);
+
+    console.log('[TM] Air+Ships+Transit+Rail stacked by default');
     return true;
   }
 
   var tries = 0;
   var iv = setInterval(function () {
     tries++;
-    if (patchEngine() || tries > 80) clearInterval(iv);
-  }, 250);
+    if (patchEngine() || tries > 100) clearInterval(iv);
+  }, 200);
 
-  setTimeout(function () { ensureLive(['air', 'ships', 'transit']); }, 2000);
+  ensureLive(['air', 'ships', 'transit', 'rail']);
+
   window.TrackMeNowLoadLiveData = function () {
     cacheAt = 0;
     return ensureLive(['air', 'ships', 'transit', 'rail']);
   };
-  window.TrackMeNowRestoreTransport = function () {
+  window.TrackMeNowShowAll = function () {
     var eng = window.TrackMeNowEngine;
-    if (eng) restoreAll(eng);
+    if (eng) setLayers(eng, DEFAULT_ON);
   };
-  console.log('[TM] segregated modes + live-data fallback armed');
+  console.log('[TM] v7 stacked transport + live-data armed');
 })();
