@@ -1,7 +1,15 @@
-/* TrackMeNow transport fix (GitHub Pages)
- * 1) Intercept sparse /api/movement → fill from live-data branch
- * 2) Stop activateTransport from wiping other layers (Air/Ships/Taxi SHOW ONLY)
- * 3) Keep layers visible when switching Satellite / Live / Weather
+/* TrackMeNow transport UX fix
+ *
+ * Modes (segregated):
+ *   Air     → only aircraft
+ *   Ships   → only vessels
+ *   Transit → only buses/trams
+ *   Rail    → only trains
+ *   Taxi    → no Uber/Ola public fleet (honest status)
+ *   SHOW ALL → restore stacked layers
+ *   Satellite → basemap only (does not delete transport data)
+ *
+ * Movement API sparse → GitHub live-data branch fallback.
  */
 (function () {
   'use strict';
@@ -9,6 +17,7 @@
     'https://raw.githubusercontent.com/Connectingprofessional/TrackMenow/live-data';
   var cache = {};
   var cacheAt = 0;
+  var savedOn = null;
 
   function rowsToFeatures(kind, payload) {
     var rows = (payload && payload.a) || [];
@@ -50,7 +59,7 @@
           title: title, name: title, h: heading, heading: heading, bearing: heading,
           speed: speed, velocity_mps: speed, speed_mps: speed,
           observedAt: new Date(t0).toISOString(),
-          source: src, sourceStatus: 'LIVE', status: 'LIVE', smoothing: 'dead-reckon'
+          source: src, sourceStatus: 'LIVE', status: 'LIVE'
         }, extra)
       });
     }
@@ -101,7 +110,7 @@
       var u = new URL(url, location.href);
       var layers = (u.searchParams.get('layers') || '').split(',').map(function (s) { return s.trim(); }).filter(Boolean);
       if (!layers.length) return ['air', 'ships', 'transit'];
-      var map = { flights: 'air', ships: 'ships', transit: 'transit', rail: 'rail', taxi: 'taxi', car: 'car', bike: 'bike' };
+      var map = { flights: 'air', ships: 'ships', transit: 'transit', rail: 'rail' };
       return layers.map(function (l) {
         if (map[l]) return map[l];
         if (l === 'public-transport') return 'transit';
@@ -144,19 +153,14 @@
           observedAt: new Date().toISOString()
         });
       });
-      console.log('[TM fix] sparse movement (' + feats.length + ') → live-data', merged.length);
-      var body = JSON.stringify({
+      return new Response(JSON.stringify({
         ok: true,
         type: 'FeatureCollection',
         features: merged.length ? merged : feats,
         sources: sources.length ? sources : (j.sources || []),
         generatedAt: new Date().toISOString(),
         architecture: 'github-live-data-fallback'
-      });
-      return new Response(body, {
-        status: 200,
-        headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' }
-      });
+      }), { status: 200, headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' } });
     }).catch(function () {
       return ensureLive(['air', 'ships', 'transit']).then(function () {
         var kinds = parseLayers(url);
@@ -175,30 +179,59 @@
     });
   };
 
+  function snapshotOn(eng) {
+    var o = {};
+    ['air', 'ships', 'transit', 'rail', 'taxi', 'car', 'bike'].forEach(function (k) {
+      try { o[k] = !!eng.transportOn(k); } catch (e) { o[k] = false; }
+    });
+    return o;
+  }
+
+  function applyExclusive(eng, kind) {
+    var cur = snapshotOn(eng);
+    var onCount = Object.keys(cur).filter(function (k) { return cur[k]; }).length;
+    if (onCount > 1) savedOn = cur;
+    ['air', 'ships', 'transit', 'rail', 'taxi', 'car', 'bike'].forEach(function (k) {
+      if (eng.transportOn(k)) eng.toggleTransport(k);
+    });
+    if (kind && !eng.transportOn(kind)) eng.toggleTransport(kind);
+  }
+
+  function restoreAll(eng) {
+    var target = savedOn || { air: true, ships: true, transit: true, rail: false, taxi: false, car: false, bike: false };
+    ['air', 'ships', 'transit', 'rail', 'taxi', 'car', 'bike'].forEach(function (k) {
+      var want = !!target[k];
+      var isOn = !!eng.transportOn(k);
+      if (want !== isOn) eng.toggleTransport(k);
+    });
+  }
+
   function patchEngine() {
     var eng = window.TrackMeNowEngine;
-    if (!eng || eng.__tmLayerPatch) return !!eng;
-    eng.__tmLayerPatch = true;
+    if (!eng || eng.__tmExclusivePatch) return !!eng;
+    eng.__tmExclusivePatch = true;
+
     eng.activateTransport = function (kind) {
-      if (typeof eng.toggleTransport === 'function') {
-        if (!eng.transportOn(kind)) eng.toggleTransport(kind);
-        else {
-          eng.toggleTransport(kind);
-          eng.toggleTransport(kind);
+      if (typeof eng.toggleTransport !== 'function') return false;
+      if (kind === 'taxi' || kind === 'car') {
+        applyExclusive(eng, kind);
+        var st = document.getElementById('status');
+        if (st) {
+          st.innerHTML = '<span style="color:#ffb347">●</span> TAXI/CAB · Uber and Ola do not publish free live fleet positions for third-party maps. Partner APIs only. No scraping.';
         }
         return true;
       }
-      return false;
-    };
-    var origAll = eng.showAllTransport;
-    eng.showAllTransport = function () {
-      if (typeof origAll === 'function') return origAll.call(eng);
-      ['air', 'ships', 'transit', 'rail'].forEach(function (k) {
-        if (!eng.transportOn(k)) eng.toggleTransport(k);
-      });
+      applyExclusive(eng, kind);
       return true;
     };
-    console.log('[TM fix] activateTransport is additive (no longer clears Air/Ships/Transit)');
+
+    eng.showAllTransport = function () {
+      if (typeof eng.toggleTransport !== 'function') return false;
+      restoreAll(eng);
+      return true;
+    };
+
+    console.log('[TM] exclusive Air/Ships/Transit + SHOW ALL restore');
     return true;
   }
 
@@ -213,5 +246,9 @@
     cacheAt = 0;
     return ensureLive(['air', 'ships', 'transit', 'rail']);
   };
-  console.log('[TM fix] movement fallback + non-destructive layer switch armed');
+  window.TrackMeNowRestoreTransport = function () {
+    var eng = window.TrackMeNowEngine;
+    if (eng) restoreAll(eng);
+  };
+  console.log('[TM] segregated modes + live-data fallback armed');
 })();
