@@ -1131,7 +1131,7 @@
    * Any movement between observations is visual smoothing only; the source point
    * remains the authoritative position and its observation timestamp is retained.
    */
-  const TP_API_BASE = window.TM_MOVEMENT_API_BASE || window.TM_API_BASE || window.location.origin;
+  const TP_API_BASE = window.TM_MOVEMENT_API_BASE || window.TM_API_BASE || 'https://wispy-bush-9aee.recreationeeraj.workers.dev';
   const TP = {
     kinds: {
       air: { label: 'AIR', noun: 'aircraft', layer: 'flights', icon: 'tm-air', color: '#58c8ff' },
