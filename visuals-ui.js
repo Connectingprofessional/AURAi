@@ -108,7 +108,7 @@ function drawSpace(p){
  }
  p.append(g);
 }
-const transitMap={AIR:'air',SHIP:'ships',RAILWAY:'rail',BOAT:'ships','PERSONAL JET':'air',TAXI:null,BUS:'transit',METRO:'transit',CAR:null,BIKES:null};
+const transitMap={AIR:'air',SHIP:'ships',RAILWAY:'rail',BOAT:'ships','PERSONAL JET':'air',TAXI:'taxi',BUS:'transit',METRO:'transit',CAR:'car',BIKES:'bike'};
 function drawTransit(p){
  p.append(status('ALL TRANSPORT is the default view. Selecting a specific mode filters the globe to that mode only. Live data is source-labelled; simulation is a separate test mode.'));
  const g=el('div',{class:'tm-stack'});
@@ -118,7 +118,7 @@ function drawTransit(p){
      return;
    }
    const feed=transitMap[k];
-   const desc=feed?'Filter the globe to live '+k.toLowerCase()+' observations from the '+feed.toUpperCase()+' transport layer.':'No dedicated global live '+k.toLowerCase()+' feed is currently configured; TrackMeNow will not invent positions.';
+   const desc=feed?'Filter the globe to real-time '+k.toLowerCase()+' observations from the TrackMeNow '+feed.toUpperCase()+' backend adapter.':'No dedicated live '+k.toLowerCase()+' feed is currently configured; TrackMeNow will not invent positions.';
    const act=feed?()=>{const e=engine();if(e&&e.activateTransport)e.activateTransport(feed);}:()=>showSourceStatus(p,k);
    g.append(card(k,desc,act,feed?'SHOW ONLY':'SOURCE STATUS'));
  });
