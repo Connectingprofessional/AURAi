@@ -1672,8 +1672,9 @@
       try { if (maplibre.getLayer('street')) maplibre.setLayoutProperty('street','visibility',on?'visible':'none'); } catch(e) {}
     },
     toggleTransport: function(kind) { if (TP.kinds[kind]) { tpToggle(kind); return !!TP.on[kind]; } return false; },
-    activateTransport: function(kind) { if (!TP.kinds[kind]) return false; TP.on[kind]=true; syncBar(); setStatus('Loading '+TP.kinds[kind].label.toLowerCase()+' from live movement API…',true); tpLoad(); tpApply(); return true; },
+    activateTransport: function(kind) { if (!TP.kinds[kind]) return false; Object.keys(TP.on).forEach(function(k){ if(k!=='cells') TP.on[k]=false; }); TP.on[kind]=true; syncBar(); setStatus('Showing only '+TP.kinds[kind].label.toLowerCase()+' from live movement API…',true); tpLoad().then(tpApply); return true; },
     startTransportSimulation: function() { startTransportSimulation(); return true; },
+    showAllTransport: function() { Object.keys(TP.on).forEach(function(k){ if(k!=='cells') TP.on[k]=true; }); syncBar(); setStatus('Showing all transport layers · live sources',true); tpLoad().then(tpApply); return true; },
     transportOn: function(kind) { return !!TP.on[kind]; },
     transportStatus: function() {
       function age(iso){if(!iso)return null;return Math.max(0,Math.round((Date.now()-Date.parse(iso))/1000));}
