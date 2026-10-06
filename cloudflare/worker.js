@@ -97,8 +97,7 @@ async function cellLookup(req, env, url) {
 
 /* ───────── device API ───────── */
 const devOut = (d) => ({ id: d.id, phone: d.phone, label: d.label });
-async function devices(req, env, url, parts) {  const method = req.method, sub = parts[2] || '', id = parts[2] && parts[3] ? parts[2] : null, act = parts[3] || '';
-  const byPhone = (phone, activeOnly = true) => { const [a, b] = phoneForms(phone); return env.DB.prepare('SELECT * FROM devices WHERE phone IN (?, ?)' + (activeOnly ? ' AND revoked_at IS NULL' : '') + ' LIMIT 1').bind(a, b).first(); };
+async function devices(req, env, url, parts) {  const method = req.method, sub = parts[2] || '', id = parts[2] && parts[3] ? parts[2] : null, act = parts[3] || '';  const byPhone = (phone, activeOnly = true) => { const [a, b] = phoneForms(phone); return env.DB.prepare('SELECT * FROM devices WHERE phone IN (?, ?)' + (activeOnly ? ' AND revoked_at IS NULL' : '') + ' LIMIT 1').bind(a, b).first(); };
 
   if (method === 'POST' && sub === 'register') {
     if (await limited(env, req, 'register', 10, 3600)) return json(req, env, { error: 'Too many registrations. Try later.' }, 429);
@@ -198,14 +197,13 @@ async function devices(req, env, url, parts) {  const method = req.method, sub =
   }
   return json(req, env, { error: 'Route not found' }, 404);}
 
-
 /* Public camera feed adapter. Consumes only explicitly configured public GeoJSON sources. */
 const cameraCache = new Map();
 const CAMERA_TTL = 15000;
 function cameraBbox(v){const a=String(v||'').split(',').map(Number);if(a.length!==4||a.some(x=>!Number.isFinite(x)))return null;const [minLon,minLat,maxLon,maxLat]=a;if(minLon < -180||maxLon>180||minLat < -90||maxLat>90||minLon>=maxLon||minLat>=maxLat)return null;return {minLon,minLat,maxLon,maxLat};}
 async function movementCameras(b,env){
- const urls=String(env.CAMERA_GEOJSON_URLS||'').split(',').map(s=>s.trim()).filter(Boolean);
- if(!urls.length)return {features:[],sources:[{source:'Configured public camera GeoJSON',layer:'cameras',status:'feed-required',count:0,observedAt:null,error:'No camera feed configured'}]};
+ const configured=String(env.CAMERA_GEOJSON_URLS||'').split(',').map(s=>s.trim()).filter(Boolean);
+ const urls=configured.length?configured:['https://opensurveillancedb.org/api/cameras?bbox='+encodeURIComponent([b.minLon,b.minLat,b.maxLon,b.maxLat].join(','))];
  const out=[],errors=[];
  for(const sourceUrl of urls.slice(0,20)){try{
    const r=await fetch(sourceUrl,{headers:{Accept:'application/geo+json,application/json'}});if(!r.ok)throw new Error('HTTP '+r.status);
@@ -214,11 +212,11 @@ async function movementCameras(b,env){
      const c=f?.geometry?.coordinates||[],lon=Number(c[0]),lat=Number(c[1]);
      if(!Number.isFinite(lon)||!Number.isFinite(lat)||lon<b.minLon||lon>b.maxLon||lat<b.minLat||lat>b.maxLat)continue;
      const p=f.properties||{};
-     out.push({type:'Feature',id:String(f.id||p.id||crypto.randomUUID()),geometry:{type:'Point',coordinates:[lon,lat]},properties:{type:'camera',category:'camera',layer:'cameras',title:String(p.title||p.name||p.label||'Public camera'),provider:String(p.provider||p.source||'Public source'),location:String(p.location||p.road||p.city||''),imageUrl:String(p.imageUrl||p.image_url||p.snapshot||''),streamUrl:String(p.streamUrl||p.stream_url||p.url||''),sourceUrl:String(p.sourceUrl||p.source_url||sourceUrl),observedAt:String(p.observedAt||p.observed_at||p.timestamp||nowIso()),status:String(p.status||'PUBLIC'),license:String(p.license||'')}});
+     out.push({type:'Feature',id:String(f.id||p.id||crypto.randomUUID()),geometry:{type:'Point',coordinates:[lon,lat]},properties:{type:'camera',category:'camera',layer:'cameras',title:String(p.title||p.name||p.label||p.address||'Public camera'),provider:String(p.provider||p.source||'OpenSurveillanceDB public catalog'),location:String(p.location||p.address||p.road||p.city||''),imageUrl:String(p.imageUrl||p.image_url||p.snapshot||p.image||''),streamUrl:String(p.streamUrl||p.stream_url||p.stream||''),sourceUrl:String(p.sourceUrl||p.source_url||p.url||sourceUrl),observedAt:String(p.observedAt||p.observed_at||p.timestamp||p.updated_at||nowIso()),status:String(p.status||'PUBLIC'),license:String(p.license||'')}});
    }
  }catch(e){errors.push(sourceUrl+' · '+(e.message||e));}}
  const latest=out.reduce((m,f)=>{const t=Date.parse(f.properties.observedAt);return Number.isFinite(t)&&t>m?t:m},0);
- return {features:out.slice(0,20000),sources:[{source:'Configured public camera GeoJSON',layer:'cameras',status:out.length?'live':'no-current-cameras',count:out.length,observedAt:latest?new Date(latest).toISOString():null,error:out.length?undefined:(errors.slice(0,3).join(' | ')||'No camera observations returned')}]};
+ return {features:out.slice(0,20000),sources:[{source:configured.length?'Configured public camera GeoJSON':'OpenSurveillanceDB public camera catalog',layer:'cameras',status:out.length?'live':'no-current-cameras',count:out.length,observedAt:latest?new Date(latest).toISOString():null,error:out.length?undefined:(errors.slice(0,3).join(' | ')||'No camera observations returned')}]};
 }
 async function cameras(req,env,url){
  const b=cameraBbox(url.searchParams.get('bbox'));if(!b)return json(req,env,{ok:false,error:'Valid bbox is required'},400);
@@ -227,6 +225,47 @@ async function cameras(req,env,url){
  cameraCache.set(key,{t:Date.now(),data});return json(req,env,data);
 }
 
+async function ensureCallTables(env){
+ if(!env.DB)return;
+ await env.DB.prepare('CREATE TABLE IF NOT EXISTS call_rooms (room_id TEXT PRIMARY KEY, peer_a TEXT, peer_b TEXT, created_at TEXT NOT NULL, updated_at TEXT NOT NULL)').run();
+ await env.DB.prepare('CREATE TABLE IF NOT EXISTS call_signals (id INTEGER PRIMARY KEY AUTOINCREMENT, room_id TEXT NOT NULL, from_peer TEXT NOT NULL, to_peer TEXT NOT NULL, type TEXT NOT NULL, payload TEXT NOT NULL, created_at TEXT NOT NULL)').run();
+}
+async function callApi(req,env,url){
+ if(!env.DB)return json(req,env,{error:'D1 database binding is required for calling.'},503);
+ await ensureCallTables(env);
+ const room=String(url.searchParams.get('room')||'').trim().slice(0,80);
+ const peer=String(url.searchParams.get('peer')||'').trim().slice(0,80);
+ if(req.method==='POST'&&url.pathname==='/api/call/join'){
+   const b=await readBody(req),rid=String(b.room||room||'default-room').trim().slice(0,80),pid=peer||token(9),now=nowIso();
+   let r=await env.DB.prepare('SELECT * FROM call_rooms WHERE room_id=?').bind(rid).first();
+   let initiator=false,remotePeerId=null;
+   if(!r){await env.DB.prepare('INSERT INTO call_rooms(room_id,peer_a,peer_b,created_at,updated_at) VALUES(?,?,?,?,?)').bind(rid,pid,null,now,now).run();}
+   else if(!r.peer_b&&r.peer_a!==pid){await env.DB.prepare('UPDATE call_rooms SET peer_b=?,updated_at=? WHERE room_id=?').bind(pid,now,rid).run();r={...r,peer_b:pid};initiator=true;remotePeerId=r.peer_a;}
+   else {remotePeerId=r.peer_a===pid?r.peer_b:r.peer_a;}
+   return json(req,env,{ok:true,room:rid,peerId:pid,remotePeerId,initiator});
+ }
+ if(req.method==='POST'&&url.pathname==='/api/call/signal'){
+   const b=await readBody(req),rid=String(b.room||room),from=String(b.from||peer),to=String(b.to||''),type=String(b.type||''),payload=b.payload;
+   if(!rid||!from||!to||!type||payload===undefined)return json(req,env,{error:'room, from, to, type and payload are required'},400);
+   await env.DB.prepare('INSERT INTO call_signals(room_id,from_peer,to_peer,type,payload,created_at) VALUES(?,?,?,?,?,?)').bind(rid,from,to,type,JSON.stringify(payload),nowIso()).run();
+   return json(req,env,{ok:true});
+ }
+ if(req.method==='GET'&&url.pathname==='/api/call/poll'){
+   if(!room||!peer)return json(req,env,{error:'room and peer are required'},400);
+   const rows=await env.DB.prepare('SELECT id,from_peer,type,payload FROM call_signals WHERE room_id=? AND to_peer=? ORDER BY id ASC LIMIT 50').bind(room,peer).all();
+   const ids=(rows.results||[]).map(x=>x.id);
+   if(ids.length)await env.DB.prepare('DELETE FROM call_signals WHERE room_id=? AND to_peer=? AND id<=?').bind(room,peer,Math.max(...ids)).run();
+   return json(req,env,{ok:true,signals:(rows.results||[]).map(x=>({id:x.id,from:x.from_peer,type:x.type,payload:JSON.parse(x.payload)}))});
+ }
+ if(req.method==='POST'&&url.pathname==='/api/call/leave'){
+   const b=await readBody(req),rid=String(b.room||room),pid=String(b.peer||peer);
+   if(rid&&pid){const r=await env.DB.prepare('SELECT * FROM call_rooms WHERE room_id=?').bind(rid).first();if(r){const other=r.peer_a===pid?r.peer_b:r.peer_a;if(r.peer_a===pid)await env.DB.prepare('UPDATE call_rooms SET peer_a=?,updated_at=? WHERE room_id=?').bind(r.peer_b,null,nowIso(),rid).run();else if(r.peer_b===pid)await env.DB.prepare('UPDATE call_rooms SET peer_b=NULL,updated_at=? WHERE room_id=?').bind(nowIso(),rid).run();await env.DB.prepare('DELETE FROM call_signals WHERE room_id=? AND (from_peer=? OR to_peer=?)').bind(rid,pid,pid).run();if(!other)await env.DB.prepare('DELETE FROM call_rooms WHERE room_id=?').bind(rid).run();}}
+   return json(req,env,{ok:true});
+ }
+ return null;
+}
+
+/* Transport secrets
 /* Transport secrets are synced from GitHub Actions before deployment. */
 /* ───────── live transport movement API ─────────
  * This path reads current observations directly from upstream services.
@@ -297,8 +336,7 @@ function gtfsVehicles(buf, feedMeta={}) {
         if(vf===5&&vw===0)ts=Number(vv);
         if(vf===8&&vw===2)pbFields(vv,(df,dw,dv)=>{if(df===1)vid=pbText(dv);});        if(vf===1&&vw===2)pbFields(vv,(tf,tw,tv)=>{if(tf===5)route=pbText(tv);});
       });
-    });
-    if(pos&&Number.isFinite(pos.lat)&&Number.isFinite(pos.lon)){
+    });    if(pos&&Number.isFinite(pos.lat)&&Number.isFinite(pos.lon)){
       const rail=!!feedMeta.rail,kind=rail?'rail':'transit',layer=rail?'rail':'transit';
       const ftr=movementFeature(vid||id,pos.lon,pos.lat,{kind,category:kind,mode:kind,layer,vehicleId:vid||id,route,heading:num(pos.bearing),speed:num(pos.speed),observedAt:ts?new Date(ts*1000).toISOString():nowIso(),source:'GTFS-Realtime',sourceStatus:'live',feed:feedMeta.label||''});
       if(ftr)out.push(ftr);
@@ -397,8 +435,7 @@ export default {
       if (url.pathname === '/api/admin/login' && req.method === 'POST') {        const b=await readBody(req);
         if(!env.ADMIN_USER || !env.ADMIN_PASSWORD) return json(req,env,{error:'Admin credentials are not configured on the Worker.'},503);
         if(String(b.username||'')!==String(env.ADMIN_USER)||String(b.password||'')!==String(env.ADMIN_PASSWORD)) return json(req,env,{error:'Invalid admin credentials.'},401);
-        await ensureAdminTables(env);
-        const t=token(), exp=new Date(Date.now()+8*60*60*1000).toISOString();
+        await ensureAdminTables(env);        const t=token(), exp=new Date(Date.now()+8*60*60*1000).toISOString();
         await env.DB.prepare('INSERT INTO admin_sessions(token_hash,expires_at) VALUES(?,?)').bind(await sha256(t),exp).run();
         return json(req,env,{ok:true,token:t,expiresAt:exp});
       }
@@ -426,12 +463,16 @@ export default {
         const allowed = ['LIVE','CAMERAS','WEBCAMS','IMAGES','VIDEOS','CLIPS','SOURCE HISTORY'];
         const category = allowed.includes(String(url.searchParams.get('category') || 'LIVE').toUpperCase())
           ? String(url.searchParams.get('category') || 'LIVE').toUpperCase() : 'LIVE';
-        const sources = category === 'SOURCE HISTORY' ? [] : String(env.VISUALS_PUBLIC_SOURCE_URLS || '').split(',').map(s => s.trim()).filter(Boolean).map((source, i) => ({
-          id: 'configured-' + i, type: 'public', status: category === 'LIVE' ? 'LIVE' : 'SOURCE',
-          title: 'Configured public visual source',
-          provider: 'TrackMeNow public source adapter',
-          url: source, category
-        }));
+        const defaults = [
+          {title:'NOAA Earth Real-Time',provider:'NOAA NESDIS',url:'https://www.nesdis.noaa.gov/imagery/satellite-maps/earth-real-time'},
+          {title:'Copernicus Sentinel',provider:'European Union / Copernicus',url:'https://sentinels.copernicus.eu/'},
+          {title:'NASA GIBS',provider:'NASA Earthdata',url:'https://worldview.earthdata.nasa.gov/'},
+          {title:'Public Camera Atlas',provider:'OpenSurveillanceDB',url:'https://opensurveillancedb.org/'}
+        ];
+        const configured = String(env.VISUALS_PUBLIC_SOURCE_URLS || '').split(',').map(s => s.trim()).filter(Boolean);
+        const sources = category === 'SOURCE HISTORY' ? [] : (configured.length ? configured.map((source, i) => ({
+          id:'configured-'+i,type:'public',status:category==='LIVE'?'LIVE':'SOURCE',title:'Configured public visual source',provider:'TrackMeNow public source adapter',url:source,category
+        })) : defaults.map((s,i)=>({...s,id:'default-'+i,type:'public',status:'PUBLIC',category})));
         return json(req, env, {
           ok: true, storage: 'none',
           policy: 'TrackMeNow does not store or copy public visual media.',
@@ -439,6 +480,7 @@ export default {
           labels: ['LIVE','RECORDED','ARCHIVED','USER SHARED','SOURCE OFFLINE']
         });
       }
+      if (url.pathname.startsWith('/api/call/')) { const cr=await callApi(req,env,url); if(cr)return cr; }
       if (url.pathname === '/api/movement' && req.method === 'GET') return await movement(req, env, url);
       if (url.pathname === '/api/cameras' && req.method === 'GET') return await cameras(req, env, url);
       if (url.pathname === '/api/cell' && req.method === 'GET') return await cellLookup(req, env, url);
