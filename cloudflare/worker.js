@@ -250,7 +250,7 @@ async function movementShips(b, env) {
     let ws; try{ws=new WebSocket(url)}catch(e){return resolve({features:[],source:'AISstream.io',status:'error',error:e.message})}
     const timer=setTimeout(()=>finish({features:[...ships.values()],source:'AISstream.io',status:ships.size?'live':'no-current-vehicles',observedAt:nowIso()}),3000);
     ws.addEventListener('open',()=>ws.send(JSON.stringify({APIKey:env.AISSTREAM_API_KEY,BoundingBoxes:[[[b.minLat,b.minLon],[b.maxLat,b.maxLon]]],FilterMessageTypes:['PositionReport','StandardClassBPositionReport']})));
-    ws.addEventListener('message',ev=>{try{const e=JSON.parse(ev.data),m=e.Message?.PositionReport||e.Message?.StandardClassBPositionReport,md=e.MetaData||{};if(!m)return;const lat=Number(m.Latitude??md.latitude),lon=Number(m.Longitude??md.longitude),id=String(m.UserID??md.MMSI??'');if(!id)return;const f=movementFeature(id,lon,lat,{kind:'ship',layer:'ships',name:String(md.ShipName||'').trim(),heading:num(m.Cog),speed:num(m.Sog),mmsi:id,observedAt:nowIso(),source:'AISstream.io',sourceStatus:'live'});if(f)ships.set(id,f)}catch(e){}}); 
+    ws.addEventListener('message',async ev=>{try{let raw=ev.data;if(raw instanceof ArrayBuffer)raw=new TextDecoder().decode(new Uint8Array(raw));else if(raw instanceof Uint8Array)raw=new TextDecoder().decode(raw);else if(typeof raw!=='string')raw=String(raw);const e=JSON.parse(raw),m=e.Message?.PositionReport||e.Message?.StandardClassBPositionReport,md=e.MetaData||{};if(!m)return;const lat=Number(m.Latitude??md.latitude),lon=Number(m.Longitude??md.longitude),id=String(m.UserID??md.MMSI??'');if(!id)return;const observed=m.Timestamp!=null?new Date(Number(m.Timestamp)*1000).toISOString():nowIso();const f=movementFeature(id,lon,lat,{kind:'ship',layer:'ships',name:String(md.ShipName||'').trim(),heading:num(m.TrueHeading!=null?m.TrueHeading:m.Cog),speed:num(m.Sog),mmsi:id,observedAt:observed,source:'AISstream.io',sourceStatus:'live'});if(f)ships.set(id,f)}catch(e){}}); 
     ws.addEventListener('error',ev=>{clearTimeout(timer);finish({features:[],source:'AISstream.io',status:'error',error:'AIS stream connection failed'})});
   });
 }
@@ -259,39 +259,51 @@ function pbFields(a,cb){let i=0;while(i<a.length){const [key,ni]=pbReadVarint(a,
 }
 const td=new TextDecoder();
 function pbText(v){return v instanceof Uint8Array?td.decode(v):String(v??'')}
-function gtfsVehicles(buf){
+function gtfsVehicles(buf, feedMeta={}) {
   const out=[];
   pbFields(buf,(f,w,v)=>{
     if(f!==2||w!==2)return;
-    let entity=v, id='', pos=null, ts=null, label='',vid='',route='',routeType=null;
+    let entity=v,id='',pos=null,ts=null,vid='',route='';
     pbFields(entity,(ef,ew,ev)=>{
       if(ef===1&&ew===2)id=pbText(ev);
       if(ef===4&&ew===2)pbFields(ev,(vf,vw,vv)=>{
-        if(vf===3&&vw===2)pbFields(vv,(pf,pw,pv)=>{if(pf===1||pf===2||pf===3){}});
-        if(vf===3&&vw===2){const p={};pbFields(vv,(pf,pw,pv)=>{if(pf===1)p.lat=Number(pv);if(pf===2)p.lon=Number(pv);if(pf===3)p.bearing=Number(pv);if(pf===5)p.speed=Number(pv)});pos=p}
-        if(vf===6&&vw===0)ts=Number(vv);
-        if(vf===2&&vw===2)pbFields(vv,(df,dw,dv)=>{if(df===1)vid=pbText(dv);if(df===2)label=pbText(dv)});
-        if(vf===1&&vw===2)pbFields(vv,(tf,tw,tv)=>{if(tf===5)route=pbText(tv);if(tf===8&&tw===0)routeType=Number(tv)});
+        if(vf===2&&vw===2)pbFields(vv,(pf,pw,pv)=>{if(pf===1)p.lat=Number(pv);if(pf===2)p.lon=Number(pv);if(pf===3)p.bearing=Number(pv);if(pf===5)p.speed=Number(pv);});
+        if(vf===5&&vw===0)ts=Number(vv);
+        if(vf===8&&vw===2)pbFields(vv,(df,dw,dv)=>{if(df===1)vid=pbText(dv);});
+        if(vf===1&&vw===2)pbFields(vv,(tf,tw,tv)=>{if(tf===5)route=pbText(tv);});
       });
     });
-    if(pos&&Number.isFinite(pos.lat)&&Number.isFinite(pos.lon)){const isRail=[0,1,2,5,6,7,12].includes(routeType);const isBoat=routeType===4;const ftr=movementFeature(vid||id,pos.lon,pos.lat,{kind:isRail?'rail':isBoat?'ship':'transit',layer:isRail?'rail':isBoat?'ships':'public-transport',label,vehicleId:vid||id,route,routeType,heading:num(pos.bearing),speed:num(pos.speed),observedAt:ts?new Date(ts*1000).toISOString():nowIso(),source:'GTFS-Realtime',sourceStatus:'live'});if(ftr)out.push(ftr)}
+    if(pos&&Number.isFinite(pos.lat)&&Number.isFinite(pos.lon)){
+      const rail=!!feedMeta.rail,kind=rail?'rail':'transit',layer=rail?'rail':'public-transport';
+      const ftr=movementFeature(vid||id,pos.lon,pos.lat,{kind,layer,vehicleId:vid||id,route,heading:num(pos.bearing),speed:num(pos.speed),observedAt:ts?new Date(ts*1000).toISOString():nowIso(),source:'GTFS-Realtime',sourceStatus:'live',feed:feedMeta.label||''});
+      if(ftr)out.push(ftr);
+    }
   });
   return out;
 }
 async function movementTransit(env){
-  let urls=String(env.GTFS_RT_URLS||'').split(',').map(s=>s.trim()).filter(Boolean);
-  if(!urls.length&&env.MOBILITY_DB_REFRESH_TOKEN){
+  let feeds=String(env.GTFS_RT_URLS||'').split(',').map(s=>s.trim()).filter(Boolean).map(url=>({url,label:'Configured GTFS-Realtime',rail:/rail|metro|subway|tram|train/i.test(url)}));
+  if(!feeds.length&&env.MOBILITY_DB_REFRESH_TOKEN){
     try{
       const r=await fetch('https://api.mobilitydatabase.org/v1/tokens',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({refresh_token:env.MOBILITY_DB_REFRESH_TOKEN})});
       if(!r.ok)throw new Error('Mobility Database token HTTP '+r.status);
       const t=await r.json(),access=t.access_token;
-      if(access){const lr=await fetch('https://api.mobilitydatabase.org/v1/gtfs_rt_feeds?entity_types=vp&status=active&limit=30',{headers:{Authorization:'Bearer '+access,Accept:'application/json'}});if(lr.ok){const list=await lr.json();urls=(Array.isArray(list)?list:[]).map(f=>f.source_info?.producer_url).filter(Boolean).slice(0,20)}}
-    }catch(e){return {features:[],source:'Mobility Database / GTFS-Realtime',status:'error',error:e.message}}
+      if(access){
+        const lr=await fetch('https://api.mobilitydatabase.org/v1/gtfs_rt_feeds?entity_types=vp&status=active&limit=50',{headers:{Authorization:'Bearer '+access,Accept:'application/json'}});
+        if(!lr.ok)throw new Error('Mobility Database feeds HTTP '+lr.status);
+        const body=await lr.json(),list=Array.isArray(body)?body:(body.data||body.results||[]);
+        feeds=list.map(f=>{
+          const si=f.source_info||{},urls=si.urls||{},url=urls.direct_download_url||si.producer_url||'';
+          const label=String(f.name||f.feed_name||f.provider||'GTFS-Realtime');
+          return {url,label,rail:/rail|metro|subway|tram|train/i.test(label)};
+        }).filter(f=>f.url).slice(0,30);
+      }
+    }catch(e){return {features:[],source:'Mobility Database / GTFS-Realtime',status:'error',error:e.message};}
   }
-  if(!urls.length)return {features:[],source:'GTFS-Realtime',status:'feed-required',error:'No GTFS_RT_URLS or Mobility Database token configured'};
-  const all=[];
-  await Promise.all(urls.map(async u=>{try{const r=await fetch(u,{headers:{Accept:'application/x-protobuf,application/octet-stream'}});if(!r.ok)return;all.push(...gtfsVehicles(new Uint8Array(await r.arrayBuffer())))}catch(e){}}));
-  return {features:all.slice(0,10000),source:'GTFS-Realtime'+(env.MOBILITY_DB_REFRESH_TOKEN?' via Mobility Database':''),status:all.length?'live':'no-current-vehicles',observedAt:nowIso(),feeds:urls.length};
+  if(!feeds.length)return {features:[],source:'GTFS-Realtime',status:'feed-required',error:'No GTFS realtime feed is configured'};
+  const all=[],feedErrors=[];
+  await Promise.all(feeds.map(async feed=>{try{const r=await fetch(feed.url,{headers:{Accept:'application/x-protobuf,application/octet-stream'}});if(!r.ok){feedErrors.push(feed.label+' HTTP '+r.status);return;}all.push(...gtfsVehicles(new Uint8Array(await r.arrayBuffer()),feed));}catch(e){feedErrors.push(feed.label+': '+(e.message||e));}}));
+  return {features:all.slice(0,10000),source:'GTFS-Realtime'+(env.MOBILITY_DB_REFRESH_TOKEN?' via Mobility Database':''),status:all.length?'live':'no-current-vehicles',observedAt:nowIso(),feeds:feeds.length,error:all.length?undefined:(feedErrors.slice(0,3).join(' | ')||'No current vehicle positions returned')};
 }
 async function movement(req,env,url){
   const b=movementBbox(url.searchParams.get('bbox'));if(!b)return json(req,env,{ok:false,error:'Valid bbox=minLon,minLat,maxLon,maxLat is required'},400);
