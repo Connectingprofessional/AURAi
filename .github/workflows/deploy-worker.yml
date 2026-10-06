@@ -18,6 +18,20 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - name: Sync transport secrets to Worker
+        working-directory: cloudflare
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          AISSTREAM_API_KEY: ${{ secrets.AISSTREAM_API_KEY }}
+          AVIATIONSTACK_API_KEY: ${{ secrets.AVIATIONSTACK_API_KEY }}
+          MOBILITY_DB_REFRESH_TOKEN: ${{ secrets.MOBILITY_DB_REFRESH_TOKEN }}
+        run: |
+          set -euo pipefail
+          if [ -n "${AISSTREAM_API_KEY:-}" ]; then printf '%s' "$AISSTREAM_API_KEY" | npx wrangler@latest secret put AISSTREAM_API_KEY; fi
+          if [ -n "${AVIATIONSTACK_API_KEY:-}" ]; then printf '%s' "$AVIATIONSTACK_API_KEY" | npx wrangler@latest secret put AVIATIONSTACK_API_KEY; fi
+          if [ -n "${MOBILITY_DB_REFRESH_TOKEN:-}" ]; then printf '%s' "$MOBILITY_DB_REFRESH_TOKEN" | npx wrangler@latest secret put MOBILITY_DB_REFRESH_TOKEN; fi
+
       - name: Deploy
         uses: cloudflare/wrangler-action@v3
         with:
