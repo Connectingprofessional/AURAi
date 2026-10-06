@@ -1147,7 +1147,7 @@
   }
   function tpLayers() {
     const layers = Object.keys(TP.on).filter(function(k){ return TP.on[k] && k !== 'cells'; })
-      .map(function(k){ return TP.kinds[k].layer === 'rail' || TP.kinds[k].layer === 'transit' ? 'public-transport' : TP.kinds[k].layer; });
+      .map(function(k){ return TP.kinds[k].layer; });
     return Array.from(new Set(layers)).join(',');
   }
   function tpMovementUrl() {
@@ -1166,24 +1166,25 @@
       const j = await r.json(), receivedAt = Date.now();
       const grouped = { air: [], ships: [], transit: [], rail: [] };
       (j.features || []).forEach(function(f) {
-        const p = f.properties || {}, cat = String(p.category || '').toLowerCase();
+        const p = f.properties || {}, cat = String(p.category || p.kind || '').toLowerCase();
         const mode = String(p.mode || '').toLowerCase();
-        const k = cat === 'flight' || cat === 'aircraft' || cat === 'air' ? 'air'
-          : cat === 'ship' || cat === 'vessel' ? 'ships'
-          : cat === 'rail' || mode === 'rail' || String(p.layer || '').toLowerCase() === 'rail' ? 'rail'
-          : cat === 'public-transport' || cat === 'transit' || cat === 'bus' || mode === 'bus' || mode === 'transit' || String(p.layer || '').toLowerCase() === 'transit' ? 'transit' : null;
+        const layer = String(p.layer || '').toLowerCase();
+        const k = cat === 'flight' || cat === 'aircraft' || cat === 'air' || layer === 'flights' ? 'air'
+          : cat === 'ship' || cat === 'vessel' || layer === 'ships' ? 'ships'
+          : cat === 'rail' || mode === 'rail' || layer === 'rail' ? 'rail'
+          : cat === 'public-transport' || cat === 'transit' || cat === 'bus' || mode === 'bus' || mode === 'transit' || layer === 'transit' || layer === 'public-transport' ? 'transit' : null;
         if (!k || !f.geometry || !Array.isArray(f.geometry.coordinates)) return;
         const c = f.geometry.coordinates;
         if (!Number.isFinite(Number(c[0])) || !Number.isFinite(Number(c[1]))) return;
         const props = Object.assign({}, p);
         props.i = grouped[k].length;
         props.h = Number(p.heading != null ? p.heading : p.bearing != null ? p.bearing : p.cog != null ? p.cog : 0) || 0;
-        props.observedAt = p.timestamp || p.last_contact || j.generatedAt || new Date(receivedAt).toISOString();
-        props.sourceStatus = p.status || 'LIVE';
+        props.observedAt = p.observedAt || p.timestamp || p.last_contact || j.generatedAt || new Date(receivedAt).toISOString();
+        props.sourceStatus = p.sourceStatus || p.status || 'LIVE';
         props.smoothing = 'visual only between server observations';
         grouped[k].push({
           type: 'Feature',
-          geometry: { type: 'Point', coordinates: [Number(c[0]), Number(c[1])] },
+          geometry: { type: 'Point', coordinates: [Number(c[0]), Number(c[1])],
           properties: props
         });
       });
@@ -1242,10 +1243,21 @@
   function tpStatus(){
     const act=Object.keys(TP.on).filter(function(k){return TP.on[k]&&k!=='cells';});if(!act.length)return;
     const parts=[],bad=[];
+    function ageLabel(iso){
+      if(!iso)return '—';
+      const sec=Math.max(0,Math.round((Date.now()-Date.parse(iso))/1000));
+      return sec<60?sec+'s':Math.floor(sec/60)+'m';
+    }
     act.forEach(function(k){
       const d=TP.data[k],def=TP.kinds[k];
-      if(d){const ageSec=Math.max(0,Math.round((Date.now()-d.receivedAt)/1000));const src=(d.sources||[]).find(function(s){return String(s.layer||'').toLowerCase()===def.layer||String(s.layer||'').toLowerCase()===k;});parts.push(def.label+' · '+d.features.length.toLocaleString()+' '+def.noun+' · '+(src&&src.source?src.source+' · ':'')+'API '+ageSec+'s ago');}
-      else bad.push(def.label+': '+(TP.err.global||'waiting for live API'));
+      if(d){
+        const src=(d.sources||[]).find(function(x){return String(x.layer||'').toLowerCase()===String(def.layer||'').toLowerCase()||String(x.layer||'').toLowerCase()===k;});
+        const observed=src&&src.observedAt ? src.observedAt : (d.features.reduce(function(m,f){const t=Date.parse(f.properties&&f.properties.observedAt||'');return Number.isFinite(t)&&t>m?t:m;},0)||null);
+        const count=src&&Number.isFinite(Number(src.count))?Number(src.count):d.features.length;
+        const source=src&&src.source?src.source:'server/API';
+        const refreshAge=Math.max(0,Math.round((Date.now()-d.receivedAt)/1000));
+        parts.push(def.label+' · '+count.toLocaleString()+' · '+source+' · OBS '+ageLabel(observed)+' · REF '+(refreshAge<60?refreshAge+'s':Math.floor(refreshAge/60)+'m'));
+      } else bad.push(def.label+': '+(TP.err.global||'waiting for live API'));
     });
     setStatus(esc(parts.concat(bad).join(' · ')),!bad.length);
   }
@@ -1643,9 +1655,19 @@
     toggleTransport: function(kind) { if (TP.kinds[kind]) { tpToggle(kind); return !!TP.on[kind]; } return false; },
     transportOn: function(kind) { return !!TP.on[kind]; },
     transportStatus: function() {
+      function age(iso){if(!iso)return null;return Math.max(0,Math.round((Date.now()-Date.parse(iso))/1000));}
       return Object.keys(TP.kinds).map(function(k){
         var d=TP.data[k],def=TP.kinds[k],row={kind:k,label:def.label,on:!!TP.on[k],loaded:!!d,error:TP.err[k]||null};
-        if(d){row.count=d.features.length;row.receivedAt=new Date(d.receivedAt).toISOString();row.source=(d.sources||[]).filter(function(s){return String(s.layer||'').toLowerCase()===def.layer||String(s.layer||'').toLowerCase()===k;}).map(function(s){return s.source;}).join(' · ')||'server/API';}
+        if(d){
+          var src=(d.sources||[]).find(function(s){return String(s.layer||'').toLowerCase()===String(def.layer||'').toLowerCase()||String(s.layer||'').toLowerCase()===k;});
+          var observed=src&&src.observedAt?src.observedAt:(d.features.reduce(function(m,f){var t=Date.parse(f.properties&&f.properties.observedAt||'');return Number.isFinite(t)&&t>m?t:m;},0)||null);
+          row.count=src&&Number.isFinite(Number(src.count))?Number(src.count):d.features.length;
+          row.source=src&&src.source||'server/API';
+          row.observationAge=age(observed);
+          row.refreshAge=Math.max(0,Math.round((Date.now()-d.receivedAt)/1000));
+          row.observedAt=observed;
+          row.receivedAt=new Date(d.receivedAt).toISOString();
+        }
         return row;
       });
     },
