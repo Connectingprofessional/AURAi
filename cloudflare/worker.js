@@ -226,7 +226,7 @@ async function movementFlights(b, env) {
     const j=await r.json(), out=[];
     for(const s of (j.states||[])){
       const lat=Number(s[6]),lon=Number(s[5]); if(!Number.isFinite(lat)||!Number.isFinite(lon)||s[8]) continue;
-      const f=movementFeature(s[0],lon,lat,{kind:'air',layer:'flights',callsign:String(s[1]||'').trim(),icao24:s[0],heading:num(s[10]),speed:num(s[9]),altitude:num(s[7]),observedAt:j.time?new Date(Number(j.time)*1000).toISOString():nowIso(),source:'OpenSky ADS-B',sourceStatus:'live'});
+      const f=movementFeature(s[0],lon,lat,{kind:'air',category:'air',layer:'flights',callsign:String(s[1]||'').trim(),icao24:s[0],heading:num(s[10]),speed:num(s[9]),altitude:num(s[7]),observedAt:j.time?new Date(Number(j.time)*1000).toISOString():nowIso(),source:'OpenSky ADS-B',sourceStatus:'live'});
       if(f) out.push(f);
     }
     if(out.length) return {features:out,source:'OpenSky ADS-B',status:'live',observedAt:nowIso()};
@@ -250,7 +250,7 @@ async function movementShips(b, env) {
     let ws; try{ws=new WebSocket(url)}catch(e){return resolve({features:[],source:'AISstream.io',status:'error',error:e.message})}
     const timer=setTimeout(()=>finish({features:[...ships.values()],source:'AISstream.io',status:ships.size?'live':'no-current-vehicles',observedAt:nowIso()}),3000);
     ws.addEventListener('open',()=>ws.send(JSON.stringify({APIKey:env.AISSTREAM_API_KEY,BoundingBoxes:[[[b.minLat,b.minLon],[b.maxLat,b.maxLon]]],FilterMessageTypes:['PositionReport','StandardClassBPositionReport']})));
-    ws.addEventListener('message',async ev=>{try{let raw=ev.data;if(raw instanceof ArrayBuffer)raw=new TextDecoder().decode(new Uint8Array(raw));else if(raw instanceof Uint8Array)raw=new TextDecoder().decode(raw);else if(typeof raw!=='string')raw=String(raw);const e=JSON.parse(raw),m=e.Message?.PositionReport||e.Message?.StandardClassBPositionReport,md=e.MetaData||{};if(!m)return;const lat=Number(m.Latitude??md.latitude),lon=Number(m.Longitude??md.longitude),id=String(m.UserID??md.MMSI??'');if(!id)return;const observed=m.Timestamp!=null?new Date(Number(m.Timestamp)*1000).toISOString():nowIso();const f=movementFeature(id,lon,lat,{kind:'ship',layer:'ships',name:String(md.ShipName||'').trim(),heading:num(m.TrueHeading!=null?m.TrueHeading:m.Cog),speed:num(m.Sog),mmsi:id,observedAt:observed,source:'AISstream.io',sourceStatus:'live'});if(f)ships.set(id,f)}catch(e){}}); 
+    ws.addEventListener('message',async ev=>{try{let raw=ev.data;if(raw instanceof ArrayBuffer)raw=new TextDecoder().decode(new Uint8Array(raw));else if(raw instanceof Uint8Array)raw=new TextDecoder().decode(raw);else if(typeof raw!=='string')raw=String(raw);const e=JSON.parse(raw),m=e.Message?.PositionReport||e.Message?.StandardClassBPositionReport,md=e.MetaData||{};if(!m)return;const lat=Number(m.Latitude??md.latitude),lon=Number(m.Longitude??md.longitude),id=String(m.UserID??md.MMSI??'');if(!id)return;const observed=m.Timestamp!=null?new Date(Number(m.Timestamp)*1000).toISOString():nowIso();const f=movementFeature(id,lon,lat,{kind:'ship',category:'ship',layer:'ships',name:String(md.ShipName||'').trim(),heading:num(m.TrueHeading!=null?m.TrueHeading:m.Cog),speed:num(m.Sog),mmsi:id,observedAt:observed,source:'AISstream.io',sourceStatus:'live'});if(f)ships.set(id,f)}catch(e){}}); 
     ws.addEventListener('error',ev=>{clearTimeout(timer);finish({features:[],source:'AISstream.io',status:'error',error:'AIS stream connection failed'})});
   });
 }
@@ -275,7 +275,7 @@ function gtfsVehicles(buf, feedMeta={}) {
     });
     if(pos&&Number.isFinite(pos.lat)&&Number.isFinite(pos.lon)){
       const rail=!!feedMeta.rail,kind=rail?'rail':'transit',layer=rail?'rail':'public-transport';
-      const ftr=movementFeature(vid||id,pos.lon,pos.lat,{kind,layer,vehicleId:vid||id,route,heading:num(pos.bearing),speed:num(pos.speed),observedAt:ts?new Date(ts*1000).toISOString():nowIso(),source:'GTFS-Realtime',sourceStatus:'live',feed:feedMeta.label||''});
+      const ftr=movementFeature(vid||id,pos.lon,pos.lat,{kind,category:kind,mode:kind,layer,vehicleId:vid||id,route,heading:num(pos.bearing),speed:num(pos.speed),observedAt:ts?new Date(ts*1000).toISOString():nowIso(),source:'GTFS-Realtime',sourceStatus:'live',feed:feedMeta.label||''});
       if(ftr)out.push(ftr);
     }
   });
@@ -303,12 +303,21 @@ async function movementTransit(env){
   if(!feeds.length)return {features:[],source:'GTFS-Realtime',status:'feed-required',error:'No GTFS realtime feed is configured'};
   const all=[],feedErrors=[];
   await Promise.all(feeds.map(async feed=>{try{const r=await fetch(feed.url,{headers:{Accept:'application/x-protobuf,application/octet-stream'}});if(!r.ok){feedErrors.push(feed.label+' HTTP '+r.status);return;}all.push(...gtfsVehicles(new Uint8Array(await r.arrayBuffer()),feed));}catch(e){feedErrors.push(feed.label+': '+(e.message||e));}}));
-  return {features:all.slice(0,10000),source:'GTFS-Realtime'+(env.MOBILITY_DB_REFRESH_TOKEN?' via Mobility Database':''),status:all.length?'live':'no-current-vehicles',observedAt:nowIso(),feeds:feeds.length,error:all.length?undefined:(feedErrors.slice(0,3).join(' | ')||'No current vehicle positions returned')};
+  const features=all.slice(0,10000);
+  const latest=(arr)=>arr.reduce((m,f)=>{const t=Date.parse(f.properties?.observedAt||'');return Number.isFinite(t)&&t>m?t:m;},0);
+  const transit=features.filter(f=>f.properties?.kind==='transit');
+  const rail=features.filter(f=>f.properties?.kind==='rail');
+  const srcName='GTFS-Realtime'+(env.MOBILITY_DB_REFRESH_TOKEN?' via Mobility Database':'');
+  const sources=[
+    {source:srcName,status:transit.length?'live':'no-current-vehicles',layer:'transit',count:transit.length,observedAt:latest(transit)?new Date(latest(transit)).toISOString():null,feeds:feeds.filter(f=>!f.rail).length,error:transit.length?undefined:('No current bus/public-transit vehicle positions returned'+(feedErrors.length?' · '+feedErrors.slice(0,2).join(' | '):''))},
+    {source:srcName,status:rail.length?'live':'no-current-vehicles',layer:'rail',count:rail.length,observedAt:latest(rail)?new Date(latest(rail)).toISOString():null,feeds:feeds.filter(f=>f.rail).length,error:rail.length?undefined:('No current railway/metro vehicle positions returned'+(feedErrors.length?' · '+feedErrors.slice(0,2).join(' | '):''))}
+  ];
+  return {features,sources,source:srcName,status:features.length?'live':'no-current-vehicles',observedAt:latest(features)?new Date(latest(features)).toISOString():null,feeds:feeds.length,error:features.length?undefined:(feedErrors.slice(0,3).join(' | ')||'No current vehicle positions returned')};
 }
 async function movement(req,env,url){
   const b=movementBbox(url.searchParams.get('bbox'));if(!b)return json(req,env,{ok:false,error:'Valid bbox=minLon,minLat,maxLon,maxLat is required'},400);
   const requestedLayers=String(url.searchParams.get('layers')||'flights,ships,public-transport').split(',').map(s=>s.trim()).filter(Boolean);
-  const layers=[...new Set(requestedLayers.map(k=>k==='transit'||k==='rail'?'public-transport':k))];
+  const layers=[...new Set(requestedLayers)];
   const key=[b.minLon,b.minLat,b.maxLon,b.maxLat,layers.sort().join(',')].join('|'),hit=movementCache.get(key);
   if(hit&&Date.now()-hit.t<MOVEMENT_TTL)return json(req,env,hit.data);
   const jobs=[];
@@ -316,7 +325,29 @@ async function movement(req,env,url){
   if(layers.includes('ships'))jobs.push(movementShips(b,env));
   if(layers.includes('public-transport'))jobs.push(movementTransit(env));
   const results=await Promise.all(jobs),features=[],sources=[];
-  for(const r of results){features.push(...(r.features||[]));const layer=(r.features&&r.features[0]&&r.features[0].properties&&r.features[0].properties.layer)||((r.source||'').includes('OpenSky')?'flights':(r.source||'').includes('AIS')?'ships':(r.source||'').includes('GTFS')?'public-transport':'');sources.push({source:r.source,status:r.status,layer,count:(r.features||[]).length,observedAt:r.observedAt||nowIso(),...(r.error?{error:r.error}:{})});}
+  const latestObserved=(arr)=>arr.reduce((m,f)=>{const t=Date.parse(f.properties?.observedAt||'');return Number.isFinite(t)&&t>m?t:m;},0);
+  for(const r of results){
+    const rf=r.features||[];
+    const rs=r.sources||[{
+      source:r.source,status:r.status,layer:(rf[0]?.properties?.layer)||((r.source||'').includes('OpenSky')?'flights':(r.source||'').includes('AIS')?'ships':'public-transport'),
+      count:rf.length,observedAt:(r.observedAt||latestObserved(rf))?(r.observedAt||new Date(latestObserved(rf)).toISOString()):null,
+      ...(r.error?{error:r.error}:{} )
+    }];
+    for(const ss of rs){
+      const s={...ss};
+      if(!s.observedAt && rf.length){const subset=rf.filter(f=>!s.layer||f.properties?.layer===s.layer||f.properties?.kind===s.layer);const t=latestObserved(subset);if(t)s.observedAt=new Date(t).toISOString();}
+      sources.push(s);
+    }
+    const allowed=rf.filter(f=>{
+      const layer=String(f.properties?.layer||'').toLowerCase(),kind=String(f.properties?.kind||f.properties?.category||'').toLowerCase();
+      if(layer==='flights') return layers.includes('flights');
+      if(layer==='ships') return layers.includes('ships');
+      if(kind==='rail'||layer==='rail') return layers.includes('rail');
+      if(kind==='transit'||layer==='transit'||layer==='public-transport') return layers.includes('transit');
+      return true;
+    });
+    features.push(...allowed);
+  }
   const data={type:'FeatureCollection',features,sources,generatedAt:nowIso(),architecture:'real-source → Cloudflare Worker → map; no dead reckoning'};
   movementCache.set(key,{t:Date.now(),data});return json(req,env,data);
 }
