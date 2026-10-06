@@ -86,7 +86,9 @@ function drawSpace(p){
      'Open the Universe view.';
    const action = ()=>{
      const e=engine();
-     if(e) e.setScale(k==='SOLAR SYSTEM' ? 'solar' : k.toLowerCase());
+     if(!e) return;
+     if(k==='EARTH') e.setScale('earth3d');
+     else e.setScale(k==='SOLAR SYSTEM' ? 'solar' : k.toLowerCase());
    };
    g.append(card(k,desc,action,'OPEN 3D'));
  });
