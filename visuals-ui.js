@@ -110,7 +110,7 @@ function drawSpace(p){
 }
 const transitMap={AIR:'air',SHIP:'ships',RAILWAY:'rail',BOAT:'ships','PERSONAL JET':'air',TAXI:'taxi',BUS:'transit',METRO:'transit',CAR:'car',BIKES:'bike'};
 function drawTransit(p){
- p.append(status('ALL TRANSPORT is the default view. Selecting a specific mode filters the globe to that mode only. Live data is source-labelled; simulation is a separate test mode.'));
+ p.append(status('ALL TRANSPORT is the default view. Mode buttons filter the globe to observed source data; station discovery is separate from vehicle telemetry.'));
  const g=el('div',{class:'tm-stack'});
  T.TRANSIT.forEach(k=>{
    if(k==='ALL TRANSPORT'){
@@ -118,10 +118,32 @@ function drawTransit(p){
      return;
    }
    const feed=transitMap[k];
-   const desc=feed?'Filter the globe to real-time '+k.toLowerCase()+' observations from the TrackMeNow '+feed.toUpperCase()+' backend adapter.':'No dedicated live '+k.toLowerCase()+' feed is currently configured; TrackMeNow will not invent positions.';
+   const desc=feed?'Filter the globe to real '+k.toLowerCase()+' observations from the TrackMeNow backend.':'Use public network/station discovery; no vehicle position is invented.';
    const act=feed?()=>{const e=engine();if(e&&e.activateTransport)e.activateTransport(feed);}:()=>showSourceStatus(p,k);
    g.append(card(k,desc,act,feed?'SHOW ONLY':'SOURCE STATUS'));
  });
+ if(['BUS','METRO','RAILWAY'].includes(state.sub)){
+   const mode=state.sub==='BUS'?'bus':state.sub==='METRO'?'metro':'rail';
+   g.append(card('NETWORK & STATIONS','Discover nearby stations/networks from OpenStreetMap/Overpass, using the transit-network behavior of TRAVIC, GeoP GeOps and the metro reference sites.',async()=>{
+     try{
+       const m=map();if(!m)throw new Error('Map unavailable');
+       const b=m.getBounds(),bbox=[b.getWest(),b.getSouth(),b.getEast(),b.getNorth()].join(',');
+       const j=await api('/api/transit/discovery?mode='+mode+'&bbox='+encodeURIComponent(bbox));
+       const feats=j.features||[];
+       if(!m.getSource('tm-transit-stations'))m.addSource('tm-transit-stations',{type:'geojson',data:{type:'FeatureCollection',features:feats}});
+       else m.getSource('tm-transit-stations').setData({type:'FeatureCollection',features:feats});
+       if(!m.getLayer('tm-transit-stations'))m.addLayer({id:'tm-transit-stations',type:'circle',source:'tm-transit-stations',paint:{'circle-radius':['interpolate',['linear'],['zoom'],4,2.5,10,5,15,7],'circle-color':['match',['get','kind'],'metro','#c084fc','rail','#f59e0b','#38bdf8'],'circle-stroke-color':'#071018','circle-stroke-width':1}});
+       setStatus(mode.toUpperCase()+' STATIONS · '+feats.length.toLocaleString()+' · OSM/Overpass',true);
+       if(feats[0])m.flyTo({center:feats[0].geometry.coordinates,zoom:Math.max(10,m.getZoom()),duration:700});
+     }catch(e){p.append(status('Station discovery unavailable: '+e.message));}
+   },'SHOW STATIONS'));
+ }
+ if(state.sub==='METRO'){
+   g.append(card('ROUTE SEARCH','Search the current map for a station or metro network. Vehicle positions remain live-only when a GTFS-Realtime source exists.',()=>{state.tab='MAP';state.sub='SEARCH';state.panel=true;render();const i=$('#tm-panel-search');if(i)i.focus();},'SEARCH STATION'));
+ }
+ if(state.sub==='TAXI'){
+   g.append(card('RIDE WORKFLOW','Open the public Uber ride-request workflow. TrackMeNow does not scrape private ride data or claim access to Uber vehicle positions.',()=>window.open('https://m.uber.com/go/home','_blank','noopener,noreferrer'),'OPEN RIDE WORKFLOW'));
+ }
  const sim=el('button',{type:'button',class:'tm-action'},'RUN TRANSPORT SIMULATION');
  sim.onclick=()=>{const e=engine();if(e&&e.startTransportSimulation)e.startTransportSimulation();};
  p.append(sim);
