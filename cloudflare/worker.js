@@ -210,20 +210,24 @@ const CAMERA_TTL = 15000;
 function cameraBbox(v){const a=String(v||'').split(',').map(Number);if(a.length!==4||a.some(x=>!Number.isFinite(x)))return null;const [minLon,minLat,maxLon,maxLat]=a;if(minLon < -180||maxLon>180||minLat < -90||maxLat>90||minLon>=maxLon||minLat>=maxLat)return null;return {minLon,minLat,maxLon,maxLat};}
 async function movementCameras(b,env){
  const configured=String(env.CAMERA_GEOJSON_URLS||'').split(',').map(s=>s.trim()).filter(Boolean);
- const urls=configured;
+ const apiConfigured=String(env.CAMERA_API_URLS||'').split(',').map(s=>s.trim()).filter(Boolean);
+ const urls=[...configured,...apiConfigured];
  const out=[],errors=[];
  for(const sourceUrl of urls.slice(0,20)){try{
    const r=await fetch(sourceUrl,{headers:{Accept:'application/geo+json,application/json'}});if(!r.ok)throw new Error('HTTP '+r.status);
    const j=await r.json();
-   for(const f of (Array.isArray(j?.features)?j.features:[])){
-     const c=f?.geometry?.coordinates||[],lon=Number(c[0]),lat=Number(c[1]);
+   const records=Array.isArray(j?.features)?j.features:(Array.isArray(j?.cameras)?j.cameras:(Array.isArray(j?.data?.cameras)?j.data.cameras:(Array.isArray(j?.data)?j.data:[])));
+   for(const f of records){
+     const p=f?.properties||f||{};
+     const coords=f?.geometry?.coordinates||[];
+     const lon=Number(coords[0] ?? p.lon ?? p.lng ?? p.longitude ?? p.Longitude);
+     const lat=Number(coords[1] ?? p.lat ?? p.latitude ?? p.Latitude);
      if(!Number.isFinite(lon)||!Number.isFinite(lat)||lon<b.minLon||lon>b.maxLon||lat<b.minLat||lat>b.maxLat)continue;
-     const p=f.properties||{};
-     out.push({type:'Feature',id:String(f.id||p.id||crypto.randomUUID()),geometry:{type:'Point',coordinates:[lon,lat]},properties:{type:'camera',category:'camera',layer:'cameras',title:String(p.title||p.name||p.label||p.address||'Public camera'),provider:String(p.provider||p.source||'OpenSurveillanceDB public catalog'),location:String(p.location||p.address||p.road||p.city||''),imageUrl:String(p.imageUrl||p.image_url||p.snapshot||p.image||''),streamUrl:String(p.streamUrl||p.stream_url||p.stream||''),sourceUrl:String(p.sourceUrl||p.source_url||p.url||sourceUrl),observedAt:String(p.observedAt||p.observed_at||p.timestamp||p.updated_at||nowIso()),status:String(p.status||'PUBLIC'),license:String(p.license||'')}});
+     out.push({type:'Feature',id:String(f.id||p.id||p.ID||crypto.randomUUID()),geometry:{type:'Point',coordinates:[lon,lat]},properties:{type:'camera',category:'camera',layer:'cameras',title:String(p.title||p.name||p.label||p.address||p.Name||'Public camera'),provider:String(p.provider||p.source||p.Provider||'Official public camera source'),location:String(p.location||p.address||p.road||p.city||p.RoadwayName||''),imageUrl:String(p.imageUrl||p.image_url||p.snapshot||p.image||p.ImageUrl||''),streamUrl:String(p.streamUrl||p.stream_url||p.stream||p.VideoUrl||p.video_url||''),sourceUrl:String(p.sourceUrl||p.source_url||p.url||p.Url||sourceUrl),observedAt:String(p.observedAt||p.observed_at||p.timestamp||p.updated_at||p.LastUpdated||nowIso()),status:String(p.status||'PUBLIC'),license:String(p.license||'')}});
    }
  }catch(e){errors.push(sourceUrl+' · '+(e.message||e));}}
  const latest=out.reduce((m,f)=>{const t=Date.parse(f.properties.observedAt);return Number.isFinite(t)&&t>m?t:m},0);
- return {features:out.slice(0,20000),sources:[{source:'TrackMeNow live camera feeds',layer:'cameras',status:out.length?'live':'feed-required',count:out.length,observedAt:latest?new Date(latest).toISOString():null,error:out.length?undefined:(configured.length?'Configured camera feeds returned no current frames':'No live camera feed configured. Reference catalogues are not displayed as camera video.')}]};
+ return {features:out.slice(0,20000),sources:[{source:'TrackMeNow live camera feeds',layer:'cameras',status:out.length?'live':'feed-required',count:out.length,observedAt:latest?new Date(latest).toISOString():null,error:out.length?undefined:(configured.length?'Configured public camera feeds returned no current frames':'No live camera feed configured. Reference catalogues are not displayed as camera video.')}]};
 }
 async function cameras(req,env,url){
  const b=cameraBbox(url.searchParams.get('bbox'));if(!b)return json(req,env,{ok:false,error:'Valid bbox is required'},400);
