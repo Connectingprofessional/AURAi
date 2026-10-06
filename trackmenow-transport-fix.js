@@ -1,6 +1,7 @@
 /* TrackMeNow transport fix (GitHub Pages)
- * Problem: /api/movement worker often returns 0 flights / broken transit.
- * Fix: intercept movement API responses; if empty, fill from live-data branch.
+ * 1) Intercept sparse /api/movement → fill from live-data branch
+ * 2) Stop activateTransport from wiping other layers (Air/Ships/Taxi SHOW ONLY)
+ * 3) Keep layers visible when switching Satellite / Live / Weather
  */
 (function () {
   'use strict';
@@ -77,7 +78,8 @@
   function filterBbox(features, bbox) {
     if (!bbox || bbox.length !== 4) return features;
     var minLon = bbox[0], minLat = bbox[1], maxLon = bbox[2], maxLat = bbox[3];
-    var padLon = (maxLon - minLon) * 0.05, padLat = (maxLat - minLat) * 0.05;
+    var padLon = Math.max(0.5, (maxLon - minLon) * 0.05);
+    var padLat = Math.max(0.5, (maxLat - minLat) * 0.05);
     minLon -= padLon; maxLon += padLon; minLat -= padLat; maxLat += padLat;
     return features.filter(function (f) {
       var c = f.geometry && f.geometry.coordinates;
@@ -98,7 +100,8 @@
     try {
       var u = new URL(url, location.href);
       var layers = (u.searchParams.get('layers') || '').split(',').map(function (s) { return s.trim(); }).filter(Boolean);
-      var map = { flights: 'air', ships: 'ships', transit: 'transit', rail: 'rail' };
+      if (!layers.length) return ['air', 'ships', 'transit'];
+      var map = { flights: 'air', ships: 'ships', transit: 'transit', rail: 'rail', taxi: 'taxi', car: 'car', bike: 'bike' };
       return layers.map(function (l) {
         if (map[l]) return map[l];
         if (l === 'public-transport') return 'transit';
@@ -119,7 +122,10 @@
       try { j = await clone.json(); } catch (e) { return res; }
       var feats = (j && j.features) || [];
       if (feats.length >= 5) return res;
-      var kinds = parseLayers(url);
+      var kinds = parseLayers(url).filter(function (k) {
+        return k === 'air' || k === 'ships' || k === 'transit' || k === 'rail';
+      });
+      if (!kinds.length) kinds = ['air', 'ships', 'transit'];
       var bbox = parseBbox(url);
       await ensureLive(kinds);
       var merged = [];
@@ -128,7 +134,7 @@
         var pack = cache[k];
         if (!pack) return;
         var list = filterBbox(pack.features, bbox);
-        if (list.length > 4000) list = list.slice(0, 4000);
+        if (list.length > 5000) list = list.slice(0, 5000);
         merged = merged.concat(list);
         sources.push({
           layer: k === 'air' ? 'flights' : k,
@@ -138,7 +144,7 @@
           observedAt: new Date().toISOString()
         });
       });
-      console.log('[TM fix] movement API sparse (' + feats.length + ') → live-data', merged.length);
+      console.log('[TM fix] sparse movement (' + feats.length + ') → live-data', merged.length);
       var body = JSON.stringify({
         ok: true,
         type: 'FeatureCollection',
@@ -151,26 +157,61 @@
         status: 200,
         headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' }
       });
-    }).catch(function (err) {
-      return ensureLive(parseLayers(url)).then(function () {
+    }).catch(function () {
+      return ensureLive(['air', 'ships', 'transit']).then(function () {
         var kinds = parseLayers(url);
         var bbox = parseBbox(url);
         var merged = [];
         kinds.forEach(function (k) {
-          if (cache[k]) merged = merged.concat(filterBbox(cache[k].features, bbox).slice(0, 4000));
+          if (cache[k]) merged = merged.concat(filterBbox(cache[k].features, bbox).slice(0, 5000));
         });
-        var body = JSON.stringify({
+        return new Response(JSON.stringify({
           ok: true, type: 'FeatureCollection', features: merged,
           sources: [{ source: 'GitHub live-data', status: 'live', count: merged.length }],
           generatedAt: new Date().toISOString(),
           architecture: 'github-live-data-offline'
-        });
-        return new Response(body, { status: 200, headers: { 'Content-Type': 'application/json' } });
+        }), { status: 200, headers: { 'Content-Type': 'application/json' } });
       });
     });
   };
 
+  function patchEngine() {
+    var eng = window.TrackMeNowEngine;
+    if (!eng || eng.__tmLayerPatch) return !!eng;
+    eng.__tmLayerPatch = true;
+    eng.activateTransport = function (kind) {
+      if (typeof eng.toggleTransport === 'function') {
+        if (!eng.transportOn(kind)) eng.toggleTransport(kind);
+        else {
+          eng.toggleTransport(kind);
+          eng.toggleTransport(kind);
+        }
+        return true;
+      }
+      return false;
+    };
+    var origAll = eng.showAllTransport;
+    eng.showAllTransport = function () {
+      if (typeof origAll === 'function') return origAll.call(eng);
+      ['air', 'ships', 'transit', 'rail'].forEach(function (k) {
+        if (!eng.transportOn(k)) eng.toggleTransport(k);
+      });
+      return true;
+    };
+    console.log('[TM fix] activateTransport is additive (no longer clears Air/Ships/Transit)');
+    return true;
+  }
+
+  var tries = 0;
+  var iv = setInterval(function () {
+    tries++;
+    if (patchEngine() || tries > 80) clearInterval(iv);
+  }, 250);
+
   setTimeout(function () { ensureLive(['air', 'ships', 'transit']); }, 2000);
-  window.TrackMeNowLoadLiveData = function () { cacheAt = 0; return ensureLive(['air', 'ships', 'transit', 'rail']); };
-  console.log('[TM fix] movement API → live-data fallback armed');
+  window.TrackMeNowLoadLiveData = function () {
+    cacheAt = 0;
+    return ensureLive(['air', 'ships', 'transit', 'rail']);
+  };
+  console.log('[TM fix] movement fallback + non-destructive layer switch armed');
 })();
