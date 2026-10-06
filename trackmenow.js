@@ -218,12 +218,7 @@
     const box = document.createElement('div');
     box.id = 'tm-universe-chrome';
     box.innerHTML = [
-      '<div style="position:fixed;z-index:2200;left:50%;top:58px;transform:translateX(-50%);display:flex;gap:6px;flex-wrap:wrap;justify-content:center;max-width:96vw">',
-      '  <button data-scale="solar" class="tm-scale-btn">Solar System</button>',
-      '  <button data-scale="earth" class="tm-scale-btn">Earth Live</button>',
-      '  <button data-scale="moon" class="tm-scale-btn">Moon</button>',
-      '  <button data-scale="mars" class="tm-scale-btn">Mars</button>',
-      '</div>',
+
       '<div id="tm-drawer-live" class="tm-drawer" style="display:none">',
       '  <div class="tm-drawer-title">LIVE MAPS</div>',
       '  <button data-wx="live" class="tm-drawer-item on">Live clouds (VIIRS)</button>',
