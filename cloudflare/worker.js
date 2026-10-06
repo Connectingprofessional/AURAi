@@ -323,7 +323,7 @@ async function movement(req,env,url){
   const jobs=[];
   if(layers.includes('flights'))jobs.push(movementFlights(b,env));
   if(layers.includes('ships'))jobs.push(movementShips(b,env));
-  if(layers.includes('public-transport'))jobs.push(movementTransit(env));
+  if(layers.includes('transit')||layers.includes('public-transport'))jobs.push(movementTransit(env));
   const results=await Promise.all(jobs),features=[],sources=[];
   const latestObserved=(arr)=>arr.reduce((m,f)=>{const t=Date.parse(f.properties?.observedAt||'');return Number.isFinite(t)&&t>m?t:m;},0);
   for(const r of results){
