@@ -1146,8 +1146,9 @@
     return [b.getWest(), b.getSouth(), b.getEast(), b.getNorth()].join(',');
   }
   function tpLayers() {
-    return Object.keys(TP.on).filter(function(k){ return TP.on[k] && k !== 'cells'; })
-      .map(function(k){ return TP.kinds[k].layer; }).join(',');
+    const layers = Object.keys(TP.on).filter(function(k){ return TP.on[k] && k !== 'cells'; })
+      .map(function(k){ return TP.kinds[k].layer === 'rail' || TP.kinds[k].layer === 'transit' ? 'public-transport' : TP.kinds[k].layer; });
+    return Array.from(new Set(layers)).join(',');
   }
   function tpMovementUrl() {
     const bbox = tpBbox();
