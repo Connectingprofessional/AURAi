@@ -96,11 +96,14 @@ function drawSpace(p){
 }
 const transitMap={AIR:'air',SHIP:'ships',RAILWAY:'rail',BOAT:'ships', 'PERSONAL JET':'air',TAXI:null,METRO:'transit',CAR:null,BIKES:null};
 function drawTransit(p){
- p.append(status('TRANSIT is one umbrella. Moving feeds are toggled from the available live source; categories without a dedicated live feed are reported as source-required rather than simulated.'));
+ p.append(status('LIVE uses upstream observations. SIMULATION is only a pipeline test and is always labelled SIM. No simulated position is presented as realtime.'));
  const g=el('div',{class:'tm-stack'});
  T.TRANSIT.forEach(k=>{const feed=transitMap[k];let desc=feed?'Uses the live '+feed.toUpperCase()+' transport layer.':'Dedicated live '+k.toLowerCase()+' feed is not currently configured.';
- const act=feed?()=>{const e=engine();if(e)e.toggleTransport(feed)}:()=>showSourceStatus(p,k);
- g.append(card(k,desc,act,feed?'TOGGLE LIVE':'SOURCE STATUS'));});p.append(g);
+ const act=feed?()=>{const e=engine();if(e&&e.activateTransport)e.activateTransport(feed);else if(e)e.toggleTransport(feed)}:()=>showSourceStatus(p,k);
+ g.append(card(k,desc,act,feed?'SHOW LIVE':'SOURCE STATUS'));});
+ const sim=el('button',{type:'button',class:'tm-action'},'RUN TRANSPORT SIMULATION');
+ sim.onclick=()=>{const e=engine();if(e&&e.startTransportSimulation)e.startTransportSimulation();};
+ p.append(sim);
 }
 function showSourceStatus(p,k){p.append(status(k+': no dedicated live feed is configured. TrackMeNow will not invent vehicle positions.'))}
 function drawWeather(p){
