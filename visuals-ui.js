@@ -269,14 +269,57 @@ function drawStatus(p){
    p.append(g);
  }).catch(()=>{p.innerHTML='';p.append(status('Status unavailable right now.'))});
 }
-function drawSearch(p){const i=el('input',{class:'tm-input',id:'tm-panel-search',placeholder:'Search anything…'}),b=el('button',{class:'tm-action',type:'button'},'SEARCH');b.onclick=()=>doSearch(i.value);i.onkeydown=e=>{if(e.key==='Enter')doSearch(i.value)};const row=el('div',{class:'tm-row'});row.append(i,b);p.append(row,status('Places, coordinates, aircraft, IP, device and cell identifiers are supported where a live source exists.'))}
-async function doSearch(q){q=String(q||'').trim();if(!q)return;try{if(/^\+?[0-9][0-9 ()-]{6,18}$/.test(q)){state.tab='TRACK';state.sub='DEVICE';state.panel=true;render();return}
- let j=null;try{j=await api('/api/global/search?q='+encodeURIComponent(q));}catch(e){try{j=await api('/api/search?q='+encodeURIComponent(q));}catch(e2){j=null}}
- if(!j){
-   const nr=await fetch('https://nominatim.openstreetmap.org/search?format=jsonv2&limit=5&q='+encodeURIComponent(q),{headers:{'Accept':'application/json'}}).then(r=>r.json()).catch(()=>[]);
-   j={results:(nr||[]).map(x=>({type:'place',lat:Number(x.lat),lon:Number(x.lon),label:x.display_name}))};
- }
- const x=(j.results||[])[0];if(x&&map()&&Number.isFinite(+x.lon))map().flyTo({center:[+x.lon,+x.lat],zoom:Math.max(8,map().getZoom()),duration:900});else alert('No live/public result found.')}catch(e){alert(e.message)}}
+function drawSearch(p){
+ const i=el('input',{class:'tm-input',id:'tm-panel-search',placeholder:'Search city, place, phone number, device, cell ID, aircraft, IP…'});
+ const b=el('button',{class:'tm-action',type:'button'},'SEARCH');
+ b.onclick=()=>doSearch(i.value);i.onkeydown=e=>{if(e.key==='Enter')doSearch(i.value)};
+ const row=el('div',{class:'tm-row'});row.append(i,b);p.append(row);
+ p.append(status('Places, coordinates, phone numbers, aircraft, IP, device and cell identifiers are supported where an authorized/public source exists.'));
+}
+async function doSearch(q){
+ q=String(q||'').trim();if(!q)return;
+ try{
+   if(/^\+?[0-9][0-9 ()-]{6,18}$/.test(q)){
+     const clean=q.replace(/[^0-9+]/g,'');
+     try{
+       const j=await api('/api/devices/search?phone='+encodeURIComponent(clean));
+       state.tab='TRACK';state.sub='DEVICE';state.panel=true;render();
+       const body=document.querySelector('#tm-panel .tm-panel-body');
+       if(body){
+         const found=el('div',{class:'tm-status'},j.found?'CONSENTED DEVICE FOUND · '+(j.maskedPhone||clean):'NO CONSENTED TRACKMENOW DEVICE FOUND FOR '+clean);
+         body.append(found);
+         if(j.found){
+           const viewer=localStorage.getItem('tmViewerToken');
+           if(viewer){
+             try{
+               const loc=await api('/api/devices/lookup?phone='+encodeURIComponent(clean),{headers:{Authorization:'Bearer '+viewer}});
+               const l=loc.location;
+               if(l&&map()&&Number.isFinite(+l.lon)&&Number.isFinite(+l.lat)){
+                 map().flyTo({center:[+l.lon,+l.lat],zoom:15,duration:900});
+                 body.append(status('AUTHORIZED DEVICE LOCATION · updated '+new Date(l.timestamp||Date.now()).toLocaleString()));
+               } else body.append(status('Device is registered, but no recent GPS telemetry is available.'));
+             }catch(e){body.append(status('Pairing required to view this device location. Open TRACK → DEVICE and enter its one-time pairing code.'))}
+           }else body.append(status('Pairing required. Open TRACK → DEVICE and enter the one-time pairing code from the consented device.'));
+         }
+       }
+       return;
+     }catch(e){
+       state.tab='TRACK';state.sub='DEVICE';state.panel=true;render();
+       const body=document.querySelector('#tm-panel .tm-panel-body');
+       if(body)body.append(status(e.message||'Phone search unavailable.'));
+       return;
+     }
+   }
+   let j=null;try{j=await api('/api/global/search?q='+encodeURIComponent(q));}catch(e){try{j=await api('/api/search?q='+encodeURIComponent(q));}catch(e2){j=null}}
+   if(!j){
+     const nr=await fetch('https://nominatim.openstreetmap.org/search?format=jsonv2&limit=5&q='+encodeURIComponent(q),{headers:{'Accept':'application/json'}}).then(r=>r.json()).catch(()=>[]);
+     j={results:(nr||[]).map(x=>({type:'place',lat:Number(x.lat),lon:Number(x.lon),label:x.display_name}))};
+   }
+   const x=(j.results||[])[0];
+   if(x&&map()&&Number.isFinite(+x.lon))map().flyTo({center:[+x.lon,+x.lat],zoom:Math.max(8,map().getZoom()),duration:900});
+   else alert('No live/public result found.');
+ }catch(e){alert(e.message)}
+}
 function start(){const l=el('link',{rel:'stylesheet',href:'./visuals.css?v=full-frame-1'});document.head.append(l);build();setTimeout(()=>{const z=$('#tm-zoom-common');if(z)z.title='Common map zoom';},100)}
 if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',start);else start();
 })();
