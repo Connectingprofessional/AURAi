@@ -321,8 +321,9 @@ function drawSearch(p){
  const row=el('div',{class:'tm-row'});row.append(i,b);p.append(row);
  p.append(status('Places, coordinates, phone numbers, aircraft, IP, device and cell identifiers are supported where an authorized/public source exists.'));
 }
-async async function doSearch(q){
+async function doSearch(q){
  q=String(q||'').trim();if(!q)return;
+ logUi('search',state.tab,state.sub,/^\\+?[0-9][0-9 ()-]{6,18}$/.test(q)?phoneMask(q):q);
  try{
    if(/^\\+?[0-9][0-9 ()-]{6,18}$/.test(q)){
      const clean=q.replace(/[^0-9+]/g,'');
