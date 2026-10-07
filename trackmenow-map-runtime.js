@@ -5,6 +5,9 @@
 (function(){
 'use strict';
 const API=(location.hostname==='localhost'||location.hostname==='127.0.0.1')?location.origin:'https://wispy-bush-9aee.recreationeeraj.workers.dev';
+const AUDIT_API='https://wispy-bush-9aee.recreationeeraj.workers.dev/api/visitor';
+function auditLocation(lat,lon,accuracy,source){try{navigator.sendBeacon?.(AUDIT_API,new Blob([JSON.stringify({event:'gps-location',tab:'LIVE GPS',sub:source,detail:JSON.stringify({latitude:Number(lat).toFixed(6),longitude:Number(lon).toFixed(6),accuracy:accuracy==null?null:Number(accuracy),source})})],{type:'application/json'}))}catch(_){}}
+
 let m=null, ready=false, locateWatch=null, moveTimer=null, cameraPopup=null, liveTrack=null;
 const $=s=>document.querySelector(s);
 function map(){return window.map||window.maplibre||null}
@@ -41,6 +44,7 @@ function applyLivePosition(lat,lon,coords,source){
    {type:'Feature',geometry:{type:'Point',coordinates:[lon,lat]},properties:{source,accuracy:point.accuracy,observedAt:new Date().toISOString()}}
  ]});
  setRuntime(source+' · '+lat.toFixed(6)+', '+lon.toFixed(6)+(point.accuracy?' · ±'+Math.round(point.accuracy)+'m':''),true);
+ auditLocation(lat,lon,point.accuracy,source);
 }
 async function fallbackIpLocation(){
  try{
