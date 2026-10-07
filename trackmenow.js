@@ -1244,25 +1244,11 @@
     ['air','ships','transit','rail','taxi','car','bike'].forEach(function(k){
       if(!maplibre.getSource('tp-'+k)) maplibre.addSource('tp-'+k,{type:'geojson',data:empty});
       if(!maplibre.getLayer('tp-'+k)){
+        if(!maplibre.getLayer('tp-'+k+'-halo')) maplibre.addLayer({id:'tp-'+k+'-halo',type:'circle',source:'tp-'+k,paint:{'circle-radius':['interpolate',['linear'],['zoom'],1,7,6,10,12,15],'circle-color':TP.kinds[k].color,'circle-opacity':.16,'circle-blur':.9}});
         if(TP.kinds[k].icon) maplibre.addLayer({id:'tp-'+k,type:'symbol',source:'tp-'+k,layout:{'icon-image':TP.kinds[k].icon,'icon-rotate':['get','h'],'icon-rotation-alignment':'map','icon-allow-overlap':true,'icon-ignore-placement':true,'icon-size':['interpolate',['linear'],['zoom'],1,.3,6,.55,11,.9]}});
-        else maplibre.addLayer({id:'tp-'+k,type:'circle',source:'tp-'+k,paint:{'circle-radius':['interpolate',['linear'],['zoom'],1,2.5,6,4,12,6],'circle-color':TP.kinds[k].color,'circle-stroke-color':'#071018','circle-stroke-width':1.5,'circle-opacity':.9}});
+        else maplibre.addLayer({id:'tp-'+k,type:'circle',source:'tp-'+k,paint:{'circle-radius':['interpolate',['linear'],['zoom'],1,2.5,6,4,12,6],'circle-color':TP.kinds[k].color,'circle-stroke-color':'#071018','circle-stroke-width':1.5,'circle-opacity':.94}});
       }
       maplibre.on('click','tp-'+k,function(e){const f=e.features&&e.features[0];if(f)tpSelect(k,f.properties.i,false);});
-      maplibre.on('mouseenter','tp-'+k,function(e){
-        maplibre.getCanvas().style.cursor='pointer';
-        const f=e.features&&e.features[0],p=f&&f.properties;if(!p)return;
-        const title=p.name||p.callsign||p.flight||p.mmsi||p.label||p.vehicle_id||TP.kinds[k].noun;
-        const rows=['<b>'+esc(String(title))+'</b>',TP.kinds[k].label+' · '+esc(String(p.source||'server/API')),'Status '+esc(String(p.sourceStatus||'LIVE'))];
-        if(p.observedAt)rows.push('Observed '+new Date(p.observedAt).toLocaleTimeString());
-        if(p.speed_mps!=null)rows.push('Speed '+Math.round(Number(p.speed_mps)*3.6)+' km/h');
-        if(p.altitude!=null)rows.push('Altitude '+Math.round(Number(p.altitude))+' m');
-        if(p.route)rows.push('Route '+esc(String(p.route)));
-        if(p.vehicleId)rows.push('Vehicle '+esc(String(p.vehicleId)));
-        if(p.heading!=null)rows.push('Heading '+Math.round(Number(p.heading))+'°');
-        if(maplibre.__tmHoverPopup)maplibre.__tmHoverPopup.remove();
-        maplibre.__tmHoverPopup=new maplibregl.Popup({closeButton:false,closeOnClick:false,maxWidth:'280px',offset:12}).setLngLat(e.lngLat).setHTML('<div style="font:11px/1.45 system-ui;color:#e8f0f6">'+rows.join('<br>')+'</div>').addTo(maplibre);
-      });
-      maplibre.on('mouseleave','tp-'+k,function(){maplibre.getCanvas().style.cursor='';if(maplibre.__tmHoverPopup){maplibre.__tmHoverPopup.remove();maplibre.__tmHoverPopup=null;}});
     });
     if(!maplibre.getSource('tp-cells')) maplibre.addSource('tp-cells',{type:'geojson',data:empty});
     if(!maplibre.getLayer('tp-cells')) maplibre.addLayer({id:'tp-cells',type:'circle',source:'tp-cells',layout:{visibility:'none'},paint:{'circle-radius':4,'circle-color':'#d28bff','circle-opacity':.5}});
@@ -1270,12 +1256,26 @@
     if(!maplibre.getLayer('tp-sel')) maplibre.addLayer({id:'tp-sel',type:'circle',source:'tp-sel',paint:{'circle-radius':16,'circle-color':'rgba(0,0,0,0)','circle-stroke-width':2.5,'circle-stroke-color':'#fff'}});
     maplibre.on('dragstart',function(){if(TP.follow){TP.follow=false;tpCard();}});
     installWeatherHover();
+    tmStartVisualPulse();
     tpApply(); tpLoad();
     if(!TP.timer) TP.timer=setInterval(tpTick,1000);
     if(!TP.refresh) TP.refresh=setInterval(tpLoad,60000);
     maplibre.on('moveend',function(){tpLoad();});
   }
   function tpStop(){if(TP.timer)clearInterval(TP.timer);if(TP.refresh)clearInterval(TP.refresh);TP.timer=TP.refresh=null;TP.follow=false;const c=$('tm-tp-card');if(c)c.style.display='none';}
+  let tmPulseT=0, tmPulseTimer=null;
+  function tmStartVisualPulse(){
+    if(tmPulseTimer||!maplibre)return;
+    tmPulseTimer=setInterval(function(){
+      tmPulseT=(tmPulseT+0.13)%(Math.PI*2);
+      const a=.11+(.07*(Math.sin(tmPulseT)+1));
+      ['air','ships','transit','rail','taxi','car','bike'].forEach(function(k){
+        const id='tp-'+k+'-halo';
+        if(maplibre.getLayer(id)){try{maplibre.setPaintProperty(id,'circle-opacity',a);}catch(e){}}
+      });
+      if(maplibre.getLayer('tm-cameras-halo')){try{maplibre.setPaintProperty('tm-cameras-halo','circle-opacity',.10+.08*(Math.sin(tmPulseT*0.8)+1));}catch(e){}}
+    },100);
+  }
   function tpApply(){if(!maplibre)return;Object.keys(TP.on).forEach(function(k){if(maplibre.getLayer('tp-'+k))maplibre.setLayoutProperty('tp-'+k,'visibility',TP.on[k]?'visible':'none');});tpTick();tpStatus();}
   async function tpToggle(k){TP.on[k]=!TP.on[k];syncBar();if(TP.on[k]){setStatus('Loading '+TP.kinds[k].label.toLowerCase()+' from live movement API…',true);await tpLoad();}tpApply();}
   function tpStatus(){
