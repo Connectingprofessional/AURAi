@@ -21,7 +21,7 @@ body{overscroll-behavior:none}
 #map{position:fixed!important;inset:0 0 var(--tm-dock-h,76px) 0!important;z-index:1;background:transparent!important}
 .maplibregl-canvas{background:transparent!important}
 #legacy-controls{display:none!important}
-#status{display:none!important}
+#status{display:none!important}\n#tm-media-rail{position:fixed;left:10px;top:64px;z-index:6900;display:flex;flex-direction:column;gap:5px;align-items:center;pointer-events:auto}\n#tm-media-rail>button:not(#tm-media-clear){width:52px;height:30px;border:1px solid rgba(180,220,240,.2);border-radius:6px;background:rgba(4,9,14,.9);color:#dff2ff;font-size:8px;font-weight:900;letter-spacing:.4px;cursor:pointer;box-shadow:0 5px 16px rgba(0,0,0,.28);backdrop-filter:blur(10px)}\n#tm-media-rail>button:not(#tm-media-clear):hover{background:rgba(69,168,255,.2);border-color:rgba(69,168,255,.45)}\n#tm-media-preview{width:72px;max-height:105px;overflow:hidden;border:1px solid rgba(180,220,240,.2);border-radius:7px;background:rgba(4,9,14,.92);box-shadow:0 5px 18px rgba(0,0,0,.35)}\n#tm-media-preview img,#tm-media-preview video{display:block;width:100%;height:auto;max-height:104px;object-fit:cover}\n#tm-media-clear{width:22px;height:22px;border:1px solid rgba(255,255,255,.16);border-radius:50%;background:rgba(4,9,14,.92);color:#fff;font-size:15px;line-height:18px;cursor:pointer;box-shadow:0 5px 14px rgba(0,0,0,.28)}\n@media(max-width:800px){#tm-media-rail{left:6px;top:56px}#tm-media-rail>button:not(#tm-media-clear){width:48px;height:28px;font-size:7px}}
 #tm-bottom-bar{display:none!important;height:0!important;overflow:hidden!important;pointer-events:none!important}
 #tm-timebar{bottom:calc(var(--tm-dock-h,76px) + 10px)!important;z-index:5000!important}
 #tm-shell{z-index:6000!important}
@@ -50,7 +50,14 @@ body{overscroll-behavior:none}
 <div id="map-bg-scan" aria-hidden="true"></div>
 <div id="map"></div>
 <div id="legacy-controls"></div>
-<div id="status">Starting…</div>
+<div id="status">Starting…</div>\n<div id="tm-media-rail" aria-label="Photo and video upload">
+  <button id="tm-media-photo" type="button" title="Upload photo" aria-label="Upload photo">PHOTO</button>
+  <button id="tm-media-video" type="button" title="Upload video" aria-label="Upload video">VIDEO</button>
+  <input id="tm-media-photo-input" type="file" accept="image/*" hidden>
+  <input id="tm-media-video-input" type="file" accept="video/*" hidden>
+  <div id="tm-media-preview" hidden></div>
+  <button id="tm-media-clear" type="button" title="Remove uploaded media" aria-label="Remove uploaded media" hidden>×</button>
+</div>
 
 <script src="./vendor/maplibre-gl/maplibre-gl.js"></script>
 <script src="./trackmenow-transport-fix.js?v=16"></script>
