@@ -1317,7 +1317,7 @@
     const k=TP.sel.k,d=TP.data[k],f=d&&d.features[TP.sel.i];if(!f){c.style.display='none';return;}
     const p=f.properties||{},pos=tpSelPos(),title=p.name||p.callsign||p.flight||p.mmsi||p.label||p.vehicle_id||TP.kinds[k].noun,observed=p.observedAt?new Date(p.observedAt).toLocaleTimeString():'—';
     const mediaUrl=String(p.imageUrl||p.image_url||p.photoUrl||'');
-    const safeMedia=/^https?:\\/\\//i.test(mediaUrl)?mediaUrl.replace(/"/g,'&quot;'):'';
+    const safeMedia=/^https?:\/\//i.test(mediaUrl)?mediaUrl.replace(/"/g,'&quot;'):'';
     c.innerHTML='<div style="display:flex;justify-content:space-between;gap:8px"><b style="font-size:14px;color:'+TP.kinds[k].color+'">'+esc(String(title))+'</b><a data-tp="close" style="cursor:pointer;opacity:.7">✕</a></div>'+
       (safeMedia?'<img src="'+safeMedia+'" alt="Live object" style="display:block;width:100%;height:118px;object-fit:cover;border-radius:8px;margin:7px 0 9px;border:1px solid rgba(255,255,255,.1)" loading="lazy" referrerpolicy="no-referrer">':'')+
       '<div style="opacity:.65;font-size:10px;margin-bottom:6px">'+TP.kinds[k].label+' · '+esc(String(p.source||'server/API'))+'</div>'+
