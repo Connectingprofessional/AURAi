@@ -445,11 +445,24 @@ async function loadCameraAtlas(){
 }
 function bindCameraMap(){
  try{
-  const m=map(); if(!m||m.__tmCameraMapBound)return;
-  m.__tmCameraMapBound=true;
-  scheduleCameraAtlas(700);
-  m.on('moveend',()=>scheduleCameraAtlas(450));
- }catch(e){}
+  const m=map(); if(!m)return;
+  // MapLibre can recreate/reload its style when switching globe/satellite/base layers.
+  // Never treat a previous binding as proof that the current style has camera layers.
+  if(!m.__tmCameraEventsBound){
+   m.__tmCameraEventsBound=true;
+   m.on('moveend',()=>scheduleCameraAtlas(450));
+   m.on('idle',()=>scheduleCameraAtlas(0));
+   m.on('styledata',()=>scheduleCameraAtlas(150));
+   m.on('load',()=>scheduleCameraAtlas(150));
+  }
+  if(m.isStyleLoaded && !m.isStyleLoaded()){
+   m.once('load',()=>scheduleCameraAtlas(150));
+   return;
+  }
+  scheduleCameraAtlas(150);
+ }catch(e){
+  setTimeout(()=>{try{scheduleCameraAtlas(500)}catch(_){ }},500);
+ }
 }
 function drawVisuals(p){
  bindCameraMap();
