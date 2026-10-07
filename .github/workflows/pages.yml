@@ -40,6 +40,7 @@ jobs:
           node --check visuals-ui.js
 
           cp index.html _site/index.html
+          cp admin.html _site/admin.html
           cp trackmenow.js _site/trackmenow.js
           cp trackmenow-transport-fix.js _site/trackmenow-transport-fix.js
           cp trackmenow-traffic.js _site/trackmenow-traffic.js
