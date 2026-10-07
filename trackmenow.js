@@ -1470,26 +1470,10 @@
   let tmWeatherHoverPopup=null, tmWeatherHoverTimer=null;
   function refreshWx(){ return; }
   function installWeatherHover(){
-    if(!maplibre||maplibre.__tmWeatherHover)return;
-    maplibre.__tmWeatherHover=true;
-    maplibre.on('mousemove',function(e){
-      if(!(activeWx.temp||activeWx.wind||activeWx.precip||activeWx.humidity||activeWx.pressure))return;
-      clearTimeout(tmWeatherHoverTimer);
-      tmWeatherHoverTimer=setTimeout(function(){
-        const p=e.lngLat;
-        fetch('https://api.open-meteo.com/v1/forecast?latitude='+p.lat.toFixed(3)+'&longitude='+p.lng.toFixed(3)+'&current=temperature_2m,relative_humidity_2m,surface_pressure,wind_speed_10m,precipitation').then(function(r){return r.json();}).then(function(j){
-          const c=j.current||{},rows=['<b>WEATHER</b>',p.lat.toFixed(3)+'°, '+p.lng.toFixed(3)+'°'];
-          if(c.temperature_2m!=null)rows.push('Temp '+c.temperature_2m+' °C');
-          if(c.relative_humidity_2m!=null)rows.push('Humidity '+c.relative_humidity_2m+' %');
-          if(c.surface_pressure!=null)rows.push('Pressure '+Math.round(c.surface_pressure)+' hPa');
-          if(c.wind_speed_10m!=null)rows.push('Wind '+c.wind_speed_10m+' km/h');
-          if(c.precipitation!=null)rows.push('Precip '+c.precipitation+' mm');
-          if(tmWeatherHoverPopup)tmWeatherHoverPopup.remove();
-          tmWeatherHoverPopup=new maplibregl.Popup({closeButton:false,closeOnClick:false,maxWidth:'240px',offset:12}).setLngLat([p.lng,p.lat]).setHTML('<div style=\'font:11px/1.45 system-ui;color:#e8f0f6\'>'+rows.join('<br>')+'</div>').addTo(maplibre);
-        }).catch(function(){});
-      },350);
-    });
-    maplibre.on('mouseout',function(){clearTimeout(tmWeatherHoverTimer);if(tmWeatherHoverPopup){tmWeatherHoverPopup.remove();tmWeatherHoverPopup=null;}});
+    // Deliberately disabled: TrackMeNow uses click-only intelligence.
+    // No coordinate/weather popup, tooltip, or information is shown on hover.
+    if(maplibre&&maplibre.__tmWeatherHoverPopup){try{maplibre.__tmWeatherHoverPopup.remove()}catch(e){}maplibre.__tmWeatherHoverPopup=null;}
+    if(maplibre)maplibre.__tmWeatherHover=true;
   }
 
   async function enterEarth(transitionFromSolar) {
