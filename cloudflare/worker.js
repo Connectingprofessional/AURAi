@@ -464,15 +464,19 @@ async function environmentCatalog(req,env,url){
  let gnw=null;try{const r=await fetchT(sources[0].url,{headers:{Accept:'application/json'}});if(r.ok)gnw=await r.json();}catch(e){}
  return json(req,env,{ok:true,generatedAt:nowIso(),sources,gnwCatalogAvailable:!!gnw,policy:'TrackMeNow renders licensed/public data through its own layers and does not embed the reference websites.'});
 }
+const mobilityFeedListCache={t:0,feeds:null};
+const MOBILITY_FEED_LIST_TTL=10*60*1000; /* feed list rarely changes; avoid a token+list round trip on every request */
 async function movementTransit(env){
   let feeds=String(env.GTFS_RT_URLS||'').split(',').map(s=>s.trim()).filter(Boolean).map(url=>({url,label:'Configured GTFS-Realtime',rail:/rail|metro|subway|tram|train/i.test(url)}));
   if(!feeds.length&&env.MOBILITY_DB_REFRESH_TOKEN){
-    try{
-      const r=await fetchT('https://api.mobilitydatabase.org/v1/tokens',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({refresh_token:env.MOBILITY_DB_REFRESH_TOKEN})});
+    if(mobilityFeedListCache.feeds&&Date.now()-mobilityFeedListCache.t<MOBILITY_FEED_LIST_TTL){
+      feeds=mobilityFeedListCache.feeds;
+    } else try{
+      const r=await fetchT('https://api.mobilitydatabase.org/v1/tokens',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({refresh_token:env.MOBILITY_DB_REFRESH_TOKEN})},4000);
       if(!r.ok)throw new Error('Mobility Database token HTTP '+r.status);
       const t=await r.json(),access=t.access_token;
       if(access){
-        const lr=await fetchT('https://api.mobilitydatabase.org/v1/gtfs_rt_feeds?entity_types=vp&status=active&limit=50',{headers:{Authorization:'Bearer '+access,Accept:'application/json'}});
+        const lr=await fetchT('https://api.mobilitydatabase.org/v1/gtfs_rt_feeds?entity_types=vp&status=active&limit=50',{headers:{Authorization:'Bearer '+access,Accept:'application/json'}},4000);
         if(!lr.ok)throw new Error('Mobility Database feeds HTTP '+lr.status);
         const body=await lr.json(),list=Array.isArray(body)?body:(body.data||body.results||[]);
         feeds=list.map(f=>{
@@ -480,12 +484,16 @@ async function movementTransit(env){
           const label=String(f.name||f.feed_name||f.provider||'GTFS-Realtime');
           return {url,label,rail:/rail|metro|subway|tram|train/i.test(label)};
         }).filter(f=>f.url).slice(0,30);
+        mobilityFeedListCache.feeds=feeds; mobilityFeedListCache.t=Date.now();
       }
-    }catch(e){return {features:[],source:'Mobility Database / GTFS-Realtime',status:'error',error:e.message};}
+    }catch(e){
+      if(mobilityFeedListCache.feeds){feeds=mobilityFeedListCache.feeds;} /* serve the stale list rather than nothing */
+      else return {features:[],source:'Mobility Database / GTFS-Realtime',status:'error',error:e.message};
+    }
   }
   if(!feeds.length)return {features:[],source:'GTFS-Realtime',status:'feed-required',error:'No GTFS realtime feed is configured'};
   const all=[],feedErrors=[];
-  await Promise.all(feeds.map(async feed=>{try{const r=await fetchT(feed.url,{headers:{Accept:'application/x-protobuf,application/octet-stream'}});if(!r.ok){feedErrors.push(feed.label+' HTTP '+r.status);return;}all.push(...gtfsVehicles(new Uint8Array(await r.arrayBuffer()),feed));}catch(e){feedErrors.push(feed.label+': '+(e.message||e));}}));
+  await Promise.all(feeds.map(async feed=>{try{const r=await fetchT(feed.url,{headers:{Accept:'application/x-protobuf,application/octet-stream'}},6000);if(!r.ok){feedErrors.push(feed.label+' HTTP '+r.status);return;}all.push(...gtfsVehicles(new Uint8Array(await r.arrayBuffer()),feed));}catch(e){feedErrors.push(feed.label+': '+(e.message||e));}}));
   const features=all.slice(0,10000);
   const latest=(arr)=>arr.reduce((m,f)=>{const t=Date.parse(f.properties?.observedAt||'');return Number.isFinite(t)&&t>m?t:m;},0);
   const transit=features.filter(f=>f.properties?.kind==='transit');
@@ -513,7 +521,7 @@ async function movement(req,env,url){
   const jobs=[];
   if(layers.includes('flights'))jobs.push(withDeadline(movementFlights(b,env),'flights'));
   if(layers.includes('ships'))jobs.push(withDeadline(movementShips(b,env),'AISstream.io'));
-  if(layers.includes('transit')||layers.includes('public-transport')||layers.includes('rail'))jobs.push(withDeadline(movementTransit(env),'GTFS-Realtime'));
+  if(layers.includes('transit')||layers.includes('public-transport')||layers.includes('rail'))jobs.push(withDeadline(movementTransit(env),'GTFS-Realtime',16000));
   if(layers.includes('taxi'))jobs.push(withDeadline(movementMobility(env,'taxi'),'taxi'));
   if(layers.includes('bike')||layers.includes('bikes'))jobs.push(withDeadline(movementMobility(env,'bike'),'bike'));
   if(layers.includes('car')||layers.includes('cars'))jobs.push(withDeadline(movementMobility(env,'car'),'car'));
