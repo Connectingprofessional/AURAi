@@ -226,25 +226,148 @@ function drawTrack(p){
  if(state.sub==='HISTORY')return drawHistory(p);
  if(state.sub==='GEOFENCE')return drawGeofence(p);
 }
-function drawGps(p){const hasDevice=!!localStorage.getItem('tmDeviceId')&&!!localStorage.getItem('tmDeviceToken');const c=card('LIVE GPS',isLocal?'Permission-based browser GPS. Local sessions are stored by the tracking API.':'Permission-based browser GPS. On GitHub Pages, consented device telemetry is stored through the TrackMeNow Worker/D1 history API.',startGps,gps.watch?'STOP LIVE GPS':'START LIVE GPS');p.append(c);const live=gps.lastFix?'GPS: LIVE · ±'+Math.round(gps.lastAccuracy||0)+' m · updated '+Math.max(0,Math.round((Date.now()-gps.lastFix)/1000))+'s ago · '+gps.trail.length+' points':(gps.error?'GPS: ERROR · '+gps.error:'GPS: WAITING FOR FIX');p.append(status(live+' · '+(gps.session?'SESSION / DEVICE '+gps.session:(hasDevice?'CONSENTED DEVICE READY':'CONSENTED DEVICE REQUIRED'))))}
-async function startGps(){
- if(gps.watch!==null){navigator.geolocation.clearWatch(gps.watch);gps.watch=null;if(gps.poll){clearInterval(gps.poll);gps.poll=null}if(isLocal&&gps.session)await api('/api/sessions/'+gps.session+'/stop',{method:'POST'}).catch(()=>{});render();return}
- try{
-   let deviceId=localStorage.getItem('tmDeviceId'),deviceToken=localStorage.getItem('tmDeviceToken');
-   if(!isLocal&&!deviceId){const phone=prompt('Enter the mobile number for this consenting device:');if(!phone)return;if(!confirm('I own this device and consent to live GPS tracking.'))return;const j=await api('/api/devices/register',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({phone,label:'TrackMeNow Live GPS',consent:true})});deviceId=j.deviceId;deviceToken=j.deviceToken;localStorage.setItem('tmDeviceId',deviceId);localStorage.setItem('tmDeviceToken',deviceToken);alert('Consent registered. Pairing code: '+j.pairingCode+'\nKeep this code private; use it to authorize a viewer.')}
-   if(isLocal){const s=await api('/api/sessions',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});gps.session=s.id}else{gps.session=deviceId}
-   gps.trail=[];
-   const publish=async(pos)=>{
-     const q=pos.coords, point={lat:q.latitude,lon:q.longitude,accuracy:q.accuracy,altitude:q.altitude,heading:q.heading,speed:q.speed,source:'browser-gps',timestamp:new Date(pos.timestamp).toISOString()};
-     const body=point;
-     gps.trail.push(point); if(gps.trail.length>2000)gps.trail.splice(0,gps.trail.length-2000);
-     if(isLocal)await api('/api/sessions/'+gps.session+'/location',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)}).catch(()=>{});
-     else await api('/api/devices/'+gps.session+'/telemetry',{method:'POST',headers:{'Content-Type':'application/json'},Authorization:'Bearer '+deviceToken,body:JSON.stringify(body)}).catch(()=>{});
-     const m=map();if(m&&window.maplibregl){ensureGpsLayers(m);paintGpsTrack(m,gps.trail);if(!gps.marker)gps.marker=new maplibregl.Marker({color:'#43e0a0'}).setLngLat([q.longitude,q.latitude]).addTo(m);else gps.marker.setLngLat([q.longitude,q.latitude]);m.flyTo({center:[q.longitude,q.latitude],zoom:Math.max(m.getZoom(),12),duration:400})}
-     gps.lastFix=Date.now(); gps.lastAccuracy=q.accuracy;
-     try{const s=document.querySelector('#tm-panel .tm-status');if(s)s.textContent='GPS: LIVE · '+q.latitude.toFixed(6)+', '+q.longitude.toFixed(6)+' · ±'+Math.round(q.accuracy||0)+' m · points '+gps.trail.length}catch(e){}
+function drawGps(p){
+ const hasDevice=!!localStorage.getItem('tmDeviceId')&&!!localStorage.getItem('tmDeviceToken');
+ const viewerToken=localStorage.getItem('tmViewerToken')||'';
+ const c=card('LIVE GPS',
+   isLocal
+     ? 'Start GPS on this browser/device. The position is recorded to the local TrackMeNow session.'
+     : (viewerToken
+       ? 'Viewing a consented mobile device. TrackMeNow will receive its latest GPS telemetry and draw it here.'
+       : 'To view another consenting phone, enter its one-time pairing code below. A phone number alone never provides GPS.'),
+   startGps,
+   gps.watch?'STOP LIVE GPS':(viewerToken?'VIEW LIVE DEVICE':'START LIVE GPS'));
+ p.append(c);
+
+ if(!isLocal&&!viewerToken){
+   const pairCode=el('input',{class:'tm-input',id:'tm-gps-pair-code',placeholder:'6-digit pairing code',inputmode:'numeric',maxlength:'6'});
+   const pair=el('button',{class:'tm-action',type:'button'},'PAIR CONSENTED DEVICE');
+   pair.onclick=async()=>{
+     try{
+       const code=String(pairCode.value||'').trim();
+       if(!/^\\d{6}$/.test(code))throw Error('Enter the 6-digit pairing code from the consenting mobile device.');
+       const j=await api('/api/devices/pair',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({pairingCode:code})});
+       localStorage.setItem('tmViewerToken',j.viewerToken||'');
+       localStorage.setItem('tmDeviceId',j.deviceId||'');
+       gps.session=j.deviceId||null;
+       gps.error='';
+       alert('Device paired. Click VIEW LIVE DEVICE to start receiving its GPS location.');
+       render();
+     }catch(e){alert(e.message)}
    };
-   const onError=e=>{gps.error=(e&&e.message)||'Unable to acquire GPS';console.warn(e);render();};
+   const row=el('div',{class:'tm-row'});row.append(pairCode,pair);p.append(row);
+ }
+
+ const live=gps.lastFix
+   ? 'GPS: LIVE · ±'+Math.round(gps.lastAccuracy||0)+' m · updated '+Math.max(0,Math.round((Date.now()-gps.lastFix)/1000))+'s ago · '+gps.trail.length+' points'
+   : (gps.error?'GPS: ERROR · '+gps.error:'GPS: WAITING FOR FIX');
+ p.append(status(live+' · '+(gps.session?'DEVICE '+gps.session:(hasDevice?'CONSENTED DEVICE REGISTERED':'NO DEVICE REGISTERED'))));
+}
+
+function stopGpsWatch(){
+ if(gps.watch!==null){
+   navigator.geolocation.clearWatch(gps.watch);
+   gps.watch=null;
+ }
+ if(gps.poll){clearInterval(gps.poll);gps.poll=null}
+}
+
+async function startRemoteGps(){
+ const deviceId=localStorage.getItem('tmDeviceId');
+ const viewerToken=localStorage.getItem('tmViewerToken');
+ if(!deviceId||!viewerToken)throw Error('Pair the consenting mobile device first.');
+ stopGpsWatch();
+ gps.session=deviceId;
+ gps.trail=[];
+ gps.error='';
+ const consume=async()=>{
+   try{
+     const j=await api('/api/devices/'+encodeURIComponent(deviceId)+'/latest',{headers:{Authorization:'Bearer '+viewerToken}});
+     const q=j.latest;
+     if(!q||!Number.isFinite(Number(q.lat))||!Number.isFinite(Number(q.lon))){
+       gps.error='Waiting for the consenting mobile device to send its first GPS fix.';
+       render();
+       return;
+     }
+     const point={lat:Number(q.lat),lon:Number(q.lon),accuracy:q.accuracy,altitude:q.altitude,heading:q.heading,speed:q.speed,source:q.source||'android-gps',timestamp:q.timestamp||new Date().toISOString()};
+     gps.trail.push(point);
+     if(gps.trail.length>2000)gps.trail.splice(0,gps.trail.length-2000);
+     const m=map();
+     if(m&&window.maplibregl){
+       ensureGpsLayers(m);paintGpsTrack(m,gps.trail);
+       if(!gps.marker)gps.marker=new maplibregl.Marker({color:'#43e0a0'}).setLngLat([point.lon,point.lat]).addTo(m);
+       else gps.marker.setLngLat([point.lon,point.lat]);
+       m.flyTo({center:[point.lon,point.lat],zoom:Math.max(m.getZoom(),12),duration:400});
+     }
+     gps.lastFix=Date.now();
+     gps.lastAccuracy=Number(point.accuracy)||null;
+     gps.error='';
+     render();
+   }catch(e){gps.error=e.message||'Unable to read device GPS';render()}
+ };
+ await consume();
+ gps.poll=setInterval(consume,5000);
+ render();
+}
+
+async function startGps(){
+ if(gps.watch!==null||gps.poll){stopGpsWatch();render();return}
+ try{
+   const viewerToken=localStorage.getItem('tmViewerToken');
+   const deviceId=localStorage.getItem('tmDeviceId');
+
+   // A paired viewer reads GPS from the consenting mobile device; it must never
+   // attempt to POST telemetry using the device's secret token.
+   if(!isLocal&&viewerToken&&deviceId){
+     await startRemoteGps();
+     return;
+   }
+
+   let registeredDeviceId=localStorage.getItem('tmDeviceId');
+   let deviceToken=localStorage.getItem('tmDeviceToken');
+
+   // If this is the first use on a phone/browser, register THIS device.
+   // Entering a phone number does not remotely activate that phone's GPS.
+   if(!registeredDeviceId){
+     const phone=prompt('Enter the mobile number for THIS consenting device:');
+     if(!phone)return;
+     if(!confirm('I own this device and consent to live GPS tracking.'))return;
+     const j=await api('/api/devices/register',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({phone,label:'TrackMeNow Live GPS',consent:true})});
+     registeredDeviceId=j.deviceId;deviceToken=j.deviceToken;
+     localStorage.setItem('tmDeviceId',registeredDeviceId);
+     localStorage.setItem('tmDeviceToken',deviceToken);
+     alert('This device is registered. Pairing code: '+j.pairingCode+'\\n\\nIf this is the phone being tracked, keep this page open and allow GPS permission. If this is a desktop viewer, enter the code in the PAIR CONSENTED DEVICE box after registering the phone in the mobile TrackMeNow companion.');
+   }
+
+   if(isLocal){
+     const ss=await api('/api/sessions',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});
+     gps.session=ss.id;
+   }else{
+     gps.session=registeredDeviceId;
+   }
+
+   gps.trail=[];gps.error='';
+   const publish=async(pos)=>{
+     const q=pos.coords;
+     const point={lat:q.latitude,lon:q.longitude,accuracy:q.accuracy,altitude:q.altitude,heading:q.heading,speed:q.speed,source:'browser-gps',timestamp:new Date(pos.timestamp).toISOString()};
+     gps.trail.push(point);
+     if(gps.trail.length>2000)gps.trail.splice(0,gps.trail.length-2000);
+     if(isLocal){
+       await api('/api/sessions/'+gps.session+'/location',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(point)}).catch(e=>{gps.error='Location save failed: '+e.message});
+     }else{
+       await api('/api/devices/'+gps.session+'/telemetry',{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer '+deviceToken},body:JSON.stringify(point)}).catch(e=>{gps.error='Telemetry upload failed: '+e.message});
+     }
+     const m=map();
+     if(m&&window.maplibregl){
+       ensureGpsLayers(m);paintGpsTrack(m,gps.trail);
+       if(!gps.marker)gps.marker=new maplibregl.Marker({color:'#43e0a0'}).setLngLat([q.longitude,q.latitude]).addTo(m);
+       else gps.marker.setLngLat([q.longitude,q.latitude]);
+       m.flyTo({center:[q.longitude,q.latitude],zoom:Math.max(m.getZoom(),12),duration:400});
+     }
+     gps.lastFix=Date.now();gps.lastAccuracy=q.accuracy;gps.error='';
+     render();
+   };
+   const onError=e=>{gps.error=(e&&e.message)||'Unable to acquire GPS. Check browser location permission.';console.warn(e);render()};
    navigator.geolocation.getCurrentPosition(publish,onError,{enableHighAccuracy:true,maximumAge:0,timeout:15000});
    gps.watch=navigator.geolocation.watchPosition(publish,onError,{enableHighAccuracy:true,maximumAge:3000,timeout:15000});
    render();
