@@ -370,7 +370,7 @@ function gtfsVehicles(buf, feedMeta={}) {
     pbFields(entity,(ef,ew,ev)=>{
       if(ef===1&&ew===2)id=pbText(ev);
       if(ef===4&&ew===2)pbFields(ev,(vf,vw,vv)=>{
-        if(vf===2&&vw===2)pbFields(vv,(pf,pw,pv)=>{if(pf===1)p.lat=Number(pv);if(pf===2)p.lon=Number(pv);if(pf===3)p.bearing=Number(pv);if(pf===5)p.speed=Number(pv);});
+        if(vf===2&&vw===2){pos=pos||{};pbFields(vv,(pf,pw,pv)=>{if(pf===1)pos.lat=Number(pv);if(pf===2)pos.lon=Number(pv);if(pf===3)pos.bearing=Number(pv);if(pf===5)pos.speed=Number(pv);});}
         if(vf===5&&vw===0)ts=Number(vv);
         if(vf===8&&vw===2)pbFields(vv,(df,dw,dv)=>{if(df===1)vid=pbText(dv);});        if(vf===1&&vw===2)pbFields(vv,(tf,tw,tv)=>{if(tf===5)route=pbText(tv);});
       });
