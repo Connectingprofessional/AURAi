@@ -1,4 +1,4 @@
-/* TrackMeNow UX fix v9.1 — see history for weather/cameras/transit; this build hides duplicate bottom bar */
+/* TrackMeNow UX fix v15 — light, no hang observers */
 (function () {
   'use strict';
 
@@ -24,11 +24,9 @@
       b.style.setProperty('visibility','hidden','important');
       b.style.setProperty('height','0','important');
       b.setAttribute('hidden','true');
-      b.setAttribute('aria-hidden','true');
     }
     hide();
-    var n=0,iv=setInterval(function(){hide();if(++n>80)clearInterval(iv);},200);
-    try{new MutationObserver(hide).observe(document.documentElement,{childList:true,subtree:true,attributes:true,attributeFilter:['style','class']});}catch(e){}
+    var n=0,iv=setInterval(function(){hide();if(++n>20)clearInterval(iv);},500);
   })();
 
   function map() {
@@ -215,17 +213,9 @@
     stripSimulation();
     hookCameraButtons();
     setupUserMedia();
-    if (n > 40) clearInterval(iv);
+    if (n > 15) clearInterval(iv);
   }, 400);
 
-  var obs = new MutationObserver(function () {
-    stripSimulation();
-    hookCameraButtons();
-    var body = document.querySelector('.tm-panel-body');
-    if (body && /CAMERAS|NO CURRENT PUBLIC SOURCE|LOAD LIVE CAMERA/i.test(body.textContent || '')) loadPublicCameras();
-  });
-  setTimeout(function () { if (document.body) obs.observe(document.body, { childList: true, subtree: true }); }, 1000);
-
   window.TrackMeNowLoadCameras = loadPublicCameras;
-  console.log('[TM] UX v9.1: hide legacy bottom bar + weather/cameras/transit');
+  console.log('[TM] UX v15: light — no hang observers');
 })();
