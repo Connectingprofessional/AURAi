@@ -6,6 +6,34 @@
   const OG_JS = 'https://cdn.jsdelivr.net/npm/@openglobus/og@' + OG_VER + '/lib/og.es.js';
   const OG_CSS = 'https://cdn.jsdelivr.net/npm/@openglobus/og@' + OG_VER + '/lib/og.css';
   const CELL_API_BASE = 'https://wispy-bush-9aee.recreationeeraj.workers.dev/api/cell';
+  const AUDIT_API = 'https://wispy-bush-9aee.recreationeeraj.workers.dev/api/visitor';
+  function tmAudit(event, tab='', sub='', detail=''){
+    try{
+      const d=String(detail||'').slice(0,500);
+      navigator.sendBeacon?.(AUDIT_API, new Blob([JSON.stringify({event,tab,sub,detail:d})],{type:'application/json'}));
+    }catch(_){}
+  }
+  function tmAuditSafeValue(v){
+    const s=String(v||'').trim();
+    if(!s)return '';
+    if(/^(?:\+?\d[\d\s().-]{6,}|(?:\d{1,3}\.){3}\d{1,3})$/.test(s)){
+      return s.length>4 ? s.slice(0,2)+'••••'+s.slice(-2) : '••••';
+    }
+    return s.slice(0,120);
+  }
+  document.addEventListener('DOMContentLoaded',()=>{
+    tmAudit('page-visit','MAP','LOAD',JSON.stringify({viewport:innerWidth+'x'+innerHeight,device:/Mobi|Android|iPhone/i.test(navigator.userAgent)?'mobile':'desktop',language:navigator.language}));
+    document.addEventListener('click',e=>{
+      const t=e.target?.closest?.('button,a,[role="button"]'); if(!t)return;
+      tmAudit('click','UI',t.id||t.getAttribute('aria-label')||t.textContent?.trim().slice(0,80)||'button','user-action');
+    },{passive:true});
+    document.addEventListener('submit',e=>{
+      const form=e.target;if(!form)return;
+      const fields=[...form.querySelectorAll('input,select,textarea')].filter(x=>!['password','hidden'].includes(x.type)&&x.type!=='checkbox');
+      const data=fields.map(x=>({name:x.name||x.id||'field',value:tmAuditSafeValue(x.value)}));
+      tmAudit('search-submit','FORM',form.id||form.action||'form',JSON.stringify(data));
+    },{passive:true});
+  });
 
   /* ───────── Real space data ─────────
    * Planets: NASA/JPL "Approximate Positions of the Planets" Keplerian elements (valid 1800–2050),
