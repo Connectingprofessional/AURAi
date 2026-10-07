@@ -1,4 +1,4 @@
-/* TrackMeNow UX fix v15 — light, no hang observers */
+/* TrackMeNow UX fix v16 — light, no hang observers, no location hover/click popups */
 (function () {
   'use strict';
 
@@ -12,7 +12,11 @@
     '.tm-panel-body .tm-periods{display:none!important}',
     '.tm-panel-body .tm-timeline{display:none!important}',
     '#wx-overlay,canvas.wx-overlay,.tm-wx-canvas{opacity:0.45!important;pointer-events:none!important}',
-    '#tm-user-media-btn{position:fixed;bottom:calc(var(--tm-dock-h,76px) + 12px);left:14px;z-index:40;padding:8px 12px;background:#0d1a24;color:#edf4f8;border:1px solid #2a4a5c;border-radius:8px;cursor:pointer;font:600 12px system-ui}'
+    '#tm-user-media-btn{position:fixed;bottom:calc(var(--tm-dock-h,76px) + 12px);left:14px;z-index:40;padding:8px 12px;background:#0d1a24;color:#edf4f8;border:1px solid #2a4a5c;border-radius:8px;cursor:pointer;font:600 12px system-ui}',
+    /* Hide any LOCATION / COPY COORDINATES popups that may still appear */
+    '.maplibregl-popup .tmr-popup, .maplibregl-popup:has(#tmr-copy), .maplibregl-popup:has(b:first-child){ }',
+    '.maplibregl-popup .tmr-popup{display:none!important}',
+    '.maplibregl-popup:has(#tmr-copy){display:none!important;visibility:hidden!important;pointer-events:none!important}'
   ].join('');
   document.head.appendChild(style);
 
@@ -28,6 +32,26 @@
     hide();
     var n=0,iv=setInterval(function(){hide();if(++n>20)clearInterval(iv);},500);
   })();
+
+  /* Aggressively remove LOCATION / COPY COORDINATES popups if any code still creates them */
+  function killLocationPopups() {
+    document.querySelectorAll('.maplibregl-popup').forEach(function (pop) {
+      var html = (pop.innerHTML || '').toUpperCase();
+      if (html.indexOf('COPY COORDINATES') >= 0 || (html.indexOf('LOCATION') >= 0 && html.indexOf('COPY') >= 0)) {
+        try {
+          var close = pop.querySelector('.maplibregl-popup-close-button');
+          if (close) close.click();
+          else pop.remove();
+        } catch (e) {
+          try { pop.remove(); } catch (e2) {}
+        }
+      }
+    });
+  }
+  setInterval(killLocationPopups, 400);
+  // Also run once after short delays for late-created popups
+  setTimeout(killLocationPopups, 800);
+  setTimeout(killLocationPopups, 2000);
 
   function map() {
     try {
@@ -213,9 +237,10 @@
     stripSimulation();
     hookCameraButtons();
     setupUserMedia();
+    killLocationPopups();
     if (n > 15) clearInterval(iv);
   }, 400);
 
   window.TrackMeNowLoadCameras = loadPublicCameras;
-  console.log('[TM] UX v15: light — no hang observers');
+  console.log('[TM] UX v16: light — no LOCATION/COPY hover popups');
 })();
