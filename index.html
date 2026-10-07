@@ -10,7 +10,7 @@
 <link rel="preconnect" href="https://server.arcgisonline.com">
 <link rel="preconnect" href="https://gibs.earthdata.nasa.gov">
 <link rel="stylesheet" href="./vendor/maplibre-gl/maplibre-gl.css">
-<link rel="stylesheet" href="./visuals.css?v=trackmenow-live-20">
+<link rel="stylesheet" href="./visuals.css?v=trackmenow-live-21">
 <style>
 *{box-sizing:border-box}
 html,body{height:100%;width:100%;margin:0;background:#05080c;color:#edf4f8;font-family:system-ui,-apple-system,Segoe UI,sans-serif;overflow:hidden}
@@ -28,7 +28,6 @@ body{overscroll-behavior:none}
 #tm-panel.open{z-index:6100!important}
 #tm-time-slider{accent-color:#45a8ff}
 
-/* Integrated boot/splash: adapted from the supplied ARGOS shell without replacing TrackMeNow's runtime. */
 #tm-boot{display:none!important;background:radial-gradient(circle at 50% 44%,rgba(11,211,211,.07),rgba(2,6,10,.98) 58%,#010204)}
 #tm-boot::before{content:"";position:absolute;inset:8%;border:1px solid rgba(11,211,211,.08);border-radius:50%;box-shadow:0 0 110px rgba(11,211,211,.06) inset}
 #tm-boot .tm-boot-brand{text-shadow:0 0 18px rgba(11,211,211,.35)}
@@ -51,14 +50,20 @@ body{overscroll-behavior:none}
 <div id="map"></div>
 <div id="legacy-controls"></div>
 <div id="status">Starting…</div>
+<script>
+/* Force all API calls to the Cloudflare Worker (GitHub Pages has no /api routes). */
+window.TM_API_BASE = 'https://wispy-bush-9aee.recreationeeraj.workers.dev';
+window.TM_MOVEMENT_API_BASE = window.TM_API_BASE;
+</script>
 <script src="./vendor/maplibre-gl/maplibre-gl.js"></script>
-<script src="./trackmenow-transport-fix.js?v=17"></script>
-<script src="./trackmenow-traffic.js?v=17"></script>
-<script src="./trackmenow-ux-fix.js?v=17"></script>
-<script src="./trackmenow-panel-fix.js?v=17"></script>
-<script src="./trackmenow-timebar-fix.js?v=17"></script>
-<script src="./trackmenow.js?v=trackmenow-live-18"></script>
-<script src="./visuals-ui.js?v=trackmenow-live-20"></script>
-<script src="./trackmenow-map-runtime.js?v=3"></script>
+<script src="./trackmenow-transport-fix.js?v=18"></script>
+<script src="./trackmenow-traffic.js?v=18"></script>
+<script src="./trackmenow-ux-fix.js?v=18"></script>
+<script src="./trackmenow-panel-fix.js?v=18"></script>
+<script src="./trackmenow-timebar-fix.js?v=18"></script>
+<!-- Load last known-good trackmenow.js while repo file is restored -->
+<script src="https://cdn.jsdelivr.net/gh/Connectingprofessional/TrackMenow@6b03d7862d28049e6e6cc759122634d3162ecb34/trackmenow.js"></script>
+<script src="./visuals-ui.js?v=trackmenow-live-21"></script>
+<script src="./trackmenow-map-runtime.js?v=4"></script>
 </body>
 </html>
