@@ -58,6 +58,26 @@ async function limited(env, req, bucket, max, windowSec) {
 }
 
 async function readBody(req) { try { return await req.json(); } catch (e) { return {}; } }
+async function ensureAdminOtpTables(env) {
+  if (!env.DB) return;
+  await env.DB.prepare('CREATE TABLE IF NOT EXISTS admin_otp_challenges (id TEXT PRIMARY KEY, username TEXT NOT NULL, phone_hash TEXT NOT NULL, otp_hash TEXT NOT NULL, expires_at TEXT NOT NULL, attempts INTEGER NOT NULL DEFAULT 0, used_at TEXT, created_at TEXT NOT NULL)').run();
+}
+async function sendAdminOtp(env, otp) {
+  const phone = String(env.ADMIN_OTP_PHONE || '9650084311').trim();
+  if (env.TWILIO_ACCOUNT_SID && env.TWILIO_AUTH_TOKEN && env.TWILIO_FROM) {
+    const body = new URLSearchParams({To: phone.startsWith('+') ? phone : '+91'+phone.replace(/\D/g,''), From:String(env.TWILIO_FROM), Body:'TrackMeNow admin login OTP: '+otp+'. Expires in 10 minutes. Do not share it.'});
+    const auth = btoa(String(env.TWILIO_ACCOUNT_SID)+':'+String(env.TWILIO_AUTH_TOKEN));
+    const r = await fetchT('https://api.twilio.com/2010-04-01/Accounts/'+encodeURIComponent(env.TWILIO_ACCOUNT_SID)+'/Messages.json',{method:'POST',headers:{Authorization:'Basic '+auth,'Content-Type':'application/x-www-form-urlencoded'},body},10000);
+    if(!r.ok) throw new Error('SMS provider rejected the OTP');
+    return {sent:true,provider:'twilio'};
+  }
+  if (env.ADMIN_OTP_WEBHOOK_URL) {
+    const r = await fetchT(String(env.ADMIN_OTP_WEBHOOK_URL),{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({to:phone,message:'TrackMeNow admin login OTP: '+otp+'. Expires in 10 minutes.'})},10000);
+    if(!r.ok) throw new Error('OTP webhook rejected the request');
+    return {sent:true,provider:'webhook'};
+  }
+  throw new Error('Admin SMS provider is not configured.');
+}
 async function ensureAdminTables(env) {
   if (!env.DB) return;
   await env.DB.prepare('CREATE TABLE IF NOT EXISTS admin_sessions (token_hash TEXT PRIMARY KEY, expires_at TEXT NOT NULL)').run();
@@ -656,11 +676,27 @@ export default {
       if (url.pathname === '/api/visitor' && req.method === 'POST') {
         try { const b=await readBody(req); await adminLog(env,req,b.event||'page-visit',b.tab||'',b.sub||'',b.detail||b.screen||''); return json(req,env,{ok:true}); } catch(e) { return json(req,env,{ok:false,error:'audit logging failed'},500); }
       }
-      if (url.pathname === '/api/admin/login' && req.method === 'POST') {        const b=await readBody(req);
-        if(!env.ADMIN_USER || !env.ADMIN_PASSWORD) return json(req,env,{error:'Admin credentials are not configured on the Worker.'},503);
-        if(String(b.username||'')!==String(env.ADMIN_USER)||String(b.password||'')!==String(env.ADMIN_PASSWORD)) return json(req,env,{error:'Invalid admin credentials.'},401);
-        await ensureAdminTables(env);        const t=token(), exp=new Date(Date.now()+8*60*60*1000).toISOString();
+      if (url.pathname === '/api/admin/request-otp' && req.method === 'POST') {
+        const b=await readBody(req), username=String(b.username||'').trim();
+        if(username!=='admin') return json(req,env,{error:'Invalid admin username.'},401);
+        if(!env.DB) return json(req,env,{error:'Admin database is not configured.'},503);
+        if(await limited(env,req,'admin-otp',5,600)) return json(req,env,{error:'Too many OTP requests. Try again later.'},429);
+        await ensureAdminTables(env); await ensureAdminOtpTables(env);
+        const otp=String(Math.floor(100000+Math.random()*900000)), id=crypto.randomUUID(), exp=new Date(Date.now()+10*60*1000).toISOString();
+        await env.DB.prepare('INSERT INTO admin_otp_challenges(id,username,phone_hash,otp_hash,expires_at,created_at) VALUES(?,?,?,?,?,?)').bind(id,'admin',await sha256(String(env.ADMIN_OTP_PHONE||'9650084311')),await sha256(otp),exp,nowIso()).run();
+        try { const delivery=await sendAdminOtp(env,otp); await adminLog(env,req,'admin-otp-request','ADMIN','LOGIN','OTP requested; delivery='+delivery.provider); return json(req,env,{ok:true,challengeId:id,expiresAt:exp,maskedPhone:'******4311'}); }
+        catch(e){ await env.DB.prepare('DELETE FROM admin_otp_challenges WHERE id=?').bind(id).run(); return json(req,env,{error:'OTP delivery is not configured on the Worker.'},503); }
+      }
+      if (url.pathname === '/api/admin/login' && req.method === 'POST') {
+        const b=await readBody(req), username=String(b.username||'').trim(), otp=String(b.otp||'').trim(), challengeId=String(b.challengeId||'').trim();
+        if(username!=='admin'||!/^[0-9]{6}$/.test(otp)||!challengeId) return json(req,env,{error:'Username, OTP and challenge are required.'},400);
+        await ensureAdminTables(env); await ensureAdminOtpTables(env);
+        const ch=await env.DB.prepare('SELECT * FROM admin_otp_challenges WHERE id=? AND username=? AND used_at IS NULL').bind(challengeId,'admin').first();
+        if(!ch||ch.expires_at<=nowIso()||ch.attempts>=5||await sha256(otp)!==ch.otp_hash){ if(ch) await env.DB.prepare('UPDATE admin_otp_challenges SET attempts=attempts+1 WHERE id=?').bind(challengeId).run(); return json(req,env,{error:'Invalid or expired OTP.'},401); }
+        await env.DB.prepare('UPDATE admin_otp_challenges SET used_at=? WHERE id=?').bind(nowIso(),challengeId).run();
+        const t=token(), exp=new Date(Date.now()+8*60*60*1000).toISOString();
         await env.DB.prepare('INSERT INTO admin_sessions(token_hash,expires_at) VALUES(?,?)').bind(await sha256(t),exp).run();
+        await adminLog(env,req,'admin-login','ADMIN','LOGIN','Successful OTP login');
         return json(req,env,{ok:true,token:t,expiresAt:exp});
       }
       if (url.pathname === '/api/admin/logs' && req.method === 'GET') {
