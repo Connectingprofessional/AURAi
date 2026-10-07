@@ -240,10 +240,41 @@ async function movementCameras(b,env){
  const latest=out.reduce((m,f)=>{const t=Date.parse(f.properties.observedAt);return Number.isFinite(t)&&t>m?t:m},0);
  return {features:out.slice(0,20000),sources:[{source:'TrackMeNow live camera feeds',layer:'cameras',status:out.length?'live':'feed-required',count:out.length,observedAt:latest?new Date(latest).toISOString():null,error:out.length?undefined:(configured.length?'Configured public camera feeds returned no current frames':'No live camera feed configured. Reference catalogues are not displayed as camera video.')}]};
 }
+async function osmCameraCatalog(b,env){
+ const area=Math.abs((b.maxLon-b.minLon)*(b.maxLat-b.minLat));
+ if(area>3000)return {features:[],status:'zoom-in-required',source:'OpenStreetMap / Overpass'};
+ const endpoint=String(env.CAMERA_OVERPASS_URL||'https://overpass-api.de/api/interpreter');
+ const q='[out:json][timeout:20];nwr[man_made=surveillance]('+b.minLat+','+b.minLon+','+b.maxLat+','+b.maxLon+');nwr[contact:webcam]('+b.minLat+','+b.minLon+','+b.maxLat+','+b.maxLon+');out center tags;';
+ const r=await fetch(endpoint,{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded','Accept':'application/json'},body:'data='+encodeURIComponent(q)});
+ if(!r.ok)throw new Error('Camera catalogue HTTP '+r.status);
+ const j=await r.json();
+ const features=(j.elements||[]).map(e=>{
+   const p=e.tags||{},lon=e.lon??e.center?.lon,lat=e.lat??e.center?.lat;
+   if(!Number.isFinite(Number(lon))||!Number.isFinite(Number(lat)))return null;
+   const live=String(p['contact:webcam']||p.webcam||'');
+   return {type:'Feature',id:'osm-camera-'+e.type+'-'+e.id,geometry:{type:'Point',coordinates:[Number(lon),Number(lat)]},properties:{
+     type:'camera',category:'camera',layer:'cameras',title:String(p.name||p.ref||'PUBLIC CAMERA'),
+     provider:'OpenStreetMap',location:String(p['addr:city']||p['addr:street']||p.location||''),
+     imageUrl:'',streamUrl:live,sourceUrl:live||('https://www.openstreetmap.org/'+e.type+'/'+e.id),
+     observedAt:null,status:live?'PUBLIC SOURCE':'PUBLIC CATALOGUE',license:String(p.license||'')
+   }};
+ }).filter(Boolean).slice(0,5000);
+ return {features,status:features.length?'catalogue':'empty',source:'OpenStreetMap / Overpass'};
+}
+
 async function cameras(req,env,url){
  const b=cameraBbox(url.searchParams.get('bbox'));if(!b)return json(req,env,{ok:false,error:'Valid bbox is required'},400);
  const key=[b.minLon,b.minLat,b.maxLon,b.maxLat].join('|'),hit=cameraCache.get(key);if(hit&&Date.now()-hit.t<CAMERA_TTL)return json(req,env,hit.data);
- const r=await movementCameras(b,env),data={type:'FeatureCollection',features:r.features||[],sources:r.sources||[],generatedAt:nowIso(),architecture:'public camera feed to Worker to map; no media storage'};
+ let r=await movementCameras(b,env);
+ if(!(r.features||[]).length){
+   try{
+     const cat=await osmCameraCatalog(b,env);
+     r={features:cat.features||[],sources:[{source:cat.source,layer:'cameras',status:cat.status,count:(cat.features||[]).length,error:cat.status==='zoom-in-required'?'Zoom in to load regional camera catalogue':undefined}]};
+   }catch(e){
+     r={features:[],sources:[{source:'TrackMeNow camera catalogue',layer:'cameras',status:'error',count:0,error:e.message}]};
+   }
+ }
+ const data={type:'FeatureCollection',features:r.features||[],sources:r.sources||[],generatedAt:nowIso(),architecture:'TrackMeNow public camera feeds with OpenStreetMap camera catalogue fallback; no media storage'};
  cameraCache.set(key,{t:Date.now(),data});return json(req,env,data);
 }
 
