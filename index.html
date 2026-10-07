@@ -29,7 +29,7 @@ body{overscroll-behavior:none}
 #tm-time-slider{accent-color:#45a8ff}
 
 /* Integrated boot/splash: adapted from the supplied ARGOS shell without replacing TrackMeNow's runtime. */
-#tm-boot{background:radial-gradient(circle at 50% 44%,rgba(11,211,211,.07),rgba(2,6,10,.98) 58%,#010204)}
+#tm-boot{display:none!important;background:radial-gradient(circle at 50% 44%,rgba(11,211,211,.07),rgba(2,6,10,.98) 58%,#010204)}
 #tm-boot::before{content:"";position:absolute;inset:8%;border:1px solid rgba(11,211,211,.08);border-radius:50%;box-shadow:0 0 110px rgba(11,211,211,.06) inset}
 #tm-boot .tm-boot-brand{text-shadow:0 0 18px rgba(11,211,211,.35)}
 #tm-boot .tm-boot-line{color:#0bd3d3}
@@ -50,7 +50,8 @@ body{overscroll-behavior:none}
 <div id="map-bg-scan" aria-hidden="true"></div>
 <div id="map"></div>
 <div id="legacy-controls"></div>
-<div id="status">Starting…</div>\n<script src="./vendor/maplibre-gl/maplibre-gl.js"></script>
+<div id="status">Starting…</div>
+<script src="./vendor/maplibre-gl/maplibre-gl.js"></script>
 <script src="./trackmenow-transport-fix.js?v=16"></script>
 <script src="./trackmenow-traffic.js?v=16"></script>
 <script src="./trackmenow-ux-fix.js?v=16"></script>
