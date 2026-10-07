@@ -232,9 +232,8 @@ async function startGps(){
  try{
    let deviceId=localStorage.getItem('tmDeviceId'),deviceToken=localStorage.getItem('tmDeviceToken');
    if(!isLocal&&!deviceId){const phone=prompt('Enter the mobile number for this consenting device:');if(!phone)return;if(!confirm('I own this device and consent to live GPS tracking.'))return;const j=await api('/api/devices/register',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({phone,label:'TrackMeNow Live GPS',consent:true})});deviceId=j.deviceId;deviceToken=j.deviceToken;localStorage.setItem('tmDeviceId',deviceId);localStorage.setItem('tmDeviceToken',deviceToken);alert('Consent registered. Pairing code: '+j.pairingCode+'\nKeep this code private; use it to authorize a viewer.')}
-   if(isLocal){const s=await api('/api/sessions',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});gps.session=s.id}
+   if(isLocal){const s=await api('/api/sessions',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});gps.session=s.id}else{gps.session=deviceId}
    gps.trail=[];
-   else gps.session=deviceId;
    const publish=async(pos)=>{
      const q=pos.coords, point={lat:q.latitude,lon:q.longitude,accuracy:q.accuracy,altitude:q.altitude,heading:q.heading,speed:q.speed,source:'browser-gps',timestamp:new Date(pos.timestamp).toISOString()};
      const body=point;
@@ -284,6 +283,8 @@ function drawHistory(p){
        const r=await api('/api/devices/'+id+'/history?limit=500',{headers:{Authorization:'Bearer '+tok}});
        j=r.history||[];
      }
+     gps.trail=j.map(x=>({lat:Number(x.lat),lon:Number(x.lon),accuracy:x.accuracy,timestamp:x.timestamp||x.recorded_at||x.recordedAt})).filter(x=>Number.isFinite(x.lat)&&Number.isFinite(x.lon));
+     const mm=map(); if(mm){ensureGpsLayers(mm);paintGpsTrack(mm,gps.trail); if(gps.trail.length){const last=gps.trail[gps.trail.length-1]; if(!gps.marker)gps.marker=new maplibregl.Marker({color:'#43e0a0'}).setLngLat([last.lon,last.lat]).addTo(mm); else gps.marker.setLngLat([last.lon,last.lat]);}}
      out.textContent='GPS HISTORY · '+j.length+' points · '+(j.length?new Date(j[0].recorded_at||j[0].recordedAt||j[0].timestamp).toLocaleString():'no points');
    }catch(e){out.textContent=e.message}
  };
