@@ -10,20 +10,7 @@ const $=s=>document.querySelector(s);
 function map(){return window.map||window.maplibre||null}
 function esc(v){return String(v==null?'':v).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]))}
 function api(path,opt){return fetch(API+path,Object.assign({cache:'no-store'},opt||{})).then(async r=>{const j=await r.json().catch(()=>({}));if(!r.ok)throw new Error(j.error||'HTTP '+r.status);return j})}
-function addUi(){
- if($('#tm-map-runtime'))return;
- const root=document.createElement('div');root.id='tm-map-runtime';
- root.innerHTML='<div class="tmr-tools">'+
- '<button data-a="locate" title="Use my current GPS location">◎</button>'+
- '<button data-a="north" title="Reset north">N</button>'+
- '<button data-a="pitch" title="Toggle 3D pitch">3D</button>'+
- '<button data-a="full" title="Fullscreen map">⛶</button></div>'+
- '<div class="tmr-readout"><span id="tmr-coord">MAP READY</span><span id="tmr-zoom">Z 0.0</span><span id="tmr-bearing">B 0°</span></div>';
- document.body.append(root);
- root.addEventListener('click',e=>{const a=e.target.closest('[data-a]')?.dataset.a;if(!a)return;
-  if(a==='locate')locate(); if(a==='north'&&m)m.easeTo({bearing:0,duration:450}); if(a==='pitch'&&m)m.easeTo({pitch:m.getPitch()>10?0:48,duration:550}); if(a==='full')toggleFull();
- });
-}
+function addUi(){ return; }
 function toggleFull(){const target=$('#map');if(!document.fullscreenElement)target?.requestFullscreen?.();else document.exitFullscreen?.()}
 function updateReadout(){
  if(!m)return;const c=m.getCenter(),z=m.getZoom();
@@ -85,7 +72,7 @@ function refreshViewportFeeds(){
 function readyMap(){
  m=map();if(!m||ready)return false;
  if(!m.isStyleLoaded?.())return false;
- ready=true;addUi();restoreHash();updateReadout();
+ ready=true;restoreHash();
  m.on('move',()=>{updateReadout();clearTimeout(moveTimer);moveTimer=setTimeout(syncHash,350)});
  m.on('click',mapClick);
  m.on('load',()=>{installCameraDetail();refreshViewportFeeds()});
@@ -99,21 +86,7 @@ function readyMap(){
  });
  return true;
 }
-function injectCss(){
- if($('#tm-map-runtime-css'))return;
- const s=document.createElement('style');s.id='tm-map-runtime-css';s.textContent=
- '#tm-map-runtime{position:fixed;right:12px;top:60px;z-index:5500;pointer-events:none;font:9px ui-monospace,SFMono-Regular,Consolas,monospace}'+
- '.tmr-tools{display:flex;gap:4px;justify-content:flex-end;pointer-events:auto}'+
- '.tmr-tools button{width:31px;height:29px;border:1px solid rgba(180,220,240,.18);border-radius:6px;background:rgba(4,9,14,.78);color:#d8edf4;font:800 9px ui-monospace;cursor:pointer;backdrop-filter:blur(10px)}'+
- '.tmr-tools button:hover{background:rgba(69,168,255,.2)}'+
- '.tmr-readout{margin-top:5px;display:flex;gap:8px;justify-content:flex-end;color:#8fa7b2;text-shadow:0 1px 4px #000}'+
- '.tmr-popup,.tmr-camera{font:11px system-ui;color:#dceaf0}.tmr-popup b,.tmr-camera b{display:block;margin-bottom:6px}.tmr-popup small,.tmr-camera small{display:block;margin-top:7px;color:#78909c}.tmr-popup button,.tmr-camera button{margin-top:9px;border:1px solid #5aa7cf;background:#0b1822;color:#dff6ff;border-radius:4px;padding:5px 8px;font-size:10px}';
- document.head.append(s);
-}
-function boot(){
- injectCss();
- const timer=setInterval(()=>{if(readyMap())clearInterval(timer)},250);
- setTimeout(()=>clearInterval(timer),20000);
-}
+function injectCss(){ return; }
+function boot(){ const timer=setInterval(()=>{if(readyMap())clearInterval(timer)},250); setTimeout(()=>clearInterval(timer),20000); }
 if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',boot);else boot();
 })();
