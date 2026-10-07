@@ -1516,13 +1516,14 @@
     maplibre = new maplibregl.Map({ container: 'map', style: style, center: [20, 15], zoom: useGlobe ? 1.4 : 2, minZoom: useGlobe ? 0.5 : 1, maxZoom: 20, maxPitch: useGlobe ? 85 : 60, attributionControl: false, failIfMajorPerformanceCaveat: false });
     window.map = maplibre;
     maplibre.on('style.load', function () {
+      try { var boot=document.getElementById('tm-boot'); if (boot) boot.classList.add('ready'); var bs=document.getElementById('tm-boot-status'); if (bs) bs.textContent='MAP READY · LIVE LAYERS LOADING'; } catch(e) {}
       if (useGlobe) {
         try { maplibre.setProjection({ type: 'globe' }); } catch (e) { console.warn('globe projection', e); }
       }
     });
     maplibre.on('load', function () {
       try { var bs=document.getElementById('tm-boot-status'); if(bs) bs.textContent='MAP ONLINE · LOADING LIVE LAYERS'; } catch(e) {}
-      try { setTimeout(function(){ var b=document.getElementById('tm-boot'); if(b) b.classList.add('ready'); }, 950); } catch(e) {}
+      // Splash is dismissed at style readiness; optional feeds continue in background.
 
       try { maplibre.resize(); } catch (e) {}
       try { tpSetup(); } catch (e) { console.warn('transport layers', e); }      applyLayers(); loadActivity();
