@@ -429,7 +429,7 @@ app.post('/api/devices/:id/telemetry', (req, res) => {
     altitude: Number.isFinite(Number(t.altitude)) ? Number(t.altitude) : null,
     speed: Number.isFinite(Number(t.speed)) ? Number(t.speed) : null,
     heading: Number.isFinite(Number(t.heading)) ? Number(t.heading) : null,
-    source: 'android-gps',
+    source: String(t.source || 'device-gps').slice(0,40),
     radio: t.radio && typeof t.radio === 'object' ? t.radio : null
   };
   d.latest = point;
