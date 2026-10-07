@@ -22,6 +22,17 @@ const maskPhone = (p) => (p ? p.replace(/^\+?(\d{2})\d+(\d{3})$/, '+$1•••�
 const bearer = (req) => { const h = req.headers.get('Authorization') || ''; return h.startsWith('Bearer ') ? h.slice(7).trim() : ''; };
 const num = (v) => (v === null || v === undefined || v === '' || !Number.isFinite(Number(v)) ? null : Number(v));
 
+/* Every outbound call to a third-party service is wrapped with this. Without it, one slow or
+ * dead upstream (OpenSky, Mobility Database, Overpass, …) can hang the whole request — which is
+ * exactly what made the transport tab look empty: the Worker was waiting forever on a source
+ * instead of falling back or returning what it already had. Default budget: 7s. */
+async function fetchT(url, opts = {}, ms = 7000) {
+  const ac = new AbortController();
+  const timer = setTimeout(() => ac.abort(), ms);
+  try { return await fetch(url, { ...opts, signal: ac.signal }); }
+  finally { clearTimeout(timer); }
+}
+
 function corsHeaders(req, env) {
   const origin = req.headers.get('Origin') || '';
   const allowed = String(env.ALLOWED_ORIGINS || 'https://connectingprofessional.github.io').split(',').map((s) => s.trim()).filter(Boolean);
@@ -94,7 +105,7 @@ async function cellLookup(req, env, url) {
   const p = new URLSearchParams({ key: env.OPENCELLID_API_KEY, mcc: String(Number(mcc)), mnc: String(Number(mnc)), lac: String(Number(lac)), cellid: String(Number(cellid)), format: 'json' });
   if (radio) p.set('radio', radio.toUpperCase());
   let r, text;
-  try { r = await fetch('https://opencellid.org/cell/get?' + p.toString(), { headers: { Accept: 'application/json' } }); text = await r.text(); }
+  try { r = await fetchT('https://opencellid.org/cell/get?' + p.toString(), { headers: { Accept: 'application/json' } }); text = await r.text(); }
   catch (e) { return json(req, env, { ok: false, error: 'Unable to connect to OpenCelliD.' }, 502); }
   let u; try { u = JSON.parse(text); } catch (e) { return json(req, env, { ok: false, error: 'OpenCelliD returned a non-JSON response.', upstreamStatus: r.status, responsePreview: text.slice(0, 200).replace(/key=[^&\s"]+/gi, 'key=***') }, 502); }
   if (!r.ok || u.error) return json(req, env, { ok: false, error: u.error || 'OpenCelliD request failed.', code: u.code ?? null, upstreamStatus: r.status }, r.status || 502);
@@ -214,7 +225,7 @@ async function movementCameras(b,env){
  const urls=[...configured,...apiConfigured];
  const out=[],errors=[];
  for(const sourceUrl of urls.slice(0,20)){try{
-   const r=await fetch(sourceUrl,{headers:{Accept:'application/geo+json,application/json'}});if(!r.ok)throw new Error('HTTP '+r.status);
+   const r=await fetchT(sourceUrl,{headers:{Accept:'application/geo+json,application/json'}});if(!r.ok)throw new Error('HTTP '+r.status);
    const j=await r.json();
    const records=Array.isArray(j?.features)?j.features:(Array.isArray(j?.cameras)?j.cameras:(Array.isArray(j?.data?.cameras)?j.data.cameras:(Array.isArray(j?.data)?j.data:[])));
    for(const f of records){
@@ -297,7 +308,7 @@ function movementFeature(id, lon, lat, props={}) {
 async function movementFlights(b, env) {
   const q=new URLSearchParams({lamin:String(b.minLat),lomin:String(b.minLon),lamax:String(b.maxLat),lomax:String(b.maxLon)});
   try {
-    const r=await fetch('https://opensky-network.org/api/states/all?'+q,{headers:{Accept:'application/json'}});
+    const r=await fetchT('https://opensky-network.org/api/states/all?'+q,{headers:{Accept:'application/json'}},5000);
     if(!r.ok) throw new Error('OpenSky HTTP '+r.status);
     const j=await r.json(), out=[];
     for(const s of (j.states||[])){
@@ -313,7 +324,7 @@ async function movementFlights(b, env) {
     try {
       const clat=(b.minLat+b.maxLat)/2, clon=(b.minLon+b.maxLon)/2;
       const km=Math.min(250,Math.max(25,Math.ceil(Math.max(b.maxLat-b.minLat,b.maxLon-b.minLon)*111/2)));
-      const rr=await fetch('https://api.adsb.lol/v2/point/'+encodeURIComponent(clat)+'/'+encodeURIComponent(clon)+'/'+encodeURIComponent(km),{headers:{Accept:'application/json'}});
+      const rr=await fetchT('https://api.adsb.lol/v2/point/'+encodeURIComponent(clat)+'/'+encodeURIComponent(clon)+'/'+encodeURIComponent(km),{headers:{Accept:'application/json'}},5000);
       if(rr.ok){
         const aj=await rr.json(), ao=[];
         for(const s of (aj.ac||[])){
@@ -327,7 +338,7 @@ async function movementFlights(b, env) {
     }catch(fallbackError){}
     if(!env.AVIATIONSTACK_API_KEY) return {features:[],source:'OpenSky ADS-B / ADSB.lol',status:'error',error:e.message};    try {
       const p=new URLSearchParams({access_key:env.AVIATIONSTACK_API_KEY,flight_status:'active',limit:'1000'});
-      const r=await fetch('https://api.aviationstack.com/v1/flights?'+p); if(!r.ok) throw new Error('Aviationstack HTTP '+r.status);
+      const r=await fetchT('https://api.aviationstack.com/v1/flights?'+p); if(!r.ok) throw new Error('Aviationstack HTTP '+r.status);
       const j=await r.json(),out=[];
       for(const f of (j.data||[])){const l=f.live||{},lat=Number(l.latitude),lon=Number(l.longitude);if(!Number.isFinite(lat)||!Number.isFinite(lon))continue;const x=movementFeature(f.flight?.icao||f.flight?.iata||f.flight?.number,lon,lat,{kind:'air',layer:'flights',callsign:String(f.flight?.iata||f.flight?.number||'').trim(),heading:num(l.direction),speed:num(l.speed_horizontal),altitude:num(l.altitude),observedAt:nowIso(),source:'Aviationstack',sourceStatus:'live'});if(x)out.push(x);}
       return {features:out,source:'Aviationstack',status:out.length?'live':'no-current-vehicles',observedAt:nowIso(),error:out.length?undefined:'No positioned aircraft returned'};
@@ -378,7 +389,7 @@ async function movementMobility(env, kind) {
   const features=[], errors=[];
   await Promise.all(urls.map(async (u)=>{
     try{
-      const r=await fetch(u,{headers:{Accept:'application/json'}});
+      const r=await fetchT(u,{headers:{Accept:'application/json'}});
       if(!r.ok) throw new Error('HTTP '+r.status);
       const j=await r.json(), list=Array.isArray(j?.data?.vehicles)?j.data.vehicles:(Array.isArray(j?.vehicles)?j.vehicles:[]);
       for(const v of list){
@@ -425,7 +436,7 @@ async function transitDiscovery(req,env,url){
  const hit=cache.get(key);if(hit&&Date.now()-hit.t<60000)return json(req,env,hit.data);
  let body=null,last='';
  for(const endpoint of OVERPASS_URLS){try{
-   const r=await fetch(endpoint,{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded','Accept':'application/json'},body:'data='+encodeURIComponent(overpassQuery(b))});
+   const r=await fetchT(endpoint,{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded','Accept':'application/json'},body:'data='+encodeURIComponent(overpassQuery(b))});
    if(!r.ok)throw new Error('HTTP '+r.status);
    body=await r.json();break;
  }catch(e){last=e.message||String(e);}}
@@ -450,18 +461,18 @@ async function environmentCatalog(req,env,url){
   {id:'noaa',name:'NOAA Earth Real-Time',status:'live-imagery',url:'https://www.nesdis.noaa.gov/imagery/satellite-maps/earth-real-time'},
   {id:'copernicus',name:'Copernicus Sentinel',status:'open-earth-observation',url:'https://dataspace.copernicus.eu/'}
  ];
- let gnw=null;try{const r=await fetch(sources[0].url,{headers:{Accept:'application/json'}});if(r.ok)gnw=await r.json();}catch(e){}
+ let gnw=null;try{const r=await fetchT(sources[0].url,{headers:{Accept:'application/json'}});if(r.ok)gnw=await r.json();}catch(e){}
  return json(req,env,{ok:true,generatedAt:nowIso(),sources,gnwCatalogAvailable:!!gnw,policy:'TrackMeNow renders licensed/public data through its own layers and does not embed the reference websites.'});
 }
 async function movementTransit(env){
   let feeds=String(env.GTFS_RT_URLS||'').split(',').map(s=>s.trim()).filter(Boolean).map(url=>({url,label:'Configured GTFS-Realtime',rail:/rail|metro|subway|tram|train/i.test(url)}));
   if(!feeds.length&&env.MOBILITY_DB_REFRESH_TOKEN){
     try{
-      const r=await fetch('https://api.mobilitydatabase.org/v1/tokens',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({refresh_token:env.MOBILITY_DB_REFRESH_TOKEN})});
+      const r=await fetchT('https://api.mobilitydatabase.org/v1/tokens',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({refresh_token:env.MOBILITY_DB_REFRESH_TOKEN})});
       if(!r.ok)throw new Error('Mobility Database token HTTP '+r.status);
       const t=await r.json(),access=t.access_token;
       if(access){
-        const lr=await fetch('https://api.mobilitydatabase.org/v1/gtfs_rt_feeds?entity_types=vp&status=active&limit=50',{headers:{Authorization:'Bearer '+access,Accept:'application/json'}});
+        const lr=await fetchT('https://api.mobilitydatabase.org/v1/gtfs_rt_feeds?entity_types=vp&status=active&limit=50',{headers:{Authorization:'Bearer '+access,Accept:'application/json'}});
         if(!lr.ok)throw new Error('Mobility Database feeds HTTP '+lr.status);
         const body=await lr.json(),list=Array.isArray(body)?body:(body.data||body.results||[]);
         feeds=list.map(f=>{
@@ -474,7 +485,7 @@ async function movementTransit(env){
   }
   if(!feeds.length)return {features:[],source:'GTFS-Realtime',status:'feed-required',error:'No GTFS realtime feed is configured'};
   const all=[],feedErrors=[];
-  await Promise.all(feeds.map(async feed=>{try{const r=await fetch(feed.url,{headers:{Accept:'application/x-protobuf,application/octet-stream'}});if(!r.ok){feedErrors.push(feed.label+' HTTP '+r.status);return;}all.push(...gtfsVehicles(new Uint8Array(await r.arrayBuffer()),feed));}catch(e){feedErrors.push(feed.label+': '+(e.message||e));}}));
+  await Promise.all(feeds.map(async feed=>{try{const r=await fetchT(feed.url,{headers:{Accept:'application/x-protobuf,application/octet-stream'}});if(!r.ok){feedErrors.push(feed.label+' HTTP '+r.status);return;}all.push(...gtfsVehicles(new Uint8Array(await r.arrayBuffer()),feed));}catch(e){feedErrors.push(feed.label+': '+(e.message||e));}}));
   const features=all.slice(0,10000);
   const latest=(arr)=>arr.reduce((m,f)=>{const t=Date.parse(f.properties?.observedAt||'');return Number.isFinite(t)&&t>m?t:m;},0);
   const transit=features.filter(f=>f.properties?.kind==='transit');
@@ -492,13 +503,20 @@ async function movement(req,env,url){
   const layers=[...new Set(requestedLayers.map(function(x){return x==='public-transport'?'transit':x;}))];
   const key=[b.minLon,b.minLat,b.maxLon,b.maxLat,layers.sort().join(',')].join('|'),hit=movementCache.get(key);
   if(hit&&Date.now()-hit.t<MOVEMENT_TTL)return json(req,env,hit.data);
+  /* Each job gets a hard deadline. If a single upstream (OpenSky, Mobility Database, a GTFS feed…)
+   * hangs instead of erroring, it must not take the whole response — and therefore every other
+   * layer — down with it. That silent full-request hang is what made the transport tab look dead. */
+  const withDeadline=(p,label,ms=9000)=>Promise.race([
+    p,
+    new Promise(res=>setTimeout(()=>res({features:[],source:label,status:'error',error:label+' timed out'}),ms))
+  ]).catch(e=>({features:[],source:label,status:'error',error:e.message||String(e)}));
   const jobs=[];
-  if(layers.includes('flights'))jobs.push(movementFlights(b,env));
-  if(layers.includes('ships'))jobs.push(movementShips(b,env));
-  if(layers.includes('transit')||layers.includes('public-transport')||layers.includes('rail'))jobs.push(movementTransit(env));
-  if(layers.includes('taxi'))jobs.push(movementMobility(env,'taxi'));
-  if(layers.includes('bike')||layers.includes('bikes'))jobs.push(movementMobility(env,'bike'));
-  if(layers.includes('car')||layers.includes('cars'))jobs.push(movementMobility(env,'car'));
+  if(layers.includes('flights'))jobs.push(withDeadline(movementFlights(b,env),'flights'));
+  if(layers.includes('ships'))jobs.push(withDeadline(movementShips(b,env),'AISstream.io'));
+  if(layers.includes('transit')||layers.includes('public-transport')||layers.includes('rail'))jobs.push(withDeadline(movementTransit(env),'GTFS-Realtime'));
+  if(layers.includes('taxi'))jobs.push(withDeadline(movementMobility(env,'taxi'),'taxi'));
+  if(layers.includes('bike')||layers.includes('bikes'))jobs.push(withDeadline(movementMobility(env,'bike'),'bike'));
+  if(layers.includes('car')||layers.includes('cars'))jobs.push(withDeadline(movementMobility(env,'car'),'car'));
   const results=await Promise.all(jobs),features=[],sources=[];
   const latestObserved=(arr)=>arr.reduce((m,f)=>{const t=Date.parse(f.properties?.observedAt||'');return Number.isFinite(t)&&t>m?t:m;},0);
   for(const r of results){
@@ -570,6 +588,21 @@ export default {
         if(!(await adminSession(req,env))) return json(req,env,{error:'Admin authorization required.'},401);
         const b=await readBody(req); await adminLog(env,req,b.event||'ui-event',b.tab,b.sub,b.detail); return json(req,env,{ok:true});
       }
+      if (url.pathname === '/api/integrations/ip/my' && req.method === 'GET') { /* Cloudflare already knows the visitor's own IP geo — no key, no third party */
+        const cf = req.cf || {};
+        if (cf.latitude == null) return json(req, env, { error: 'Location for this IP is not available from Cloudflare.' }, 404);
+        return json(req, env, { ip: req.headers.get('CF-Connecting-IP') || null, latitude: Number(cf.latitude), longitude: Number(cf.longitude), city: cf.city || null, region: cf.region || null, country: cf.country || null, postalCode: cf.postalCode || null, timezone: cf.timezone || null, source: 'cloudflare' });
+      }
+      if (url.pathname === '/api/integrations/ip/lookup' && req.method === 'GET') { /* arbitrary IP: ipapi.co, free tier, no key required */
+        const ip = String(url.searchParams.get('ip') || '').trim();
+        if (!/^[0-9a-fA-F.:]{3,45}$/.test(ip)) return json(req, env, { error: 'A valid IP address is required.' }, 400);
+        if (await limited(env, req, 'iplookup', 20, 600)) return json(req, env, { error: 'Too many lookups. Try again in a few minutes.' }, 429);
+        let r, j;
+        try { r = await fetchT('https://ipapi.co/' + encodeURIComponent(ip) + '/json/', { headers: { 'User-Agent': 'TrackMeNow/1.0' } }); j = await r.json(); }
+        catch (e) { return json(req, env, { error: 'IP lookup service unreachable.' }, 502); }
+        if (!r.ok || j.error || j.latitude == null) return json(req, env, { error: j.reason || 'No location found for that IP.' }, 404);
+        return json(req, env, { ip: j.ip || ip, latitude: Number(j.latitude), longitude: Number(j.longitude), city: j.city || null, region: j.region || null, country: j.country_name || null, postalCode: j.postal || null, timezone: j.timezone || null, source: 'ipapi.co' });
+      }
       if (url.pathname === '/api/visuals' && req.method === 'GET') {
         const allowed = ['LIVE','CAMERAS','WEBCAMS','IMAGES','VIDEOS','CLIPS','SOURCE HISTORY'];
         const category = allowed.includes(String(url.searchParams.get('category') || 'LIVE').toUpperCase())
@@ -595,7 +628,7 @@ export default {
         return json(req,env,{ok:true,generatedAt:nowIso(),bbox:[b.minLon,b.minLat,b.maxLon,b.maxLat],sources:mv.sources||[],counts:(mv.features||[]).reduce((a,f)=>{const k=f.properties?.kind||f.properties?.layer||'other';a[k]=(a[k]||0)+1;return a;},{}),configuration:{camera:String(env.CAMERA_GEOJSON_URLS||'').split(',').filter(Boolean).length>0?'configured':'catalog-only',gbfs:String(env.GBFS_VEHICLE_URLS||'').split(',').filter(Boolean).length>0,taxi:String(env.TAXI_VEHICLE_URLS||'').split(',').filter(Boolean).length>0}});
       }
       if (url.pathname === '/api/space/iss' && req.method === 'GET') {
-        try { const r=await fetch('https://api.wheretheiss.at/v1/satellites/25544',{headers:{Accept:'application/json'}}); if(!r.ok) throw new Error('ISS HTTP '+r.status); const j=await r.json(); return json(req,env,{ok:true,source:'Where The ISS / public ISS telemetry',observedAt:nowIso(),feature:{type:'Feature',geometry:{type:'Point',coordinates:[Number(j.longitude),Number(j.latitude)]},properties:{kind:'space-station',name:'ISS',altitude:Number(j.altitude),velocity:Number(j.velocity),visibility:j.visibility,source:'Where The ISS',sourceStatus:'live'}}}); } catch(e){ return json(req,env,{ok:false,error:e.message},502); }
+        try { const r=await fetchT('https://api.wheretheiss.at/v1/satellites/25544',{headers:{Accept:'application/json'}}); if(!r.ok) throw new Error('ISS HTTP '+r.status); const j=await r.json(); return json(req,env,{ok:true,source:'Where The ISS / public ISS telemetry',observedAt:nowIso(),feature:{type:'Feature',geometry:{type:'Point',coordinates:[Number(j.longitude),Number(j.latitude)]},properties:{kind:'space-station',name:'ISS',altitude:Number(j.altitude),velocity:Number(j.velocity),visibility:j.visibility,source:'Where The ISS',sourceStatus:'live'}}}); } catch(e){ return json(req,env,{ok:false,error:e.message},502); }
       }
       if (url.pathname === '/api/space/satellites' && req.method === 'GET') {
         /*
@@ -621,7 +654,7 @@ export default {
         }
         const u='https://api.n2yo.com/rest/v1/satellite/above/'+encodeURIComponent(lat)+'/'+encodeURIComponent(lon)+'/'+encodeURIComponent(alt)+'/'+encodeURIComponent(radius)+'/'+encodeURIComponent(category)+'?apiKey='+encodeURIComponent(env.N2YO_API_KEY);
         try{
-          const r=await fetch(u,{headers:{Accept:'application/json'}});
+          const r=await fetchT(u,{headers:{Accept:'application/json'}});
           const j=await r.json().catch(()=>({}));
           if(!r.ok) throw new Error(j.error||('N2YO HTTP '+r.status));
           return json(req,env,{
