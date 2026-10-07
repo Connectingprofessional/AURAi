@@ -242,26 +242,43 @@ async function movementCameras(b,env){
 }
 async function osmCameraCatalog(b,env){
  const area=Math.abs((b.maxLon-b.minLon)*(b.maxLat-b.minLat));
- if(area>3000)return {features:[],status:'zoom-in-required',source:'OpenStreetMap / Overpass'};
  const endpoint=String(env.CAMERA_OVERPASS_URL||'https://overpass-api.de/api/interpreter');
- const q='[out:json][timeout:20];nwr[man_made=surveillance]('+b.minLat+','+b.minLon+','+b.maxLat+','+b.maxLon+');nwr[contact:webcam]('+b.minLat+','+b.minLon+','+b.maxLat+','+b.maxLon+');out center tags;';
- const r=await fetch(endpoint,{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded','Accept':'application/json'},body:'data='+encodeURIComponent(q)});
- if(!r.ok)throw new Error('Camera catalogue HTTP '+r.status);
- const j=await r.json();
- const features=(j.elements||[]).map(e=>{
-   const p=e.tags||{},lon=e.lon??e.center?.lon,lat=e.lat??e.center?.lat;
-   if(!Number.isFinite(Number(lon))||!Number.isFinite(Number(lat)))return null;
-   const live=String(p['contact:webcam']||p.webcam||'');
-   return {type:'Feature',id:'osm-camera-'+e.type+'-'+e.id,geometry:{type:'Point',coordinates:[Number(lon),Number(lat)]},properties:{
-     type:'camera',category:'camera',layer:'cameras',title:String(p.name||p.ref||'PUBLIC CAMERA'),
-     provider:'OpenStreetMap',location:String(p['addr:city']||p['addr:street']||p.location||''),
-     imageUrl:'',streamUrl:live,sourceUrl:live||('https://www.openstreetmap.org/'+e.type+'/'+e.id),
-     observedAt:null,status:live?'PUBLIC SOURCE':'PUBLIC CATALOGUE',license:String(p.license||'')
-   }};
- }).filter(Boolean).slice(0,5000);
- return {features,status:features.length?'catalogue':'empty',source:'OpenStreetMap / Overpass'};
+ const boxes=[];
+ // Global viewports used to be blocked by the single-query area guard. Tile large
+ // viewports into small Overpass requests so the camera atlas can render globally.
+ const nx=area>3000?6:1, ny=area>3000?3:1;
+ for(let ix=0;ix<nx;ix++){
+   const x0=b.minLon+(b.maxLon-b.minLon)*ix/nx, x1=b.minLon+(b.maxLon-b.minLon)*(ix+1)/nx;
+   for(let iy=0;iy<ny;iy++){
+     const y0=b.minLat+(b.maxLat-b.minLat)*iy/ny, y1=b.minLat+(b.maxLat-b.minLat)*(iy+1)/ny;
+     boxes.push({minLon:x0,minLat:y0,maxLon:x1,maxLat:y1});
+   }
+ }
+ async function queryBox(bb){
+   const q='[out:json][timeout:25];nwr[man_made=surveillance]('+bb.minLat+','+bb.minLon+','+bb.maxLat+','+bb.maxLon+');nwr[contact:webcam]('+bb.minLat+','+bb.minLon+','+bb.maxLat+','+bb.maxLon+');out center tags;';
+   const rr=await fetch(endpoint,{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded','Accept':'application/json'},body:'data='+encodeURIComponent(q)});
+   if(!rr.ok)throw new Error('Camera catalogue HTTP '+rr.status);
+   return rr.json();
+ }
+ const features=[],seen=new Set(); let failures=0;
+ for(let i=0;i<boxes.length;i+=3){
+   const batch=await Promise.all(boxes.slice(i,i+3).map(bb=>queryBox(bb).catch(()=>{failures++;return {elements:[]}})));
+   batch.forEach(j=>(j.elements||[]).forEach(e=>{
+     const p=e.tags||{},lon=e.lon??e.center?.lon,lat=e.lat??e.center?.lat,id='osm-camera-'+e.type+'-'+e.id;
+     if(seen.has(id)||!Number.isFinite(Number(lon))||!Number.isFinite(Number(lat)))return;
+     seen.add(id);
+     const live=String(p['contact:webcam']||p.webcam||'');
+     features.push({type:'Feature',id,geometry:{type:'Point',coordinates:[Number(lon),Number(lat)]},properties:{
+       type:'camera',category:'camera',layer:'cameras',title:String(p.name||p.ref||'PUBLIC CAMERA'),
+       provider:'OpenStreetMap',location:String(p['addr:city']||p['addr:street']||p.location||''),
+       imageUrl:'',streamUrl:live,sourceUrl:live||('https://www.openstreetmap.org/'+e.type+'/'+e.id),
+       observedAt:null,status:live?'PUBLIC SOURCE':'PUBLIC CATALOGUE',license:String(p.license||'')
+     }});
+   }));
+   if(features.length>=20000)break;
+ }
+ return {features:features.slice(0,20000),status:features.length?'catalogue':'empty',source:'OpenStreetMap / Overpass',partial:failures>0};
 }
-
 async function cameras(req,env,url){
  const b=cameraBbox(url.searchParams.get('bbox'));if(!b)return json(req,env,{ok:false,error:'Valid bbox is required'},400);
  const key=[b.minLon,b.minLat,b.maxLon,b.maxLat].join('|'),hit=cameraCache.get(key);if(hit&&Date.now()-hit.t<CAMERA_TTL)return json(req,env,hit.data);
