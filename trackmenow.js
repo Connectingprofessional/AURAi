@@ -1159,11 +1159,13 @@
     if (!maplibre || TP.fetching) return;
     const url = tpMovementUrl(); if (!url) return;
     TP.fetching = true;
+    const receivedAt = Date.now();
     try {
       const r = await fetch(url, { cache: 'no-store' });
       if (!r.ok) throw new Error('movement API HTTP ' + r.status);
-      const j = await r.json(), receivedAt = Date.now();
+      const j = await r.json();
       const grouped = { air: [], ships: [], transit: [], rail: [], taxi: [], car: [], bike: [] };
+      const seen = { air:new Set(), ships:new Set(), transit:new Set(), rail:new Set(), taxi:new Set(), car:new Set(), bike:new Set() };
       (j.features || []).forEach(function(f) {
         const p = f.properties || {}, cat = String(p.category || p.kind || '').toLowerCase();
         const mode = String(p.mode || '').toLowerCase();
@@ -1178,32 +1180,54 @@
         if (!k || !f.geometry || !Array.isArray(f.geometry.coordinates)) return;
         const c = f.geometry.coordinates;
         if (!Number.isFinite(Number(c[0])) || !Number.isFinite(Number(c[1]))) return;
+        const id = String(f.id || p.id || p.icao24 || p.icao || p.callsign || p.flight || p.mmsi || p.vehicle_id || p.trip_id || p.reg || (k+'-'+c[0]+'-'+c[1]));
+        if (seen[k].has(id)) return;
+        seen[k].add(id);
         const props = Object.assign({}, p);
+        props.entityId = id;
         props.i = grouped[k].length;
         props.h = Number(p.heading != null ? p.heading : p.bearing != null ? p.bearing : p.cog != null ? p.cog : 0) || 0;
         props.observedAt = p.observedAt || p.timestamp || p.last_contact || j.generatedAt || new Date(receivedAt).toISOString();
         props.sourceStatus = p.sourceStatus || p.status || 'LIVE';
         props.smoothing = 'none';
-        grouped[k].push({
-          type: 'Feature',
-          geometry: { type: 'Point', coordinates: [Number(c[0]), Number(c[1])] },
-          properties: props
-        });
+        props.__tmLastSeen = receivedAt;
+        grouped[k].push({type:'Feature',id:id,geometry:{type:'Point',coordinates:[Number(c[0]),Number(c[1])]},properties:props});
       });
-      TP.data = {};
+      // Never replace a live layer with an empty/partial response. Merge new observations
+      // into the last known set and retain entities for a grace period while the feed/API
+      // recovers or the viewport changes. A successful feed may update/move an entity.
+      const KEEP_MS = 10 * 60 * 1000;
       Object.keys(grouped).forEach(function(k) {
+        const previous = (TP.data[k] && TP.data[k].features) || [];
+        const byId = new Map();
+        previous.forEach(function(f){
+          const id = String((f.properties&&f.properties.entityId)||f.id||'');
+          if(id) byId.set(id,f);
+        });
+        grouped[k].forEach(function(f){ byId.set(String(f.properties.entityId),f); });
+        const merged = Array.from(byId.values()).filter(function(f){
+          const t = Number(f.properties&&f.properties.__tmLastSeen)||0;
+          return t && (receivedAt-t <= KEEP_MS);
+        });
+        merged.forEach(function(f,i){ if(f.properties) f.properties.i=i; });
+        const hasFresh = grouped[k].length > 0;
         TP.data[k] = {
-          features: grouped[k],
+          features: merged,
           generatedAt: j.generatedAt || new Date(receivedAt).toISOString(),
-          sources: j.sources || [],
-          receivedAt: receivedAt
+          sources: j.sources || (TP.data[k]&&TP.data[k].sources) || [],
+          receivedAt: receivedAt,
+          stale: !hasFresh
         };
       });
-      TP.sources = j.sources || [];
+      TP.sources = j.sources || TP.sources || [];
       TP.err = {};
       TP.lastFetch = receivedAt;
     } catch(e) {
       TP.err.global = e.message || String(e);
+      // Preserve the last known active objects on any network/API failure.
+      Object.keys(TP.data).forEach(function(k){
+        if(TP.data[k]) TP.data[k].stale = true;
+      });
     } finally { TP.fetching = false; }
     tpTick(); tpStatus();
   }
