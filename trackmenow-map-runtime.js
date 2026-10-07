@@ -11,7 +11,7 @@ function auditLocation(lat,lon,accuracy,source){try{navigator.sendBeacon?.(AUDIT
 let m=null, ready=false, locateWatch=null, moveTimer=null, cameraPopup=null, liveTrack=null;
 const $=s=>document.querySelector(s);
 function map(){return window.map||window.maplibre||null}
-function esc(v){return String(v==null?'':v).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]))}
+function esc(v){return String(v==null?'':v).replace(/[&<>"]/g,c=>({'&':'&','<':'<','>':'>','"':'"'}[c]))}
 function api(path,opt){return fetch(API+path,Object.assign({cache:'no-store'},opt||{})).then(async r=>{const j=await r.json().catch(()=>({}));if(!r.ok)throw new Error(j.error||'HTTP '+r.status);return j})}
 function addUi(){ return; }
 function toggleFull(){const target=$('#map');if(!document.fullscreenElement)target?.requestFullscreen?.();else document.exitFullscreen?.()}
@@ -77,20 +77,17 @@ function stopLiveLocation(){
 }
 function locate(){startLiveLocation();}
 function setRuntime(msg,ok){const q=$('#tmr-coord');if(q){q.textContent=msg;q.style.color=ok===false?'#ff8d98':''}}
-function reverse(lat,lon){
- return fetch('https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat='+encodeURIComponent(lat)+'&lon='+encodeURIComponent(lon)+'&zoom=18&addressdetails=1',{headers:{Accept:'application/json'}}).then(r=>r.ok?r.json():null).catch(()=>null);
+
+/* DISABLED: no LOCATION / COPY COORDINATES popup on map click or hover.
+ * Coordinates still update via updateReadout / setRuntime when a readout element exists.
+ * Camera detail popup on explicit camera click is kept.
+ */
+function mapClick(e){
+ // Intentionally no popup. Only update coordinate readout if present.
+ const lat=e.lngLat.lat, lon=e.lngLat.lng;
+ setRuntime(lat.toFixed(5)+'°, '+lon.toFixed(5)+'°', true);
 }
-async function mapClick(e){
- const lat=e.lngLat.lat,lon=e.lngLat.lng;
- setRuntime(lat.toFixed(5)+'°, '+lon.toFixed(5)+'° · resolving…',true);
- const data=await reverse(lat,lon);
- const name=data?.display_name||'No place name returned';
- new maplibregl.Popup({closeButton:true,maxWidth:'330px'})
-  .setLngLat([lon,lat])
-  .setHTML('<div class="tmr-popup"><b>LOCATION</b><div>'+esc(name)+'</div><small>'+lat.toFixed(6)+', '+lon.toFixed(6)+'</small><button id="tmr-copy">COPY COORDINATES</button></div>')
-  .addTo(m);
- setTimeout(()=>{const b=$('#tmr-copy');if(b)b.onclick=()=>navigator.clipboard?.writeText(lat.toFixed(6)+', '+lon.toFixed(6));},0);
-}
+
 function installCameraDetail(){
  if(!m||!m.getLayer('tm-cameras')||m.__tmCameraDetail)return;
  m.__tmCameraDetail=true;
