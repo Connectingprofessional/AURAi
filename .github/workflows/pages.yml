@@ -41,6 +41,12 @@ jobs:
 
           cp index.html _site/index.html
           cp trackmenow.js _site/trackmenow.js
+          cp trackmenow-transport-fix.js _site/trackmenow-transport-fix.js
+          cp trackmenow-traffic.js _site/trackmenow-traffic.js
+          cp trackmenow-ux-fix.js _site/trackmenow-ux-fix.js
+          cp trackmenow-panel-fix.js _site/trackmenow-panel-fix.js
+          cp trackmenow-timebar-fix.js _site/trackmenow-timebar-fix.js
+          cp trackmenow-map-runtime.js _site/trackmenow-map-runtime.js
           cp trackmenow-globe-engine.js _site/trackmenow-globe-engine.js
           cp trackmenow-icons.js _site/trackmenow-icons.js
           cp water-effect.js _site/water-effect.js
