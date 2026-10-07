@@ -219,65 +219,56 @@ async function devices(req, env, url, parts) {  const method = req.method, sub =
 /* Public camera feed adapter. Consumes only explicitly configured public GeoJSON sources. */const cameraCache = new Map();
 const CAMERA_TTL = 15000;
 function cameraBbox(v){const a=String(v||'').split(',').map(Number);if(a.length!==4||a.some(x=>!Number.isFinite(x)))return null;const [minLon,minLat,maxLon,maxLat]=a;if(minLon < -180||maxLon>180||minLat < -90||maxLat>90||minLon>=maxLon||minLat>=maxLat)return null;return {minLon,minLat,maxLon,maxLat};}
+async function osmCameraCatalog(b,env){
+  const tiles=splitMovementBbox(b,35).slice(0,24), features=[], seen=new Set(), errors=[];
+  const endpoint=String(env.CAMERA_OVERPASS_URL||'https://overpass-api.de/api/interpreter');
+  const queryFor=t=>'[out:json][timeout:18];(node[man_made=surveillance]('+t.minLat+','+t.minLon+','+t.maxLat+','+t.maxLon+');way[man_made=surveillance]('+t.minLat+','+t.minLon+','+t.maxLat+','+t.maxLon+');node[contact:webcam]('+t.minLat+','+t.minLon+','+t.maxLat+','+t.maxLon+'););out center tags;';
+  for(let i=0;i<tiles.length;i+=4){
+    const batch=await Promise.all(tiles.slice(i,i+4).map(async t=>{
+      try{
+        const r=await fetchT(endpoint,{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded','Accept':'application/json'},body:'data='+encodeURIComponent(queryFor(t))},9000);
+        if(!r.ok)throw new Error('HTTP '+r.status);
+        return await r.json();
+      }catch(e){errors.push(e.message||String(e));return {elements:[]};}
+    }));
+    for(const body of batch) for(const n of (body.elements||[])){
+      const p=n.tags||{}, lat=Number(n.lat??n.center?.lat), lon=Number(n.lon??n.center?.lon);
+      if(!Number.isFinite(lat)||!Number.isFinite(lon))continue;
+      const id='osm-camera-'+n.type+'-'+n.id;
+      if(seen.has(id))continue; seen.add(id);
+      features.push({type:'Feature',id,geometry:{type:'Point',coordinates:[lon,lat]},properties:{
+        type:'camera',category:'camera',layer:'cameras',title:String(p.name||p.ref||'Public camera'),
+        provider:'OpenStreetMap / Overpass',location:String(p.addr_city||p.city||p.address||''),
+        imageUrl:String(p.image||p.image_url||''),streamUrl:String(p.webcam||p.url||p.contact_webcam||''),
+        sourceUrl:String(p.website||p.url||'https://www.openstreetmap.org/'),observedAt:nowIso(),
+        status:'PUBLIC CATALOGUE',catalogue:true
+      }});
+      if(features.length>=20000)break;
+    }
+    if(features.length>=20000)break;
+  }
+  return {features,sources:[{source:'OpenStreetMap / Overpass',layer:'cameras',status:features.length?'catalogue':'empty',count:features.length,observedAt:features.length?nowIso():null,error:features.length?undefined:(errors[0]||'No public camera catalogue records in this viewport')}],partial:errors.length>0};
+}
 async function movementCameras(b,env){
  const configured=String(env.CAMERA_GEOJSON_URLS||'').split(',').map(s=>s.trim()).filter(Boolean);
  const apiConfigured=String(env.CAMERA_API_URLS||'').split(',').map(s=>s.trim()).filter(Boolean);
- const urls=[...configured,...apiConfigured];
- const out=[],errors=[];
+ const urls=[...configured,...apiConfigured],out=[],errors=[];
  for(const sourceUrl of urls.slice(0,20)){try{
-   const r=await fetchT(sourceUrl,{headers:{Accept:'application/geo+json,application/json'}});if(!r.ok)throw new Error('HTTP '+r.status);
+   const r=await fetchT(sourceUrl,{headers:{Accept:'application/geo+json,application/json'}},8000);if(!r.ok)throw new Error('HTTP '+r.status);
    const j=await r.json();
    const records=Array.isArray(j?.features)?j.features:(Array.isArray(j?.cameras)?j.cameras:(Array.isArray(j?.data?.cameras)?j.data.cameras:(Array.isArray(j?.data)?j.data:[])));
    for(const f of records){
-     const p=f?.properties||f||{};
-     const coords=f?.geometry?.coordinates||[];
-     const lon=Number(coords[0] ?? p.lon ?? p.lng ?? p.longitude ?? p.Longitude);
-     const lat=Number(coords[1] ?? p.lat ?? p.latitude ?? p.Latitude);
+     const p=f?.properties||f||{},coords=f?.geometry?.coordinates||[];
+     const lon=Number(coords[0] ?? p.lon ?? p.lng ?? p.longitude ?? p.Longitude),lat=Number(coords[1] ?? p.lat ?? p.latitude ?? p.Latitude);
      if(!Number.isFinite(lon)||!Number.isFinite(lat)||lon<b.minLon||lon>b.maxLon||lat<b.minLat||lat>b.maxLat)continue;
-     out.push({type:'Feature',id:String(f.id||p.id||p.ID||crypto.randomUUID()),geometry:{type:'Point',coordinates:[lon,lat]},properties:{type:'camera',category:'camera',layer:'cameras',title:String(p.title||p.name||p.label||p.address||p.Name||'Public camera'),provider:String(p.provider||p.source||p.Provider||'Official public camera source'),location:String(p.location||p.address||p.road||p.city||p.RoadwayName||''),imageUrl:String(p.imageUrl||p.image_url||p.snapshot||p.image||p.ImageUrl||''),streamUrl:String(p.streamUrl||p.stream_url||p.stream||p.VideoUrl||p.video_url||''),sourceUrl:String(p.sourceUrl||p.source_url||p.url||p.Url||sourceUrl),observedAt:String(p.observedAt||p.observed_at||p.timestamp||p.updated_at||p.LastUpdated||nowIso()),status:String(p.status||'PUBLIC'),license:String(p.license||'')}});
+     const id=String(f.id||p.id||p.ID||('camera-'+crypto.randomUUID()));
+     out.push({type:'Feature',id,geometry:{type:'Point',coordinates:[lon,lat]},properties:{type:'camera',category:'camera',layer:'cameras',title:String(p.title||p.name||p.label||p.address||p.Name||'Public camera'),provider:String(p.provider||p.source||p.Provider||'Official public camera source'),location:String(p.location||p.address||p.road||p.city||p.RoadwayName||''),imageUrl:String(p.imageUrl||p.image_url||p.snapshot||p.image||p.ImageUrl||''),streamUrl:String(p.streamUrl||p.stream_url||p.stream||p.VideoUrl||p.video_url||''),sourceUrl:String(p.sourceUrl||p.source_url||p.url||p.Url||sourceUrl),observedAt:String(p.observedAt||p.observed_at||p.timestamp||p.updated_at||nowIso()),status:String(p.status||'PUBLIC')}});
    }
  }catch(e){errors.push(sourceUrl+' · '+(e.message||e));}}
- const latest=out.reduce((m,f)=>{const t=Date.parse(f.properties.observedAt);return Number.isFinite(t)&&t>m?t:m},0);
- return {features:out.slice(0,20000),sources:[{source:'TrackMeNow live camera feeds',layer:'cameras',status:out.length?'live':'feed-required',count:out.length,observedAt:latest?new Date(latest).toISOString():null,error:out.length?undefined:(configured.length?'Configured public camera feeds returned no current frames':'No live camera feed configured. Reference catalogues are not displayed as camera video.')}]};
-}
-async function osmCameraCatalog(b,env){
- const area=Math.abs((b.maxLon-b.minLon)*(b.maxLat-b.minLat));
- const endpoint=String(env.CAMERA_OVERPASS_URL||'https://overpass-api.de/api/interpreter');
- const boxes=[];
- // Global viewports used to be blocked by the single-query area guard. Tile large
- // viewports into small Overpass requests so the camera atlas can render globally.
- const nx=area>3000?6:1, ny=area>3000?3:1;
- for(let ix=0;ix<nx;ix++){
-   const x0=b.minLon+(b.maxLon-b.minLon)*ix/nx, x1=b.minLon+(b.maxLon-b.minLon)*(ix+1)/nx;
-   for(let iy=0;iy<ny;iy++){
-     const y0=b.minLat+(b.maxLat-b.minLat)*iy/ny, y1=b.minLat+(b.maxLat-b.minLat)*(iy+1)/ny;
-     boxes.push({minLon:x0,minLat:y0,maxLon:x1,maxLat:y1});
-   }
- }
- async function queryBox(bb){
-   const q='[out:json][timeout:25];nwr[man_made=surveillance]('+bb.minLat+','+bb.minLon+','+bb.maxLat+','+bb.maxLon+');nwr[contact:webcam]('+bb.minLat+','+bb.minLon+','+bb.maxLat+','+bb.maxLon+');out center tags;';
-   const rr=await fetch(endpoint,{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded','Accept':'application/json'},body:'data='+encodeURIComponent(q)});
-   if(!rr.ok)throw new Error('Camera catalogue HTTP '+rr.status);
-   return rr.json();
- }
- const features=[],seen=new Set(); let failures=0;
- for(let i=0;i<boxes.length;i+=3){
-   const batch=await Promise.all(boxes.slice(i,i+3).map(bb=>queryBox(bb).catch(()=>{failures++;return {elements:[]}})));
-   batch.forEach(j=>(j.elements||[]).forEach(e=>{
-     const p=e.tags||{},lon=e.lon??e.center?.lon,lat=e.lat??e.center?.lat,id='osm-camera-'+e.type+'-'+e.id;
-     if(seen.has(id)||!Number.isFinite(Number(lon))||!Number.isFinite(Number(lat)))return;
-     seen.add(id);
-     const live=String(p['contact:webcam']||p.webcam||'');
-     features.push({type:'Feature',id,geometry:{type:'Point',coordinates:[Number(lon),Number(lat)]},properties:{
-       type:'camera',category:'camera',layer:'cameras',title:String(p.name||p.ref||'PUBLIC CAMERA'),
-       provider:'OpenStreetMap',location:String(p['addr:city']||p['addr:street']||p.location||''),
-       imageUrl:'',streamUrl:live,sourceUrl:live||('https://www.openstreetmap.org/'+e.type+'/'+e.id),
-       observedAt:null,status:live?'PUBLIC SOURCE':'PUBLIC CATALOGUE',license:String(p.license||'')
-     }});
-   }));
-   if(features.length>=20000)break;
- }
- return {features:features.slice(0,20000),status:features.length?'catalogue':'empty',source:'OpenStreetMap / Overpass',partial:failures>0};
+ if(out.length)return {features:out.slice(0,20000),sources:[{source:'Configured public camera feeds',layer:'cameras',status:'live',count:out.length,observedAt:nowIso()}]};
+ const cat=await osmCameraCatalog(b,env);
+ if(cat.features?.length)return cat;
+ return {features:[],sources:[{source:'OpenStreetMap / Overpass',layer:'cameras',status:'empty',count:0,observedAt:null,error:errors[0]||cat.sources?.[0]?.error||'No public camera records returned'}]};
 }
 async function cameras(req,env,url){
  const b=cameraBbox(url.searchParams.get('bbox'));if(!b)return json(req,env,{ok:false,error:'Valid bbox is required'},400);
@@ -345,15 +336,33 @@ const MOVEMENT_TTL = 10000;
 function movementBbox(v) {
   const a = String(v || '').split(',').map(Number);
   if (a.length !== 4 || a.some(x => !Number.isFinite(x))) return null;
-  const [minLon,minLat,maxLon,maxLat]=a;
-  if (minLon < -180 || maxLon > 180 || minLat < -90 || maxLat > 90 || minLon >= maxLon || minLat >= maxLat) return null;
+  let [minLon,minLat,maxLon,maxLat]=a;
+  minLat=Math.max(-85.0511,Math.min(85.0511,minLat));
+  maxLat=Math.max(-85.0511,Math.min(85.0511,maxLat));
+  /* MapLibre may return a wrapped globe bbox wider than 360°. Normalize it so
+     a globe view never causes the API to reject the entire movement request. */
+  while(minLon < -180) { minLon += 360; maxLon += 360; }
+  while(maxLon > 180 && minLon < 180) { break; }
+  if(maxLon-minLon > 359.9) { minLon=-180; maxLon=180; }
+  if(minLon < -180 || maxLon > 180 || minLon >= maxLon || minLat >= maxLat) return null;
   return {minLon,minLat,maxLon,maxLat};
+}
+function splitMovementBbox(b, maxSpan=45) {
+  const out=[];
+  const lonSpan=b.maxLon-b.minLon, latSpan=b.maxLat-b.minLat;
+  const nx=Math.max(1,Math.ceil(lonSpan/maxSpan)), ny=Math.max(1,Math.ceil(latSpan/maxSpan));
+  for(let y=0;y<ny;y++) for(let x=0;x<nx;x++){
+    const minLon=b.minLon+lonSpan*x/nx, maxLon=b.minLon+lonSpan*(x+1)/nx;
+    const minLat=b.minLat+latSpan*y/ny, maxLat=b.minLat+latSpan*(y+1)/ny;
+    out.push({minLon,minLat,maxLon,maxLat});
+  }
+  return out.slice(0,64);
 }
 function movementFeature(id, lon, lat, props={}) {
   if (![lon,lat].every(Number.isFinite) || lon < -180 || lon > 180 || lat < -90 || lat > 90) return null;
   return { type:'Feature', id:String(id || crypto.randomUUID()), geometry:{type:'Point',coordinates:[lon,lat]}, properties:props };
 }
-async function movementFlights(b, env) {
+async function movementFlightsSingle(b, env) {
   const q=new URLSearchParams({lamin:String(b.minLat),lomin:String(b.minLon),lamax:String(b.maxLat),lomax:String(b.maxLon)});
   try {
     const r=await fetchT('https://opensky-network.org/api/states/all?'+q,{headers:{Accept:'application/json'}},5000);
@@ -393,7 +402,24 @@ async function movementFlights(b, env) {
     } catch(x) { return {features:[],source:'Aviationstack',status:'error',error:x.message}; }
   }
 }
-async function movementShips(b, env) {
+async function movementFlights(b, env) {
+  const tiles=splitMovementBbox(b,45);
+  const results=await Promise.all(tiles.map(t=>movementFlightsSingle(t,env)));
+  const seen=new Set(),features=[],sources=[];
+  for(const r of results){
+    for(const f of (r.features||[])){
+      const id=String(f.id||f.properties?.icao24||'');
+      if(id&&!seen.has(id)){seen.add(id);features.push(f);}
+    }
+    if(r.source)sources.push({...r,count:(r.features||[]).length});
+  }
+  const live=features.length>0;
+  return {features:features.slice(0,20000),source:'OpenSky ADS-B / ADSB.lol',status:live?'live':'no-current-vehicles',observedAt:nowIso(),
+    sources:[{source:'OpenSky ADS-B / ADSB.lol',layer:'flights',status:live?'live':'no-current-vehicles',count:features.length,observedAt:nowIso(),tiles:tiles.length}],
+    error:live?undefined:'No current aircraft positions returned from the public ADS-B sources'};
+}
+
+async function movementShipsSingle(b, env) {
   if(!env.AISSTREAM_API_KEY) return {features:[],source:'AISstream.io',status:'feed-required',error:'AISSTREAM_API_KEY is not configured on the Worker'};
   const url=env.AIS_WS_URL||'wss://stream.aisstream.io/v0/stream';
   return await new Promise(resolve=>{
@@ -430,6 +456,19 @@ function gtfsVehicles(buf, feedMeta={}) {
   });
   return out;
 }
+async function movementShips(b, env) {
+  const tiles=splitMovementBbox(b,45);
+  const results=await Promise.all(tiles.map(t=>movementShipsSingle(t,env)));
+  const seen=new Set(),features=[];
+  for(const r of results) for(const f of (r.features||[])){
+    const id=String(f.id||f.properties?.mmsi||'');
+    if(id&&!seen.has(id)){seen.add(id);features.push(f);}
+  }
+  return {features:features.slice(0,20000),source:'AISstream.io',status:features.length?'live':'no-current-vehicles',observedAt:nowIso(),
+    sources:[{source:'AISstream.io',layer:'ships',status:features.length?'live':'no-current-vehicles',count:features.length,observedAt:nowIso(),tiles:tiles.length}],
+    error:features.length?undefined:'No current ship positions returned from AISstream.io'};
+}
+
 async function movementMobility(env, kind) {
   const raw = kind === 'taxi' ? env.TAXI_VEHICLE_URLS : env.GBFS_VEHICLE_URLS;
   const urls = String(raw || '').split(',').map(s=>s.trim()).filter(Boolean).slice(0,30);
@@ -605,7 +644,7 @@ export default {
     if (req.method === 'OPTIONS') return new Response(null, { status: 204, headers: corsHeaders(req, env) });
     const url = new URL(req.url), parts = url.pathname.split('/').filter(Boolean);
     try {
-      if (url.pathname === '/health' || url.pathname === '/') return json(req, env, { ok: true, service: 'TrackMeNow API', provider: 'OpenCelliD', cell: !!env.OPENCELLID_API_KEY, devices: !!env.DB, transport: { movement: true, ais: !!env.AISSTREAM_API_KEY, mobilityDatabase: !!env.MOBILITY_DB_REFRESH_TOKEN, aviationstack: !!env.AVIATIONSTACK_API_KEY, gbfs: String(env.GBFS_VEHICLE_URLS||'').split(',').filter(Boolean).length > 0, taxi: String(env.TAXI_VEHICLE_URLS||'').split(',').filter(Boolean).length > 0 }, cameras: true, cameraCatalog: String(env.CAMERA_GEOJSON_URLS||'').split(',').filter(Boolean).length ? 'configured-live-feed' : 'feed-required', communication: !!env.DB, space: { iss: true, satellites: !!env.N2YO_API_KEY }, earthObservation: true });
+      if (url.pathname === '/health' || url.pathname === '/') return json(req, env, { ok: true, service: 'TrackMeNow API', provider: 'OpenCelliD', cell: !!env.OPENCELLID_API_KEY, devices: !!env.DB, transport: { movement: true, ais: !!env.AISSTREAM_API_KEY, mobilityDatabase: !!env.MOBILITY_DB_REFRESH_TOKEN, aviationstack: !!env.AVIATIONSTACK_API_KEY, gbfs: String(env.GBFS_VEHICLE_URLS||'').split(',').filter(Boolean).length > 0, taxi: String(env.TAXI_VEHICLE_URLS||'').split(',').filter(Boolean).length > 0 }, cameras: true, cameraCatalog: String(env.CAMERA_GEOJSON_URLS||'').split(',').filter(Boolean).length ? 'configured-live-feed' : 'osm-overpass-catalogue-fallback', communication: !!env.DB, space: { iss: true, satellites: !!env.N2YO_API_KEY }, earthObservation: true });
       if (url.pathname === '/api/db-test') {
         if (!env.DB) return json(req, env, { ok: false, database: 'binding-missing', error: 'D1 binding DB is not available.' }, 500);
         const r = await env.DB.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name IN ('devices', 'telemetry', 'rate_limits') ORDER BY name").all();
