@@ -91,6 +91,7 @@
     const el = $('status');
     if (!el) return;
     el.innerHTML = '<span style="color:' + (ok === false ? '#ff6672' : '#43e0a0') + '">●</span> ' + msg;
+    el.classList.add('tm-show');
   }
   function ensureCss(href) {
     if (document.querySelector('link[data-og-css]')) return;
