@@ -417,8 +417,32 @@ function drawGeofence(p){p.append(status('Geofences use the current GPS session 
 function cameraBbox(){const m=map();if(!m)return null;const b=m.getBounds();return [b.getWest(),b.getSouth(),b.getEast(),b.getNorth()].join(',');}
 let cameraLoadTimer=null,cameraLoadSeq=0;
 function scheduleCameraAtlas(delay=250){clearTimeout(cameraLoadTimer);cameraLoadTimer=setTimeout(()=>loadCameraAtlas(),delay);}
-async function loadCameraAtlas(){const m=map();if(!m)return;const bbox=cameraBbox();if(!bbox)return;const seq=++cameraLoadSeq;try{const j=await api('/api/cameras?bbox='+encodeURIComponent(bbox));if(seq!==cameraLoadSeq)return;if(!m.getSource('tm-cameras'))m.addSource('tm-cameras',{type:'geojson',data:{type:'FeatureCollection',features:[]}});if(!m.getLayer('tm-cameras-halo'))m.addLayer({id:'tm-cameras-halo',type:'circle',source:'tm-cameras',paint:{'circle-radius':['interpolate',['linear'],['zoom'],2,8,8,12,14,18],'circle-color':'#67d5ff','circle-opacity':.12,'circle-blur':.9}});
-if(!m.getLayer('tm-cameras')){m.addLayer({id:'tm-cameras',type:'circle',source:'tm-cameras',paint:{'circle-radius':['interpolate',['linear'],['zoom'],2,2.5,8,4.5,14,7],'circle-color':'#67d5ff','circle-stroke-color':'#071018','circle-stroke-width':1.5,'circle-opacity':.94}});m.on('click','tm-cameras',e=>{const f=e.features&&e.features[0],p=f&&f.properties;if(!p)return;const u=p.imageUrl||p.streamUrl||p.sourceUrl;new maplibregl.Popup({closeButton:true,maxWidth:'300px'}).setLngLat(e.lngLat).setHTML('<b>'+String(p.title||'PUBLIC CAMERA').replace(/[<>]/g,'')+'</b><div style="opacity:.65;font-size:11px;margin-top:4px">'+String(p.provider||'Public source').replace(/[<>]/g,'')+'</div><div style="font-size:11px;margin-top:5px">'+String(p.location||'').replace(/[<>]/g,'')+'</div><div style="opacity:.6;font-size:10px;margin-top:5px">Observed '+(p.observedAt?new Date(p.observedAt).toLocaleString():'—')+'</div>'+((u)?'<button id="tm-open-camera" style="margin-top:8px">OPEN SOURCE</button>':'')).addTo(m);setTimeout(()=>{const b=document.getElementById('tm-open-camera');if(b)b.onclick=()=>window.open(u,'_blank','noopener,noreferrer')},0)});/* Camera details are click-only; no hover inspection. */}m.getSource('tm-cameras').setData({type:'FeatureCollection',features:j.features||[]});m.setLayoutProperty('tm-cameras','visibility',(j.features||[]).length?'visible':'none');const s=(j.sources||[])[0];setStatus('CAMERAS · '+(s&&s.count||0).toLocaleString()+' · '+(s&&s.source||'public feed')+' · '+(s&&s.status||'STATUS'),!!(j.features||[]).length)}catch(e){setStatus('CAMERAS · '+(e.message||'source unavailable'),false)}}
+async function loadCameraAtlas(){
+ const m=map();if(!m)return;const bbox=cameraBbox();if(!bbox)return;const seq=++cameraLoadSeq;
+ if(!window.__tmCameraStore)window.__tmCameraStore=new Map();
+ try{
+  const j=await api('/api/cameras?bbox='+encodeURIComponent(bbox));
+  if(seq!==cameraLoadSeq)return;
+  const incoming=Array.isArray(j.features)?j.features:[];
+  const now=Date.now(),KEEP=15*60*1000;
+  incoming.forEach(f=>{const p=f.properties||{};const id=String(f.id||p.id||p.cameraId||p.name||JSON.stringify(f.geometry));p.__tmLastSeen=now;p.entityId=id;f.id=id;f.properties=p;window.__tmCameraStore.set(id,f);});
+  const features=Array.from(window.__tmCameraStore.values()).filter(f=>now-(Number(f.properties&&f.properties.__tmLastSeen)||0)<=KEEP);
+  if(!m.getSource('tm-cameras'))m.addSource('tm-cameras',{type:'geojson',data:{type:'FeatureCollection',features:[]}});
+  if(!m.getLayer('tm-cameras-halo'))m.addLayer({id:'tm-cameras-halo',type:'circle',source:'tm-cameras',paint:{'circle-radius':['interpolate',['linear'],['zoom'],2,8,8,12,14,18],'circle-color':'#67d5ff','circle-opacity':.12,'circle-blur':.9}});
+  if(!m.getLayer('tm-cameras')){
+   m.addLayer({id:'tm-cameras',type:'circle',source:'tm-cameras',paint:{'circle-radius':['interpolate',['linear'],['zoom'],2,2.5,8,4.5,14,7],'circle-color':'#67d5ff','circle-stroke-color':'#071018','circle-stroke-width':1.5,'circle-opacity':.94}});
+   m.on('click','tm-cameras',e=>{const f=e.features&&e.features[0],p=f&&f.properties;if(!p)return;const u=p.imageUrl||p.streamUrl||p.sourceUrl;new maplibregl.Popup({closeButton:true,maxWidth:'300px'}).setLngLat(e.lngLat).setHTML('<b>'+String(p.title||'PUBLIC CAMERA').replace(/[<>]/g,'')+'</b><div style="opacity:.65;font-size:11px;margin-top:4px">'+String(p.provider||'Public source').replace(/[<>]/g,'')+'</div><div style="font-size:11px;margin-top:5px">'+String(p.location||'').replace(/[<>]/g,'')+'</div><div style="opacity:.6;font-size:10px;margin-top:5px">Observed '+(p.observedAt?new Date(p.observedAt).toLocaleString():'—')+'</div>'+((u)?'<button id="tm-open-camera" style="margin-top:8px">OPEN SOURCE</button>':'')).addTo(m);setTimeout(()=>{const b=document.getElementById('tm-open-camera');if(b)b.onclick=()=>window.open(u,'_blank','noopener,noreferrer')},0)});
+  }
+  m.getSource('tm-cameras').setData({type:'FeatureCollection',features});
+  m.setLayoutProperty('tm-cameras','visibility',features.length?'visible':'none');
+  const src=(j.sources||[])[0];setStatus('CAMERAS · '+features.length.toLocaleString()+' · '+(src&&src.source||'public feed')+' · '+(src&&src.status||'ACTIVE'),!!features.length);
+ }catch(e){
+  // Do not clear the last known camera set because of a transient API/network failure.
+  const features=Array.from(window.__tmCameraStore.values());
+  if(m.getSource('tm-cameras')){m.getSource('tm-cameras').setData({type:'FeatureCollection',features});m.setLayoutProperty('tm-cameras','visibility',features.length?'visible':'none');}
+  setStatus('CAMERAS · LIVE CACHE · '+(e.message||'source temporarily unavailable'),!!features.length);
+ }
+}
 function bindCameraMap(){
  try{
   const m=map(); if(!m||m.__tmCameraMapBound)return;
