@@ -281,7 +281,6 @@
       '#tm-time-label{min-width:150px;text-align:center;font-weight:700;font-variant-numeric:tabular-nums}',
       '.tm-play{width:36px;height:36px;border-radius:50%;border:1px solid rgba(255,255,255,.2);background:rgba(69,168,255,.25);color:#fff;cursor:pointer}',
       '.tm-tbtn{width:auto;min-width:32px;height:32px;padding:0 8px}',
-      '#tm-wx-readout{position:fixed;z-index:2200;left:12px;bottom:90px;padding:10px 12px;border-radius:10px;background:rgba(8,14,20,.9);border:1px solid rgba(255,255,255,.15);color:#e8f0f6;font:11px ui-monospace;max-width:240px}',
       '#tm-zoom-stack{position:fixed;z-index:2200;right:14px;bottom:100px;display:flex;flex-direction:column;gap:6px}',
       '.maplibregl-ctrl-bottom-right,.maplibregl-ctrl-top-right{display:none!important}',
       '.tm-z{width:40px;height:40px;font-size:20px;font-weight:900;padding:0}',
@@ -362,9 +361,8 @@
     document.querySelectorAll('[data-scale]').forEach(function (b) { b.classList.toggle('on', b.getAttribute('data-scale') === scale); });
     const show = scale === 'earth';
     if ($('tm-bottom-bar')) $('tm-bottom-bar').style.display = show ? 'flex' : 'none';
-    ['tm-timebar', 'tm-wx-readout'].forEach(function (id) {
-      const el = $(id); if (el) el.style.display = show ? (id === 'tm-timebar' ? 'flex' : 'block') : 'none';
-    });
+    const tb = $('tm-timebar'); if (tb) tb.style.display = show ? 'flex' : 'none';
+    const wx = $('tm-wx-readout'); if (wx) wx.style.display = 'none';
     if (!show) toggleDrawer(null);
   }
 
@@ -1250,14 +1248,28 @@
         else maplibre.addLayer({id:'tp-'+k,type:'circle',source:'tp-'+k,paint:{'circle-radius':['interpolate',['linear'],['zoom'],1,2.5,6,4,12,6],'circle-color':TP.kinds[k].color,'circle-stroke-color':'#071018','circle-stroke-width':1.5,'circle-opacity':.9}});
       }
       maplibre.on('click','tp-'+k,function(e){const f=e.features&&e.features[0];if(f)tpSelect(k,f.properties.i,false);});
-      maplibre.on('mouseenter','tp-'+k,function(){maplibre.getCanvas().style.cursor='pointer';});
-      maplibre.on('mouseleave','tp-'+k,function(){maplibre.getCanvas().style.cursor='';});
+      maplibre.on('mouseenter','tp-'+k,function(e){
+        maplibre.getCanvas().style.cursor='pointer';
+        const f=e.features&&e.features[0],p=f&&f.properties;if(!p)return;
+        const title=p.name||p.callsign||p.flight||p.mmsi||p.label||p.vehicle_id||TP.kinds[k].noun;
+        const rows=['<b>'+esc(String(title))+'</b>',TP.kinds[k].label+' · '+esc(String(p.source||'server/API')),'Status '+esc(String(p.sourceStatus||'LIVE'))];
+        if(p.observedAt)rows.push('Observed '+new Date(p.observedAt).toLocaleTimeString());
+        if(p.speed_mps!=null)rows.push('Speed '+Math.round(Number(p.speed_mps)*3.6)+' km/h');
+        if(p.altitude!=null)rows.push('Altitude '+Math.round(Number(p.altitude))+' m');
+        if(p.route)rows.push('Route '+esc(String(p.route)));
+        if(p.vehicleId)rows.push('Vehicle '+esc(String(p.vehicleId)));
+        if(p.heading!=null)rows.push('Heading '+Math.round(Number(p.heading))+'°');
+        if(maplibre.__tmHoverPopup)maplibre.__tmHoverPopup.remove();
+        maplibre.__tmHoverPopup=new maplibregl.Popup({closeButton:false,closeOnClick:false,maxWidth:'280px',offset:12}).setLngLat(e.lngLat).setHTML('<div style="font:11px/1.45 system-ui;color:#e8f0f6">'+rows.join('<br>')+'</div>').addTo(maplibre);
+      });
+      maplibre.on('mouseleave','tp-'+k,function(){maplibre.getCanvas().style.cursor='';if(maplibre.__tmHoverPopup){maplibre.__tmHoverPopup.remove();maplibre.__tmHoverPopup=null;}});
     });
     if(!maplibre.getSource('tp-cells')) maplibre.addSource('tp-cells',{type:'geojson',data:empty});
     if(!maplibre.getLayer('tp-cells')) maplibre.addLayer({id:'tp-cells',type:'circle',source:'tp-cells',layout:{visibility:'none'},paint:{'circle-radius':4,'circle-color':'#d28bff','circle-opacity':.5}});
     if(!maplibre.getSource('tp-sel')) maplibre.addSource('tp-sel',{type:'geojson',data:empty});
     if(!maplibre.getLayer('tp-sel')) maplibre.addLayer({id:'tp-sel',type:'circle',source:'tp-sel',paint:{'circle-radius':16,'circle-color':'rgba(0,0,0,0)','circle-stroke-width':2.5,'circle-stroke-color':'#fff'}});
     maplibre.on('dragstart',function(){if(TP.follow){TP.follow=false;tpCard();}});
+    installWeatherHover();
     tpApply(); tpLoad();
     if(!TP.timer) TP.timer=setInterval(tpTick,1000);
     if(!TP.refresh) TP.refresh=setInterval(tpLoad,60000);
@@ -1294,7 +1306,7 @@
     const sel=maplibre.getSource('tp-sel'),cur=tpSelPos();
     sel.setData(cur?{type:'FeatureCollection',features:[{type:'Feature',geometry:{type:'Point',coordinates:[cur[0],cur[1]]},properties:{}}]}:{type:'FeatureCollection',features:[]});
     if(cur&&TP.follow)maplibre.easeTo({center:[cur[0],cur[1]],duration:900,essential:true});
-    if(cur)tpCard(true);
+
   }
   function tpSelPos(){if(!TP.sel)return null;const d=TP.data[TP.sel.k];if(!d)return null;const f=d.features[TP.sel.i];return tpPos(TP.sel.k,f);}
   function tpSelect(k,i,follow){TP.sel={k:k,i:+i};TP.follow=!!follow;tpCard();tpTick();}
@@ -1428,20 +1440,29 @@
     } catch (e) {}
     applyDayNight(); paintForecast(); refreshWx(); syncBar(); syncDrawerItems();
   }
-  function refreshWx() {
-    const el = $('tm-wx-readout'); if (!el || !maplibre) return;
-    const c = maplibre.getCenter();
-    fetch('https://api.open-meteo.com/v1/forecast?latitude=' + c.lat.toFixed(3) + '&longitude=' + c.lng.toFixed(3) + '&current=temperature_2m,relative_humidity_2m,surface_pressure,wind_speed_10m,precipitation')
-      .then(function (r) { return r.json(); })
-      .then(function (j) {
-        const cur = j.current || {};
-        el.innerHTML = ['CENTER · ' + c.lat.toFixed(2) + '°, ' + c.lng.toFixed(2) + '°',
-          '<b>Temp</b> ' + (cur.temperature_2m != null ? cur.temperature_2m + ' °C' : '—'),
-          '<b>Humidity</b> ' + (cur.relative_humidity_2m != null ? cur.relative_humidity_2m + ' %' : '—'),
-          '<b>Pressure</b> ' + (cur.surface_pressure != null ? Math.round(cur.surface_pressure) + ' hPa' : '—'),
-          '<b>Wind</b> ' + (cur.wind_speed_10m != null ? cur.wind_speed_10m + ' km/h' : '—'),
-          '<b>Precip</b> ' + (cur.precipitation != null ? cur.precipitation + ' mm' : '—')].join('<br>');
-      }).catch(function () {});
+  let tmWeatherHoverPopup=null, tmWeatherHoverTimer=null;
+  function refreshWx(){ return; }
+  function installWeatherHover(){
+    if(!maplibre||maplibre.__tmWeatherHover)return;
+    maplibre.__tmWeatherHover=true;
+    maplibre.on('mousemove',function(e){
+      if(!(activeWx.temp||activeWx.wind||activeWx.precip||activeWx.humidity||activeWx.pressure))return;
+      clearTimeout(tmWeatherHoverTimer);
+      tmWeatherHoverTimer=setTimeout(function(){
+        const p=e.lngLat;
+        fetch('https://api.open-meteo.com/v1/forecast?latitude='+p.lat.toFixed(3)+'&longitude='+p.lng.toFixed(3)+'&current=temperature_2m,relative_humidity_2m,surface_pressure,wind_speed_10m,precipitation').then(function(r){return r.json();}).then(function(j){
+          const c=j.current||{},rows=['<b>WEATHER</b>',p.lat.toFixed(3)+'°, '+p.lng.toFixed(3)+'°'];
+          if(c.temperature_2m!=null)rows.push('Temp '+c.temperature_2m+' °C');
+          if(c.relative_humidity_2m!=null)rows.push('Humidity '+c.relative_humidity_2m+' %');
+          if(c.surface_pressure!=null)rows.push('Pressure '+Math.round(c.surface_pressure)+' hPa');
+          if(c.wind_speed_10m!=null)rows.push('Wind '+c.wind_speed_10m+' km/h');
+          if(c.precipitation!=null)rows.push('Precip '+c.precipitation+' mm');
+          if(tmWeatherHoverPopup)tmWeatherHoverPopup.remove();
+          tmWeatherHoverPopup=new maplibregl.Popup({closeButton:false,closeOnClick:false,maxWidth:'240px',offset:12}).setLngLat([p.lng,p.lat]).setHTML('<div style=\'font:11px/1.45 system-ui;color:#e8f0f6\'>'+rows.join('<br>')+'</div>').addTo(maplibre);
+        }).catch(function(){});
+      },350);
+    });
+    maplibre.on('mouseout',function(){clearTimeout(tmWeatherHoverTimer);if(tmWeatherHoverPopup){tmWeatherHoverPopup.remove();tmWeatherHoverPopup=null;}});
   }
 
   async function enterEarth(transitionFromSolar) {
