@@ -25,7 +25,24 @@ function savePhoneSearchHistory(phone,found,deviceId){
  const next=[item,...getPhoneSearchHistory().filter(x=>x.maskedPhone!==item.maskedPhone)].slice(0,20);
  try{localStorage.setItem(PHONE_SEARCH_HISTORY_KEY,JSON.stringify(next))}catch(e){}
 }
-let gps={watch:null,session:null,marker:null,lastFix:0,lastAccuracy:null,error:''}, historyTimer=null;
+let gps={watch:null,session:null,marker:null,lastFix:0,lastAccuracy:null,error:'',trail:[],poll:null}, historyTimer=null;
+function ensureGpsLayers(m){
+ if(!m||!window.maplibregl||!m.isStyleLoaded||!m.isStyleLoaded())return;
+ const empty={type:'FeatureCollection',features:[]};
+ if(!m.getSource('tm-gps-track'))m.addSource('tm-gps-track',{type:'geojson',data:empty});
+ if(!m.getLayer('tm-gps-track'))m.addLayer({id:'tm-gps-track',type:'line',source:'tm-gps-track',layout:{'line-cap':'round','line-join':'round'},paint:{'line-color':'#43e0a0','line-width':['interpolate',['linear'],['zoom'],1,2,8,3.5,15,5],'line-opacity':.88,'line-blur':.15}});
+ if(!m.getSource('tm-gps-accuracy'))m.addSource('tm-gps-accuracy',{type:'geojson',data:empty});
+ if(!m.getLayer('tm-gps-accuracy'))m.addLayer({id:'tm-gps-accuracy',type:'circle',source:'tm-gps-accuracy',paint:{'circle-radius':['interpolate',['linear'],['zoom'],5,7,10,14,15,22],'circle-color':'#43e0a0','circle-opacity':.12,'circle-stroke-color':'#43e0a0','circle-stroke-width':1,'circle-stroke-opacity':.38}});
+}
+function paintGpsTrack(m,points){
+ if(!m||!points||!points.length)return;
+ ensureGpsLayers(m);
+ const coords=points.map(p=>[Number(p.lon),Number(p.lat)]).filter(p=>Number.isFinite(p[0])&&Number.isFinite(p[1]));
+ if(coords.length>=2&&m.getSource('tm-gps-track'))m.getSource('tm-gps-track').setData({type:'Feature',properties:{source:'consented-live-gps'},geometry:{type:'LineString',coordinates:coords}});
+ const last=coords[coords.length-1];
+ const accuracy=Number(points[points.length-1].accuracy);
+ if(last&&m.getSource('tm-gps-accuracy'))m.getSource('tm-gps-accuracy').setData({type:'Feature',properties:{accuracy:Number.isFinite(accuracy)?accuracy:0},geometry:{type:'Point',coordinates:last}});
+}
 const $=(s)=>document.querySelector(s);
 function el(tag,attrs={},txt){const x=document.createElement(tag);Object.keys(attrs).forEach(k=>x.setAttribute(k,attrs[k]));if(txt!==undefined)x.textContent=txt;return x}
 function api(path,opt){return fetch(API+path,Object.assign({cache:'no-store'},opt||{})).then(async r=>{const j=await r.json().catch(()=>({}));if(!r.ok)throw Object.assign(new Error(j.error||('HTTP '+r.status)),{status:r.status,data:j});return j})}
@@ -209,20 +226,24 @@ function drawTrack(p){
  if(state.sub==='HISTORY')return drawHistory(p);
  if(state.sub==='GEOFENCE')return drawGeofence(p);
 }
-function drawGps(p){const hasDevice=!!localStorage.getItem('tmDeviceId')&&!!localStorage.getItem('tmDeviceToken');const c=card('LIVE GPS',isLocal?'Permission-based browser GPS. Local sessions are stored by the tracking API.':'Permission-based browser GPS. On GitHub Pages, consented device telemetry is stored through the TrackMeNow Worker/D1 history API.',startGps,gps.watch?'STOP LIVE GPS':'START LIVE GPS');p.append(c);const live=gps.lastFix?'GPS: LIVE · ±'+Math.round(gps.lastAccuracy||0)+' m · updated '+Math.max(0,Math.round((Date.now()-gps.lastFix)/1000))+'s ago':(gps.error?'GPS: ERROR · '+gps.error:'GPS: WAITING FOR FIX');p.append(status(live+' · '+(gps.session?'SESSION / DEVICE '+gps.session:(hasDevice?'CONSENTED DEVICE READY':'CONSENTED DEVICE REQUIRED'))))}
+function drawGps(p){const hasDevice=!!localStorage.getItem('tmDeviceId')&&!!localStorage.getItem('tmDeviceToken');const c=card('LIVE GPS',isLocal?'Permission-based browser GPS. Local sessions are stored by the tracking API.':'Permission-based browser GPS. On GitHub Pages, consented device telemetry is stored through the TrackMeNow Worker/D1 history API.',startGps,gps.watch?'STOP LIVE GPS':'START LIVE GPS');p.append(c);const live=gps.lastFix?'GPS: LIVE · ±'+Math.round(gps.lastAccuracy||0)+' m · updated '+Math.max(0,Math.round((Date.now()-gps.lastFix)/1000))+'s ago · '+gps.trail.length+' points':(gps.error?'GPS: ERROR · '+gps.error:'GPS: WAITING FOR FIX');p.append(status(live+' · '+(gps.session?'SESSION / DEVICE '+gps.session:(hasDevice?'CONSENTED DEVICE READY':'CONSENTED DEVICE REQUIRED'))))}
 async function startGps(){
- if(gps.watch!==null){navigator.geolocation.clearWatch(gps.watch);gps.watch=null;if(isLocal&&gps.session)await api('/api/sessions/'+gps.session+'/stop',{method:'POST'}).catch(()=>{});render();return}
+ if(gps.watch!==null){navigator.geolocation.clearWatch(gps.watch);gps.watch=null;if(gps.poll){clearInterval(gps.poll);gps.poll=null}if(isLocal&&gps.session)await api('/api/sessions/'+gps.session+'/stop',{method:'POST'}).catch(()=>{});render();return}
  try{
    let deviceId=localStorage.getItem('tmDeviceId'),deviceToken=localStorage.getItem('tmDeviceToken');
    if(!isLocal&&!deviceId){const phone=prompt('Enter the mobile number for this consenting device:');if(!phone)return;if(!confirm('I own this device and consent to live GPS tracking.'))return;const j=await api('/api/devices/register',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({phone,label:'TrackMeNow Live GPS',consent:true})});deviceId=j.deviceId;deviceToken=j.deviceToken;localStorage.setItem('tmDeviceId',deviceId);localStorage.setItem('tmDeviceToken',deviceToken);alert('Consent registered. Pairing code: '+j.pairingCode+'\nKeep this code private; use it to authorize a viewer.')}
    if(isLocal){const s=await api('/api/sessions',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});gps.session=s.id}
+   gps.trail=[];
    else gps.session=deviceId;
    const publish=async(pos)=>{
-     const q=pos.coords, body={lat:q.latitude,lon:q.longitude,accuracy:q.accuracy,altitude:q.altitude,heading:q.heading,speed:q.speed,source:'browser-gps',timestamp:new Date(pos.timestamp).toISOString()};
+     const q=pos.coords, point={lat:q.latitude,lon:q.longitude,accuracy:q.accuracy,altitude:q.altitude,heading:q.heading,speed:q.speed,source:'browser-gps',timestamp:new Date(pos.timestamp).toISOString()};
+     const body=point;
+     gps.trail.push(point); if(gps.trail.length>2000)gps.trail.splice(0,gps.trail.length-2000);
      if(isLocal)await api('/api/sessions/'+gps.session+'/location',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)}).catch(()=>{});
      else await api('/api/devices/'+gps.session+'/telemetry',{method:'POST',headers:{'Content-Type':'application/json'},Authorization:'Bearer '+deviceToken,body:JSON.stringify(body)}).catch(()=>{});
-     const m=map();if(m&&window.maplibregl){if(!gps.marker)gps.marker=new maplibregl.Marker({color:'#43e0a0'}).setLngLat([q.longitude,q.latitude]).addTo(m);else gps.marker.setLngLat([q.longitude,q.latitude]);m.flyTo({center:[q.longitude,q.latitude],zoom:Math.max(m.getZoom(),12),duration:400})}
+     const m=map();if(m&&window.maplibregl){ensureGpsLayers(m);paintGpsTrack(m,gps.trail);if(!gps.marker)gps.marker=new maplibregl.Marker({color:'#43e0a0'}).setLngLat([q.longitude,q.latitude]).addTo(m);else gps.marker.setLngLat([q.longitude,q.latitude]);m.flyTo({center:[q.longitude,q.latitude],zoom:Math.max(m.getZoom(),12),duration:400})}
      gps.lastFix=Date.now(); gps.lastAccuracy=q.accuracy;
+     try{const s=document.querySelector('#tm-panel .tm-status');if(s)s.textContent='GPS: LIVE · '+q.latitude.toFixed(6)+', '+q.longitude.toFixed(6)+' · ±'+Math.round(q.accuracy||0)+' m · points '+gps.trail.length}catch(e){}
    };
    const onError=e=>{gps.error=(e&&e.message)||'Unable to acquire GPS';console.warn(e);render();};
    navigator.geolocation.getCurrentPosition(publish,onError,{enableHighAccuracy:true,maximumAge:0,timeout:15000});
