@@ -575,6 +575,6 @@ async function doSearch(q){
    else alert('No live/public result found.');
  }catch(e){alert(e.message)}
 }
-function start(){const l=el('link',{rel:'stylesheet',href:'./visuals.css?v=trackmenow-live-18'});document.head.append(l);build();setTimeout(()=>{const z=$('#tm-zoom-common');if(z)z.title='Common map zoom';},100)}
+function start(){const l=el('link',{rel:'stylesheet',href:'./visuals.css?v=trackmenow-live-19'});document.head.append(l);build();window.TrackMeNowCameraAtlas={load:loadCameraAtlas,schedule:scheduleCameraAtlas,bind:bindCameraMap};let tries=0;const bootCameraLayer=()=>{const m=map();if(m){try{bindCameraMap();scheduleCameraAtlas(0)}catch(e){}return}if(++tries<80)setTimeout(bootCameraLayer,250)};bootCameraLayer();setTimeout(()=>{const z=$('#tm-zoom-common');if(z)z.title='Common map zoom'},100)}
 if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',start);else start();
 })();
