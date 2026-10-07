@@ -417,19 +417,19 @@ function drawGeofence(p){p.append(status('Geofences use the current GPS session 
 function cameraBbox(){const m=map();if(!m)return null;const b=m.getBounds();return [b.getWest(),b.getSouth(),b.getEast(),b.getNorth()].join(',');}
 let cameraLoadTimer=null,cameraLoadSeq=0;
 function scheduleCameraAtlas(delay=250){clearTimeout(cameraLoadTimer);cameraLoadTimer=setTimeout(()=>loadCameraAtlas(),delay);}
-async function loadCameraAtlas(){const m=map();if(!m)return;const bbox=cameraBbox();if(!bbox)return;const seq=++cameraLoadSeq;try{const j=await api('/api/cameras?bbox='+encodeURIComponent(bbox));if(seq!==cameraLoadSeq)return;if(!m.getSource('tm-cameras'))m.addSource('tm-cameras',{type:'geojson',data:{type:'FeatureCollection',features:[]}});if(!m.getLayer('tm-cameras')){m.addLayer({id:'tm-cameras',type:'circle',source:'tm-cameras',paint:{'circle-radius':['interpolate',['linear'],['zoom'],2,3,8,5,14,8],'circle-color':'#67d5ff','circle-stroke-color':'#071018','circle-stroke-width':1.5,'circle-opacity':.9}});m.on('click','tm-cameras',e=>{const f=e.features&&e.features[0],p=f&&f.properties;if(!p)return;const u=p.imageUrl||p.streamUrl||p.sourceUrl;new maplibregl.Popup({closeButton:true,maxWidth:'300px'}).setLngLat(e.lngLat).setHTML('<b>'+String(p.title||'PUBLIC CAMERA').replace(/[<>]/g,'')+'</b><div style="opacity:.65;font-size:11px;margin-top:4px">'+String(p.provider||'Public source').replace(/[<>]/g,'')+'</div><div style="font-size:11px;margin-top:5px">'+String(p.location||'').replace(/[<>]/g,'')+'</div><div style="opacity:.6;font-size:10px;margin-top:5px">Observed '+(p.observedAt?new Date(p.observedAt).toLocaleString():'—')+'</div>'+((u)?'<button id="tm-open-camera" style="margin-top:8px">OPEN SOURCE</button>':'')).addTo(m);setTimeout(()=>{const b=document.getElementById('tm-open-camera');if(b)b.onclick=()=>window.open(u,'_blank','noopener,noreferrer')},0)});m.on('mouseenter','tm-cameras',()=>m.getCanvas().style.cursor='pointer');m.on('mouseleave','tm-cameras',()=>m.getCanvas().style.cursor='');}m.getSource('tm-cameras').setData({type:'FeatureCollection',features:j.features||[]});m.setLayoutProperty('tm-cameras','visibility',(j.features||[]).length?'visible':'none');const s=(j.sources||[])[0];setStatus('CAMERAS · '+(s&&s.count||0).toLocaleString()+' · '+(s&&s.source||'public feed')+' · '+(s&&s.status||'STATUS'),!!(j.features||[]).length)}catch(e){setStatus('CAMERAS · '+(e.message||'source unavailable'),false)}}
+async function loadCameraAtlas(){const m=map();if(!m)return;const bbox=cameraBbox();if(!bbox)return;const seq=++cameraLoadSeq;try{const j=await api('/api/cameras?bbox='+encodeURIComponent(bbox));if(seq!==cameraLoadSeq)return;if(!m.getSource('tm-cameras'))m.addSource('tm-cameras',{type:'geojson',data:{type:'FeatureCollection',features:[]}});if(!m.getLayer('tm-cameras')){m.addLayer({id:'tm-cameras',type:'circle',source:'tm-cameras',paint:{'circle-radius':['interpolate',['linear'],['zoom'],2,3,8,5,14,8],'circle-color':'#67d5ff','circle-stroke-color':'#071018','circle-stroke-width':1.5,'circle-opacity':.9}});m.on('click','tm-cameras',e=>{const f=e.features&&e.features[0],p=f&&f.properties;if(!p)return;const u=p.imageUrl||p.streamUrl||p.sourceUrl;new maplibregl.Popup({closeButton:true,maxWidth:'300px'}).setLngLat(e.lngLat).setHTML('<b>'+String(p.title||'PUBLIC CAMERA').replace(/[<>]/g,'')+'</b><div style="opacity:.65;font-size:11px;margin-top:4px">'+String(p.provider||'Public source').replace(/[<>]/g,'')+'</div><div style="font-size:11px;margin-top:5px">'+String(p.location||'').replace(/[<>]/g,'')+'</div><div style="opacity:.6;font-size:10px;margin-top:5px">Observed '+(p.observedAt?new Date(p.observedAt).toLocaleString():'—')+'</div>'+((u)?'<button id="tm-open-camera" style="margin-top:8px">OPEN SOURCE</button>':'')).addTo(m);setTimeout(()=>{const b=document.getElementById('tm-open-camera');if(b)b.onclick=()=>window.open(u,'_blank','noopener,noreferrer')},0)});/* Camera details are click-only; no hover inspection. */}m.getSource('tm-cameras').setData({type:'FeatureCollection',features:j.features||[]});m.setLayoutProperty('tm-cameras','visibility',(j.features||[]).length?'visible':'none');const s=(j.sources||[])[0];setStatus('CAMERAS · '+(s&&s.count||0).toLocaleString()+' · '+(s&&s.source||'public feed')+' · '+(s&&s.status||'STATUS'),!!(j.features||[]).length)}catch(e){setStatus('CAMERAS · '+(e.message||'source unavailable'),false)}}
+function bindCameraMap(){
+ try{
+  const m=map(); if(!m||m.__tmCameraMapBound)return;
+  m.__tmCameraMapBound=true;
+  scheduleCameraAtlas(700);
+  m.on('moveend',()=>scheduleCameraAtlas(450));
+ }catch(e){}
+}
 function drawVisuals(p){
+ bindCameraMap();
  if(state.sub==='CAMERAS'){p.append(status('CAMERAS follows the TrackMeNow public-source model: official public traffic/mobility camera feeds are normalized by TrackMeNow and shown with source attribution. No reference website is embedded and no private camera feed is used.'));const g=el('div',{class:'tm-stack'});g.append(card('LIVE CAMERA FEEDS','Load current public/authorized camera image and video records for the current map viewport.',()=>loadCameraAtlas(),'LOAD LIVE CAMERAS'));g.append(card('SOURCE POLICY','Each camera must expose a permitted current image or stream URL. The original operator/source remains visible; TrackMeNow does not alter the media.',null,'SOURCE STATUS'));p.append(g);
-try{
-  const m=map();
-  if(m){
-    scheduleCameraAtlas(0);
-    if(!m.__tmCameraMoveBound){
-      m.__tmCameraMoveBound=true;
-      m.on('moveend',()=>{ if(state.sub==='CAMERAS') scheduleCameraAtlas(350); });
-    }
-  }
-}catch(e){}
+try{scheduleCameraAtlas(0)}catch(e){}
 return;}
  p.append(status('LIVE/PUBLIC resources only. TrackMeNow uses documented public/authorized sources and keeps source attribution. No private portals or embedded reference websites. HISTORY means source-provided history/metadata; USER SHARED means a reference shared by the user.'));
  if(state.sub==='USER SHARED'){
