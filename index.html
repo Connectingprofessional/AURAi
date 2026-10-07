@@ -2,37 +2,67 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<meta name="theme-color" content="#05080c">
+<meta name="color-scheme" content="dark">
+<meta name="description" content="TrackMeNow — live GPS tracking, satellite map, transport intelligence, public cell data and location history.">
 <title>TrackMeNow — Global Intelligence</title>
+<link rel="preconnect" href="https://server.arcgisonline.com">
+<link rel="preconnect" href="https://gibs.earthdata.nasa.gov">
 <link rel="stylesheet" href="./vendor/maplibre-gl/maplibre-gl.css">
-<link rel="stylesheet" href="./visuals.css?v=atlas-live-atlas-15">
+<link rel="stylesheet" href="./visuals.css?v=trackmenow-live-16">
 <style>
-*{box-sizing:border-box}html,body{height:100%;margin:0;width:100%}
-body{overflow:hidden;background:#05090d;color:#edf4f8;font-family:system-ui,-apple-system,Segoe UI,sans-serif}
-#map{position:fixed;inset:0 0 var(--tm-dock-h,76px) 0;z-index:1;background:#0a1520}
+*{box-sizing:border-box}
+html,body{height:100%;width:100%;margin:0;background:#05080c;color:#edf4f8;font-family:system-ui,-apple-system,Segoe UI,sans-serif;overflow:hidden}
+body{overscroll-behavior:none}
+#map-bg-scan{position:fixed;inset:0;z-index:0;pointer-events:none;background:#050810;
+  background-image:linear-gradient(rgba(11,211,211,.045) 1px,transparent 1px),linear-gradient(90deg,rgba(11,211,211,.045) 1px,transparent 1px);
+  background-size:48px 48px}
+#map{position:fixed!important;inset:0 0 var(--tm-dock-h,76px) 0!important;z-index:1;background:transparent!important}
+.maplibregl-canvas{background:transparent!important}
 #legacy-controls{display:none!important}
 #status{display:none}
-#status.tm-show{display:block!important;position:fixed;left:12px;bottom:calc(var(--tm-dock-h,76px) + 60px);z-index:50;max-width:min(420px,90vw);
-  background:rgba(8,16,24,.92);border:1px solid #2a4a5c;border-radius:10px;padding:10px 12px;font:12px/1.4 system-ui}
+#status.tm-show{display:block!important;position:fixed;left:12px;top:58px;z-index:5100;max-width:min(520px,calc(100vw - 24px));
+  padding:7px 10px;border:1px solid rgba(130,190,220,.2);border-radius:7px;background:rgba(4,10,15,.82);
+  color:#cfe7ef;font:9px/1.35 ui-monospace,SFMono-Regular,Consolas,monospace;letter-spacing:.4px;backdrop-filter:blur(10px);
+  box-shadow:0 8px 24px rgba(0,0,0,.25);pointer-events:none}
 #tm-bottom-bar{display:none!important;height:0!important;overflow:hidden!important;pointer-events:none!important}
-#tm-timebar{bottom:calc(var(--tm-dock-h, 76px) + 10px)!important;z-index:5000!important}
-#tm-shell{z-index:6000!important;max-height:68vh}
-#tm-panel.open{display:block!important;max-height:min(36vh,300px)!important;overflow:auto!important}
-#tm-panel:not(.open){display:none!important}
+#tm-timebar{bottom:calc(var(--tm-dock-h,76px) + 10px)!important;z-index:5000!important}
+#tm-shell{z-index:6000!important}
+#tm-panel.open{z-index:6100!important}
 #tm-time-slider{accent-color:#45a8ff}
+
+/* Integrated boot/splash: adapted from the supplied ARGOS shell without replacing TrackMeNow's runtime. */
+#tm-boot{background:radial-gradient(circle at 50% 44%,rgba(11,211,211,.07),rgba(2,6,10,.98) 58%,#010204)}
+#tm-boot::before{content:"";position:absolute;inset:8%;border:1px solid rgba(11,211,211,.08);border-radius:50%;box-shadow:0 0 110px rgba(11,211,211,.06) inset}
+#tm-boot .tm-boot-brand{text-shadow:0 0 18px rgba(11,211,211,.35)}
+#tm-boot .tm-boot-line{color:#0bd3d3}
+#tm-boot .tm-boot-progress i{background:linear-gradient(90deg,transparent,#0bd3d3,#8affff,transparent)}
+@media(max-width:800px){
+  #status.tm-show{left:6px;top:52px;max-width:calc(100vw - 12px)}
+}
 </style>
 </head>
 <body>
-<div id="tm-boot" aria-live="polite"><div class="tm-boot-ring"></div><div class="tm-boot-brand">TRACK<span>ME</span>NOW</div><div class="tm-boot-line">GLOBAL INTELLIGENCE</div><div class="tm-boot-status" id="tm-boot-status">INITIALIZING MAP DATA</div><div class="tm-boot-progress"><i></i></div></div><div id="map"></div>
+<div id="tm-boot" aria-live="polite">
+  <div class="tm-boot-ring"></div>
+  <div class="tm-boot-brand">TRACK<span>ME</span>NOW</div>
+  <div class="tm-boot-line">GLOBAL INTELLIGENCE</div>
+  <div class="tm-boot-status" id="tm-boot-status">INITIALIZING MAP DATA</div>
+  <div class="tm-boot-progress"><i></i></div>
+</div>
+<div id="map-bg-scan" aria-hidden="true"></div>
+<div id="map"></div>
 <div id="legacy-controls"></div>
 <div id="status">Starting…</div>
+
 <script src="./vendor/maplibre-gl/maplibre-gl.js"></script>
-<script src="./trackmenow-transport-fix.js?v=15"></script>
-<script src="./trackmenow-traffic.js?v=15"></script>
-<script src="./trackmenow-ux-fix.js?v=15"></script>
-<script src="./trackmenow-panel-fix.js?v=15"></script>
-<script src="./trackmenow-timebar-fix.js?v=15"></script>
-<script src="./trackmenow.js?v=atlas-live-atlas-15"></script>
-<script src="./visuals-ui.js?v=atlas-live-atlas-15"></script>
+<script src="./trackmenow-transport-fix.js?v=16"></script>
+<script src="./trackmenow-traffic.js?v=16"></script>
+<script src="./trackmenow-ux-fix.js?v=16"></script>
+<script src="./trackmenow-panel-fix.js?v=16"></script>
+<script src="./trackmenow-timebar-fix.js?v=16"></script>
+<script src="./trackmenow.js?v=trackmenow-live-16"></script>
+<script src="./visuals-ui.js?v=trackmenow-live-16"></script>
 </body>
 </html>
