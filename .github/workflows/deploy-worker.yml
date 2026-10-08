@@ -26,6 +26,7 @@ jobs:
           AISSTREAM_API_KEY: ${{ secrets.AISSTREAM_API_KEY }}
           AVIATIONSTACK_API_KEY: ${{ secrets.AVIATIONSTACK_API_KEY }}
           MOBILITY_DB_REFRESH_TOKEN: ${{ secrets.MOBILITY_DB_REFRESH_TOKEN }}
+          DELHI_OTD_API_KEY: ${{ secrets.DELHI_OTD_API_KEY }}
           N2YO_API_KEY: ${{ secrets.N2YO_API_KEY }}
           OPENCELLID_API_KEY: ${{ secrets.OPENCELLID_API_KEY }}
           ADMIN_USER: ${{ secrets.ADMIN_USER }}
@@ -35,6 +36,7 @@ jobs:
           if [ -n "${AISSTREAM_API_KEY:-}" ]; then printf '%s' "$AISSTREAM_API_KEY" | npx wrangler@latest secret put AISSTREAM_API_KEY; fi
           if [ -n "${AVIATIONSTACK_API_KEY:-}" ]; then printf '%s' "$AVIATIONSTACK_API_KEY" | npx wrangler@latest secret put AVIATIONSTACK_API_KEY; fi
           if [ -n "${MOBILITY_DB_REFRESH_TOKEN:-}" ]; then printf '%s' "$MOBILITY_DB_REFRESH_TOKEN" | npx wrangler@latest secret put MOBILITY_DB_REFRESH_TOKEN; fi
+          if [ -n "${DELHI_OTD_API_KEY:-}" ]; then printf '%s' "$DELHI_OTD_API_KEY" | npx wrangler@latest secret put DELHI_OTD_API_KEY; fi
           if [ -n "${N2YO_API_KEY:-}" ]; then printf '%s' "$N2YO_API_KEY" | npx wrangler@latest secret put N2YO_API_KEY; fi
           if [ -n "${OPENCELLID_API_KEY:-}" ]; then printf '%s' "$OPENCELLID_API_KEY" | npx wrangler@latest secret put OPENCELLID_API_KEY; fi
           if [ -n "${ADMIN_USER:-}" ]; then printf '%s' "$ADMIN_USER" | npx wrangler@latest secret put ADMIN_USER; fi
