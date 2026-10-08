@@ -1193,8 +1193,8 @@
       const r = await fetch(url, { cache: 'no-store' });
       if (!r.ok) throw new Error('movement API HTTP ' + r.status);
       const j = await r.json();
-      const grouped = { air: [], ships: [], transit: [], rail: [], taxi: [], car: [], bike: [] };
-      const seen = { air:new Set(), ships:new Set(), transit:new Set(), rail:new Set(), taxi:new Set(), car:new Set(), bike:new Set() };
+      const grouped = { air: [], ships: [], transit: [], rail: [], metro: [], taxi: [], car: [], bike: [] };
+      const seen = { air:new Set(), ships:new Set(), transit:new Set(), rail:new Set(), metro:new Set(), taxi:new Set(), car:new Set(), bike:new Set() };
       (j.features || []).forEach(function(f) {
         const p = f.properties || {}, cat = String(p.category || p.kind || '').toLowerCase();
         const mode = String(p.mode || '').toLowerCase();
