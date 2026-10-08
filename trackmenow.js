@@ -1365,7 +1365,7 @@
     },100);
   }
   function tpApply(){if(!maplibre)return;Object.keys(TP.on).forEach(function(k){if(maplibre.getLayer('tp-'+k))maplibre.setLayoutProperty('tp-'+k,'visibility',TP.on[k]?'visible':'none');});tpTick();tpStatus();}
-  async function tpToggle(k){TP.on[k]=!TP.on[k];syncBar();if(TP.on[k]){setStatus('Loading '+TP.kinds[k].label.toLowerCase()+' from live movement API…',true);await tpLoad();}tpApply();}
+  async function tpToggle(k){if(!TP.kinds[k])return;Object.keys(TP.on).forEach(function(x){if(x!=='cells')TP.on[x]=false;});TP.on[k]=true;syncBar();setStatus('Loading '+TP.kinds[k].label.toLowerCase()+' from live movement API…',true);await tpLoad();tpApply();}
   function tpStatus(){
     const act=Object.keys(TP.on).filter(function(k){return TP.on[k]&&k!=='cells';});if(!act.length)return;
     const parts=[],bad=[];
