@@ -45,7 +45,7 @@
   function normalise(e) {
     var p = e && e.properties ? e.properties : e || {};
     var coords = e && e.geometry && e.geometry.coordinates;
-    var url = p.stream || p.url || p.src || p.link || p.playlist || p.m3u8 || '';
+    var url = p.stream || p.streamUrl || p.stream_url || p.url || p.sourceUrl || p.source_url || p.src || p.link || p.playlist || p.m3u8 || p.imageUrl || p.image_url || '';
     var kind = (p.type || p.kind || p.format || '').toLowerCase();
 
     if (!kind) {
@@ -262,7 +262,9 @@
       .then(function (j) {
         var raw = Array.isArray(j)
           ? j
-          : (j.cameras || j.items || (Array.isArray(j.features) ? j.features : []));
+          : (j.cameras || j.items || (Array.isArray(j.features) ? j.features : []) ||
+             (j.catalogue && Array.isArray(j.catalogue.features) ? j.catalogue.features : []) ||
+             (j.catalogue && Array.isArray(j.catalogue.cameras) ? j.catalogue.cameras : []));
 
         var list = raw.map(normalise).filter(function (c) {
           return isFinite(c.lat) &&
