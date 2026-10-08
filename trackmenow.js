@@ -1292,25 +1292,6 @@
     x.beginPath(); draw.forEach(function(p,i){ i ? x.lineTo(p[0],p[1]) : x.moveTo(p[0],p[1]); }); x.closePath(); x.fill(); x.stroke();
     maplibre.addImage(name, x.getImageData(0,0,32,32));
   }
-  let tpSimulationTimer = null, tpSimulationT0 = 0;
-  function startTransportSimulation() {
-    if (!maplibre) return;
-    if (tpSimulationTimer) { clearInterval(tpSimulationTimer); tpSimulationTimer = null; }
-    tpSimulationT0 = Date.now();
-    const center = maplibre.getCenter();
-    const seed = { air:[center.lng-8,center.lat+5], ships:[center.lng+6,center.lat-4], transit:[center.lng+1,center.lat+1], rail:[center.lng-1,center.lat-1] };
-    const make = (k,i) => {
-      const base=seed[k], tt=(Date.now()-tpSimulationT0)/1000, speed=(k==='air'?0.08:k==='ships'?0.025:k==='rail'?0.015:0.02);
-      return {type:'Feature',geometry:{type:'Point',coordinates:[base[0]+Math.sin(tt*speed+i)*6,base[1]+Math.cos(tt*speed+i)*3]},properties:{i,h:(tt*speed*57.3+i*70)%360,name:'SIM-'+k.toUpperCase()+'-'+(i+1),observedAt:new Date().toISOString(),source:'SIMULATION',sourceStatus:'SIMULATION',simulation:true}};
-    };
-    Object.keys(seed).forEach(k=>{TP.on[k]=true;TP.data[k]={features:[make(k,0),make(k,1),make(k,2)],generatedAt:new Date().toISOString(),sources:[{layer:TP.kinds[k].layer,count:3,source:'SIMULATION',status:'simulation',observedAt:new Date().toISOString()}],receivedAt:Date.now()};});
-    syncBar(); tpApply(); tpTick(); tpStatus();
-    setStatus('TRANSPORT SIMULATION · clearly labelled SIMULATION · live feeds are not masked',true);
-    tpSimulationTimer=setInterval(function(){
-      Object.keys(seed).forEach(k=>{const d=TP.data[k];if(!d||!d.features)return;d.features.forEach((f,i)=>{const tt=(Date.now()-tpSimulationT0)/1000,speed=(k==='air'?0.08:k==='ships'?0.025:k==='rail'?0.015:0.02),base=seed[k];f.geometry.coordinates=[base[0]+Math.sin(tt*speed+i)*6,base[1]+Math.cos(tt*speed+i)*3];f.properties.h=(tt*speed*57.3+i*70)%360;f.properties.observedAt=new Date().toISOString();});d.receivedAt=Date.now();});
-      tpTick(); tpStatus();
-    },1000);
-  }
   function tpSetup() {
     if (!maplibre) return;
     tpIcon('tm-air', [[16,2],[19,12],[30,19],[30,22],[19,19],[18,27],[23,30],[23,31],[16,29],[9,31],[9,30],[14,27],[13,19],[2,22],[2,19],[13,12]]);
