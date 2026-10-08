@@ -151,11 +151,11 @@
         }
       };
     });
-    if (!m.getSource('tm-cameras')) m.addSource('tm-cameras', { type: 'geojson', data: { type: 'FeatureCollection', features: [] } });
-    if (!m.getLayer('tm-cameras')) {
-      m.addLayer({ id: 'tm-cameras', type: 'circle', source: 'tm-cameras',
+    if (!m.getSource('tm-cameras-atlas')) m.addSource('tm-cameras-atlas', { type: 'geojson', data: { type: 'FeatureCollection', features: [] } });
+    if (!m.getLayer('tm-cameras-atlas')) {
+      m.addLayer({ id: 'tm-cameras-atlas', type: 'circle', source: 'tm-cameras-atlas',
         paint: { 'circle-radius': ['interpolate', ['linear'], ['zoom'], 2, 3, 8, 5, 14, 8], 'circle-color': '#67d5ff', 'circle-stroke-color': '#071018', 'circle-stroke-width': 1.5, 'circle-opacity': 0.9 } });
-      m.on('click', 'tm-cameras', function (e) {
+      m.on('click', 'tm-cameras-atlas', function (e) {
         var f = e.features && e.features[0], p = f && f.properties; if (!p) return;
         var u = p.imageUrl || p.streamUrl || p.sourceUrl;
         var html = '<b>' + String(p.title || 'PUBLIC CAMERA').replace(/[<>]/g, '') + '</b>' +
@@ -165,8 +165,8 @@
         setTimeout(function () { var btn = document.getElementById('tm-open-camera'); if (btn && u) btn.onclick = function () { window.open(u, '_blank', 'noopener,noreferrer'); }; }, 0);
       });
     }
-    m.getSource('tm-cameras').setData({ type: 'FeatureCollection', features: mapped });
-    m.setLayoutProperty('tm-cameras', 'visibility', mapped.length ? 'visible' : 'none');
+    m.getSource('tm-cameras-atlas').setData({ type: 'FeatureCollection', features: mapped });
+    m.setLayoutProperty('tm-cameras-atlas', 'visibility', mapped.length ? 'visible' : 'none');
     setStatus('CAMERAS \u00b7 ' + mapped.length.toLocaleString() + ' in view', !!mapped.length);
   }
 
