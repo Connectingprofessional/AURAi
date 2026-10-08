@@ -1,0 +1,37 @@
+/* TrackMeNow Atlas layout — transit + camera hierarchy */
+:root{
+  --tmx-cyan:#19d7d1;--tmx-blue:#4aa8ff;--tmx-green:#32e58b;--tmx-gold:#f5c84b;
+  --tmx-bg:rgba(4,9,13,.92);--tmx-panel:rgba(7,15,21,.82);--tmx-line:rgba(130,210,225,.14);
+  --tmx-text:#e8f5f7;--tmx-muted:#7f99a3;--tmx-rail:58px;--tmx-side:280px;
+}
+#tmx-nav{position:fixed;z-index:8000;left:12px;top:12px;bottom:12px;width:var(--tmx-side);display:flex;gap:8px;pointer-events:none;font-family:"IBM Plex Mono",ui-monospace,monospace}
+#tmx-navRail{width:var(--tmx-rail);border:1px solid var(--tmx-line);background:var(--tmx-bg);backdrop-filter:blur(18px);border-radius:12px;display:flex;flex-direction:column;align-items:center;padding:10px 7px;pointer-events:auto;box-shadow:0 18px 60px rgba(0,0,0,.35)}
+.tmx-logo{font-weight:900;font-size:8px;letter-spacing:1px;color:var(--tmx-text);writing-mode:vertical-rl;transform:rotate(180deg);margin:4px 0 12px}
+.tmx-logo b{color:var(--tmx-cyan)}
+.tmx-railBtn{width:42px;height:42px;margin:3px 0;border:1px solid transparent;background:transparent;color:var(--tmx-muted);border-radius:9px;cursor:pointer;display:grid;place-items:center;font-size:17px;transition:.18s}
+.tmx-railBtn:hover,.tmx-railBtn.active{color:var(--tmx-text);border-color:rgba(25,215,209,.35);background:rgba(25,215,209,.08);box-shadow:0 0 20px rgba(25,215,209,.08)}
+#tmx-detail{flex:1;min-width:0;border:1px solid var(--tmx-line);background:var(--tmx-panel);backdrop-filter:blur(18px);border-radius:12px;pointer-events:auto;overflow:hidden;display:none;box-shadow:0 18px 60px rgba(0,0,0,.38)}
+#tmx-detail.open{display:block}
+.tmx-head{height:52px;padding:10px 12px;border-bottom:1px solid var(--tmx-line);display:flex;align-items:center;justify-content:space-between}
+.tmx-title{font-size:11px;font-weight:900;letter-spacing:1.2px}.tmx-kicker{font-size:8px;color:var(--tmx-muted);margin-top:3px}
+.tmx-close{border:0;background:transparent;color:var(--tmx-muted);cursor:pointer;font-size:18px}
+.tmx-content{padding:10px;overflow:auto;height:calc(100% - 52px)}
+.tmx-section{margin-bottom:14px}.tmx-sectionTitle{font-size:8px;color:#91aab2;letter-spacing:1.8px;margin:8px 3px}
+.tmx-grid{display:grid;grid-template-columns:1fr 1fr;gap:6px}
+.tmx-card{border:1px solid var(--tmx-line);background:rgba(255,255,255,.025);border-radius:9px;padding:10px;cursor:pointer;color:var(--tmx-text);text-align:left}
+.tmx-card:hover,.tmx-card.active{border-color:rgba(25,215,209,.4);background:rgba(25,215,209,.07)}
+.tmx-icon{font-size:19px;line-height:1;margin-bottom:7px}.tmx-name{font-size:9px;font-weight:800}.tmx-meta{font-size:7px;color:var(--tmx-muted);margin-top:4px}
+.tmx-dot{display:inline-block;width:5px;height:5px;border-radius:50%;background:var(--tmx-green);margin-right:5px;box-shadow:0 0 8px currentColor}
+#tmx-top{position:fixed;z-index:7900;top:12px;left:50%;transform:translateX(-50%);width:min(650px,calc(100vw - 120px));height:42px;border:1px solid var(--tmx-line);background:rgba(5,12,17,.76);backdrop-filter:blur(16px);border-radius:12px;display:flex;align-items:center;gap:10px;padding:0 12px;box-shadow:0 15px 45px rgba(0,0,0,.28);font-family:"IBM Plex Mono",ui-monospace,monospace}
+#tmx-top strong{font-size:10px;letter-spacing:1.5px;white-space:nowrap}.tmx-search{flex:1;border:0;outline:0;background:transparent;color:var(--tmx-text);font:10px inherit}.tmx-search::placeholder{color:#5f747c}
+.tmx-status{font-size:7px;color:var(--tmx-muted);white-space:nowrap}.tmx-status i{display:inline-block;width:6px;height:6px;border-radius:50%;background:var(--tmx-green);margin-right:4px}
+#tmx-bottom{position:fixed;z-index:7900;left:50%;bottom:10px;transform:translateX(-50%);display:flex;gap:5px;padding:5px;border:1px solid var(--tmx-line);background:rgba(4,9,13,.88);backdrop-filter:blur(16px);border-radius:11px;font-family:"IBM Plex Mono",ui-monospace,monospace}
+.tmx-mode{border:0;background:transparent;color:var(--tmx-muted);font:8px inherit;letter-spacing:.8px;padding:8px 10px;border-radius:7px;cursor:pointer}.tmx-mode:hover,.tmx-mode.active{background:rgba(25,215,209,.1);color:var(--tmx-text)}
+@media(max-width:800px){
+ #tmx-nav{left:6px;top:56px;bottom:6px;width:calc(100vw - 12px);pointer-events:none}
+ #tmx-navRail{width:50px}.tmx-logo{display:none}
+ #tmx-detail{max-width:calc(100vw - 58px)}
+ #tmx-top{top:7px;width:calc(100vw - 70px);left:58px;transform:none}.tmx-status{display:none}
+ #tmx-bottom{left:58px;right:6px;transform:none;overflow:auto;justify-content:flex-start}
+ .tmx-mode{white-space:nowrap}
+}
