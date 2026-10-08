@@ -145,7 +145,7 @@ function drawSpace(p){
  }
  p.append(g);
 }
-const transitMap={AIR:'air',SHIP:'ships',RAILWAY:'rail',BOAT:'ships','PERSONAL JET':'air',TAXI:'taxi',BUS:'transit',METRO:'transit',CAR:'car',BIKES:'bike'};
+const transitMap={AIR:'air',SHIP:'ships',RAILWAY:'rail',BOAT:'ships','PERSONAL JET':'air',TAXI:'taxi',BUS:'transit',METRO:'metro',CAR:'car',BIKES:'bike'};
 function drawTransit(p){
  p.append(status('ALL TRANSPORT is the default view. Mode buttons filter the globe to observed source data; station discovery is separate from vehicle telemetry.'));
  const g=el('div',{class:'tm-stack'});
