@@ -1,0 +1,110 @@
+/* trackmenow-cameras.js */
+(function () {
+  'use strict';
+  var CONFIG = {
+    CATALOGUE_URL: window.TM_CAMERA_CATALOGUE_URL || '/cameras.json',
+    SOURCE_ID: 'tm-cameras',
+    LAYER_ID: 'tm-cameras-circles',
+    HLS_JS: 'https://cdnjs.cloudflare.com/ajax/libs/hls.js/1.5.8/hls.min.js',
+    HIDE_TOKEN_REFRESH: true
+  };
+  var map = null, loadPromise = null, hlsLoader = null, activeHls = null;
+  function esc(s) {
+    return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
+      return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+    });
+  }
+  function safeUrl(u) {
+    try { var x = new URL(u, location.href); return /^https?:$/.test(x.protocol) ? x.href : ''; }
+    catch (e) { return ''; }
+  }
+  function normalise(e) {
+    var url = e.stream || e.url || e.src || e.link || '', kind = (e.type || e.kind || '').toLowerCase();
+    if (!kind) {
+      if (/\.m3u8(\?|$)/i.test(url)) kind = 'hls';
+      else if (/youtube\.com|youtu\.be/i.test(url)) kind = 'youtube';
+      else kind = 'html';
+    }
+    if (kind === 'm3u8') kind = 'hls';
+    return { lat: +(e.lat != null ? e.lat : e.latitude), lon: +(e.lon != null ? e.lon : (e.lng != null ? e.lng : e.longitude)),
+      title: e.title || e.name || 'Camera', provider: e.provider || e.source || '', kind: kind, url: url,
+      stale: !!(e.token_refresh || e.tokenRefresh) };
+  }
+  function toGeoJSON(list) {
+    return { type: 'FeatureCollection', features: list.map(function (c, i) {
+      return { type: 'Feature', id: i, geometry: { type: 'Point', coordinates: [c.lon, c.lat] },
+        properties: { title: c.title, provider: c.provider, kind: c.kind, url: c.url } };
+    }) };
+  }
+  function loadHls() {
+    if (window.Hls) return Promise.resolve(window.Hls);
+    if (hlsLoader) return hlsLoader;
+    hlsLoader = new Promise(function (res, rej) {
+      var s = document.createElement('script'); s.src = CONFIG.HLS_JS;
+      s.onload = function () { res(window.Hls); }; s.onerror = function () { rej(new Error('hls.js failed to load')); };
+      document.head.appendChild(s);
+    });
+    return hlsLoader;
+  }
+  function ytId(u) { var m = String(u).match(/(?:v=|youtu\.be\/|embed\/|live\/)([A-Za-z0-9_-]{11})/); return m ? m[1] : ''; }
+  function destroyPlayer() { if (activeHls) { try { activeHls.destroy(); } catch (e) {} activeHls = null; } }
+  function popupHTML(p) {
+    var url = safeUrl(p.url), head = '<div class="tm-cam-pop"><strong>' + esc(p.title) + '</strong>' +
+      (p.provider ? '<div>' + esc(p.provider) + '</div>' : ''), tail = '</div>';
+    if (!url) return head + '<div>No stream URL</div>' + tail;
+    if (p.kind === 'hls') return head +
+      '<video id="tm-cam-video" controls muted autoplay playsinline style="width:260px;max-width:100%;background:#000"></video>' +
+      '<div id="tm-cam-msg" style="font-size:11px"></div>' +
+      '<a href="' + esc(url) + '" target="_blank" rel="noopener noreferrer">OPEN SOURCE</a>' + tail;
+    if (p.kind === 'youtube') {
+      var id = ytId(url);
+      if (id) return head + '<iframe width="260" height="160" style="border:0" allow="autoplay; encrypted-media" allowfullscreen ' +
+        'src="https://www.youtube-nocookie.com/embed/' + id + '?autoplay=1&mute=1"></iframe>' + tail;
+    }
+    return head + '<a href="' + esc(url) + '" target="_blank" rel="noopener noreferrer">OPEN CAMERA PAGE</a>' + tail;
+  }
+  function attachHls(url) {
+    var video = document.getElementById('tm-cam-video'), msg = document.getElementById('tm-cam-msg');
+    if (!video) return;
+    var say = function (t) { if (msg) msg.textContent = t; };
+    if (video.canPlayType('application/vnd.apple.mpegurl')) { video.src = url; return; }
+    loadHls().then(function (Hls) {
+      if (!Hls.isSupported()) return say('HLS not supported in this browser');
+      destroyPlayer(); activeHls = new Hls({ lowLatencyMode: true });
+      activeHls.on(Hls.Events.ERROR, function (_, d) { if (d && d.fatal) say('Stream unavailable (offline, expired token, or blocked by CORS)'); });
+      activeHls.loadSource(url); activeHls.attachMedia(video);
+    }).catch(function () { say('Could not load video player'); });
+  }
+  function addToMap(list) {
+    var data = toGeoJSON(list), src = map.getSource(CONFIG.SOURCE_ID);
+    if (src) { src.setData(data); return; }
+    map.addSource(CONFIG.SOURCE_ID, { type: 'geojson', data: data });
+    map.addLayer({ id: CONFIG.LAYER_ID, type: 'circle', source: CONFIG.SOURCE_ID,
+      paint: { 'circle-radius': 5, 'circle-color': '#ffb703', 'circle-stroke-width': 1, 'circle-stroke-color': '#000' } });
+    map.on('mouseenter', CONFIG.LAYER_ID, function () { map.getCanvas().style.cursor = 'pointer'; });
+    map.on('mouseleave', CONFIG.LAYER_ID, function () { map.getCanvas().style.cursor = ''; });
+    map.on('click', CONFIG.LAYER_ID, function (ev) {
+      var f = ev.features && ev.features[0]; if (!f) return; var p = f.properties; destroyPlayer();
+      var popup = new maplibregl.Popup({ maxWidth: '300px' }).setLngLat(f.geometry.coordinates).setHTML(popupHTML(p)).addTo(map);
+      popup.on('close', destroyPlayer); if (p.kind === 'hls') attachHls(safeUrl(p.url));
+    });
+  }
+  function load() {
+    if (loadPromise) return loadPromise;
+    loadPromise = fetch(CONFIG.CATALOGUE_URL).then(function (r) {
+      if (!r.ok) throw new Error('catalogue HTTP ' + r.status); return r.json();
+    }).then(function (j) {
+      var raw = Array.isArray(j) ? j : (j.cameras || j.items || []);
+      var list = raw.map(normalise).filter(function (c) { return isFinite(c.lat) && isFinite(c.lon) && c.url &&
+        !(CONFIG.HIDE_TOKEN_REFRESH && c.stale); });
+      addToMap(list); return list.length;
+    }).catch(function (e) { console.warn('[cameras]', e); loadPromise = null; });
+    return loadPromise;
+  }
+  function init(m) {
+    map = m || window.map; if (!map) return console.warn('[cameras] no map instance');
+    var go = function () { load(); }; if (map.isStyleLoaded()) go(); else map.once('load', go);
+    map.on('style.load', function () { if (!map.getSource(CONFIG.SOURCE_ID)) { loadPromise = null; load(); } });
+  }
+  window.TrackMeNowCameras = { init: init, load: load };
+})();
