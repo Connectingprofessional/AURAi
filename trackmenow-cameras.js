@@ -267,7 +267,6 @@
         var list = raw.map(normalise).filter(function (c) {
           return isFinite(c.lat) &&
             isFinite(c.lon) &&
-            c.url &&
             !(CONFIG.HIDE_TOKEN_REFRESH && c.stale);
         });
 
