@@ -1157,10 +1157,10 @@
       ships: { label: 'SHIPS', noun: 'vessels', layer: 'ships', icon: 'tm-ship', color: '#43e0a0' },
       transit: { label: 'TRANSIT', noun: 'vehicles', layer: 'transit', icon: 'tm-bus', color: '#ffb347' },
       rail: { label: 'RAIL', noun: 'trains', layer: 'rail', icon: 'tm-rail', color: '#ffcf66' },
-       metro: { label: 'METRO', noun: 'metro trains', layer: 'metro', icon: 'tm-rail', color: '#c084fc' },
-      taxi: { label: 'TAXI', noun: 'taxis', layer: 'taxi', icon: null, color: '#ff8bd1' },
-      car: { label: 'CAR', noun: 'cars', layer: 'car', icon: null, color: '#ffb347' },
-      bike: { label: 'BIKES', noun: 'bikes', layer: 'bike', icon: null, color: '#8be9ff' },
+      metro: { label: 'METRO', noun: 'metro trains', layer: 'metro', icon: 'tm-metro', color: '#c084fc' },
+      taxi: { label: 'TAXI', noun: 'taxis', layer: 'taxi', icon: 'tm-taxi', color: '#ff8bd1' },
+      car: { label: 'CAR', noun: 'cars', layer: 'car', icon: 'tm-car', color: '#ffb347' },
+      bike: { label: 'BIKES', noun: 'bikes', layer: 'bike', icon: 'tm-bike', color: '#8be9ff' },
       cells: { label: 'MOBILE', noun: 'tower cells', layer: 'cells', color: '#d28bff' }
     },
     on: { air: true, ships: true, transit: true, rail: true, metro: true, taxi: false, car: false, bike: false, cells: false },
@@ -1201,6 +1201,7 @@
         const layer = String(p.layer || '').toLowerCase();
         const k = cat === 'flight' || cat === 'aircraft' || cat === 'air' || layer === 'flights' ? 'air'
           : cat === 'ship' || cat === 'vessel' || layer === 'ships' ? 'ships'
+          : cat === 'metro' || mode === 'metro' || layer === 'metro' || String(p.vehicle_type||p.vehicleType||p.transit_type||'').toLowerCase().includes('metro') ? 'metro'
           : cat === 'rail' || mode === 'rail' || layer === 'rail' ? 'rail'
           : cat === 'taxi' || layer === 'taxi' ? 'taxi'
           : cat === 'car' || layer === 'car' ? 'car'
@@ -1215,6 +1216,9 @@
         const props = Object.assign({}, p);
         props.entityId = id;
         props.i = grouped[k].length;
+        const desc = String(p.vehicle_type||p.vehicleType||p.train_type||p.trainType||p.service_type||p.serviceType||p.model||p.name||p.label||'').toLowerCase();
+        props.iconKey = k === 'metro' ? 'tm-metro' : (k === 'rail' && /bullet|shinkansen|high.?speed|tgv|ice|av[eé]nt|vande bharat|semi.?high/.test(desc) ? 'tm-bullet' : (TP.kinds[k] && TP.kinds[k].icon) || 'tm-car');
+        props.iconSize = k === 'air' ? 0.62 : (k === 'ships' ? 0.58 : (k === 'metro' ? 0.68 : (k === 'rail' ? 0.64 : 0.60)));
         props.h = Number(p.heading != null ? p.heading : p.bearing != null ? p.bearing : p.cog != null ? p.cog : 0) || 0;
         props.observedAt = p.observedAt || p.timestamp || p.last_contact || j.generatedAt || new Date(receivedAt).toISOString();
         props.sourceStatus = p.sourceStatus || p.status || 'LIVE';
@@ -1285,26 +1289,51 @@
     } finally { TP.fetching = false; }
     tpTick(); tpStatus();
   }
-  function tpIcon(name, draw) {
+  function tpIcon(name, kind, draw) {
     if (!maplibre || maplibre.hasImage(name)) return;
-    const c = document.createElement('canvas'); c.width = c.height = 32; const x = c.getContext('2d');
-    x.fillStyle = TP.kinds[name === 'tm-air' ? 'air' : name === 'tm-ship' ? 'ships' : name === 'tm-rail' ? 'rail' : 'transit'].color;
-    x.strokeStyle = 'rgba(0,10,20,.9)'; x.lineWidth = 1.6; x.lineJoin = 'round';
+    const c = document.createElement('canvas'); c.width = c.height = 48; const x = c.getContext('2d');
+    const color = (TP.kinds[kind] || TP.kinds.transit).color;
+    x.fillStyle = color; x.strokeStyle = 'rgba(0,10,20,.95)'; x.lineWidth = 2.2; x.lineJoin = 'round'; x.lineCap = 'round';
     x.beginPath(); draw.forEach(function(p,i){ i ? x.lineTo(p[0],p[1]) : x.moveTo(p[0],p[1]); }); x.closePath(); x.fill(); x.stroke();
-    maplibre.addImage(name, x.getImageData(0,0,32,32));
+    maplibre.addImage(name, x.getImageData(0,0,48,48), {pixelRatio: 2});
+  }
+  function tpLineIcon(name, kind, body, windows) {
+    if (!maplibre || maplibre.hasImage(name)) return;
+    const c=document.createElement('canvas'); c.width=c.height=48; const x=c.getContext('2d');
+    const color=(TP.kinds[kind]||TP.kinds.transit).color;
+    x.fillStyle=color; x.strokeStyle='rgba(0,10,20,.95)'; x.lineWidth=2; x.lineJoin='round';
+    x.beginPath(); body.forEach(function(p,i){i?x.lineTo(p[0],p[1]):x.moveTo(p[0],p[1]);}); x.closePath(); x.fill(); x.stroke();
+    if(windows){x.fillStyle='rgba(235,250,255,.9)'; windows.forEach(function(w){x.fillRect(w[0],w[1],w[2],w[3]);});}
+    maplibre.addImage(name,x.getImageData(0,0,48,48),{pixelRatio:2});
   }
   function tpSetup() {
     if (!maplibre) return;
-    tpIcon('tm-air', [[16,2],[19,12],[30,19],[30,22],[19,19],[18,27],[23,30],[23,31],[16,29],[9,31],[9,30],[14,27],[13,19],[2,22],[2,19],[13,12]]);
-    tpIcon('tm-ship', [[16,3],[23,13],[23,29],[9,29],[9,13]]);
-    tpIcon('tm-bus', [[16,4],[27,28],[16,22],[5,28]]);
-    tpIcon('tm-rail', [[6,8],[26,8],[26,25],[22,25],[20,29],[12,29],[10,25],[6,25]]);
+    // Compact silhouettes: each moving object is recognizable at a glance.
+    tpIcon('tm-air','air',[[24,3],[28,18],[44,25],[44,29],[28,26],[27,39],[35,44],[35,46],[24,42],[13,46],[13,44],[21,39],[20,26],[4,29],[4,25],[20,18]]);
+    tpIcon('tm-ship','ships',[[6,22],[12,12],[36,12],[42,22],[38,34],[10,34]]);
+    tpLineIcon('tm-bus','transit',[[8,10],[40,10],[43,15],[43,36],[38,40],[10,40],[5,36],[5,15]],[[10,16,8,7],[20,16,8,7],[30,16,8,7]]);
+    tpLineIcon('tm-rail','rail',[[7,9],[38,9],[42,13],[42,35],[37,40],[11,40],[6,35],[6,13]],[[11,15,7,7],[20,15,7,7],[29,15,7,7]]);
+    // Metro: front-facing compact carriage with a distinct M and two rail lines.
+    tpLineIcon('tm-metro','metro',[[7,11],[41,11],[44,17],[44,37],[38,42],[10,42],[4,37],[4,17]],[[10,17,7,7],[20,17,7,7],[30,17,7,7]]);
+    if(!maplibre.hasImage('tm-metro')){} else {
+      const mc=document.createElement('canvas'); mc.width=mc.height=48; const mx=mc.getContext('2d');
+      mx.fillStyle=TP.kinds.metro.color; mx.strokeStyle='rgba(0,10,20,.95)'; mx.lineWidth=2;
+      mx.beginPath(); mx.moveTo(7,11);mx.lineTo(41,11);mx.lineTo(44,17);mx.lineTo(44,37);mx.lineTo(38,42);mx.lineTo(10,42);mx.lineTo(4,37);mx.lineTo(4,17);mx.closePath();mx.fill();mx.stroke();
+      mx.fillStyle='rgba(235,250,255,.92)'; [[10,17],[20,17],[30,17]].forEach(w=>mx.fillRect(w[0],w[1],7,7));
+      mx.fillStyle='#111827'; mx.font='bold 11px sans-serif'; mx.textAlign='center'; mx.textBaseline='middle'; mx.fillText('M',24,32);
+      mx.strokeStyle='rgba(255,255,255,.9)'; mx.lineWidth=2; mx.beginPath();mx.moveTo(11,44);mx.lineTo(19,44);mx.moveTo(29,44);mx.lineTo(37,44);mx.stroke();
+      maplibre.updateImage('tm-metro',{data:mx.getImageData(0,0,48,48).data,width:48,height:48});
+    }
+    tpLineIcon('tm-bullet','rail',[[5,28],[12,16],[31,16],[43,22],[43,35],[36,40],[11,40],[5,35]],[[16,20,7,6],[25,20,7,6]]);
+    tpLineIcon('tm-taxi','taxi',[[6,31],[9,22],[17,20],[21,13],[31,13],[35,20],[41,22],[44,31],[42,37],[35,37],[33,31],[15,31],[13,37],[7,37]]);
+    tpLineIcon('tm-car','car',[[6,31],[10,21],[17,19],[21,13],[31,13],[35,19],[40,21],[44,31],[42,37],[34,37],[32,31],[16,31],[14,37],[7,37]]);
+    tpLineIcon('tm-bike','bike',[[8,33],[15,33],[21,20],[30,33],[40,33],[34,21],[25,21]],null);
     const empty = {type:'FeatureCollection',features:[]};
     ['air','ships','transit','rail','metro','taxi','car','bike'].forEach(function(k){
       if(!maplibre.getSource('tp-'+k)) maplibre.addSource('tp-'+k,{type:'geojson',data:empty});
       if(!maplibre.getLayer('tp-'+k)){
         if(!maplibre.getLayer('tp-'+k+'-halo')) maplibre.addLayer({id:'tp-'+k+'-halo',type:'circle',source:'tp-'+k,paint:{'circle-radius':['interpolate',['linear'],['zoom'],1,7,6,10,12,15],'circle-color':TP.kinds[k].color,'circle-opacity':.16,'circle-blur':.9}});
-        if(TP.kinds[k].icon) maplibre.addLayer({id:'tp-'+k,type:'symbol',source:'tp-'+k,layout:{'icon-image':TP.kinds[k].icon,'icon-rotate':['get','h'],'icon-rotation-alignment':'map','icon-allow-overlap':true,'icon-ignore-placement':true,'icon-size':['interpolate',['linear'],['zoom'],1,.3,6,.55,11,.9]}});
+        if(TP.kinds[k].icon) maplibre.addLayer({id:'tp-'+k,type:'symbol',source:'tp-'+k,layout:{'icon-image':['coalesce',['get','iconKey'],TP.kinds[k].icon],'icon-rotate':['get','h'],'icon-rotation-alignment':'map','icon-allow-overlap':true,'icon-ignore-placement':true,'icon-size':['interpolate',['linear'],['zoom'],1,['*',['coalesce',['get','iconSize'],.6],.45],6,['*',['coalesce',['get','iconSize'],.6],.8],11,['*',['coalesce',['get','iconSize'],.6],1.15]]}});
         else maplibre.addLayer({id:'tp-'+k,type:'circle',source:'tp-'+k,paint:{'circle-radius':['interpolate',['linear'],['zoom'],1,2.5,6,4,12,6],'circle-color':TP.kinds[k].color,'circle-stroke-color':'#071018','circle-stroke-width':1.5,'circle-opacity':.94}});
       }
       maplibre.on('click','tp-'+k,function(e){const f=e.features&&e.features[0];if(f)tpSelect(k,f.properties.i,false);});
