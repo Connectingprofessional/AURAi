@@ -477,7 +477,8 @@ function gtfsVehicles(buf, feedMeta={}) {
         if(vf===8&&vw===2)pbFields(vv,(df,dw,dv)=>{if(df===1)vid=pbText(dv);});        if(vf===1&&vw===2)pbFields(vv,(tf,tw,tv)=>{if(tf===5)route=pbText(tv);});
       });
     });    if(pos&&Number.isFinite(pos.lat)&&Number.isFinite(pos.lon)){
-      const rail=!!feedMeta.rail,kind=rail?'rail':'transit',layer=rail?'rail':'transit';
+      const kind=String(feedMeta.kind||'').toLowerCase() || (feedMeta.rail?'rail':'transit');
+      const layer=kind==='metro'?'metro':(kind==='rail'?'rail':'transit');
       const ftr=movementFeature(vid||id,pos.lon,pos.lat,{kind,category:kind,mode:kind,layer,vehicleId:vid||id,route,heading:num(pos.bearing),speed:num(pos.speed),observedAt:ts?new Date(ts*1000).toISOString():nowIso(),source:'GTFS-Realtime',sourceStatus:'live',feed:feedMeta.label||''});
       if(ftr)out.push(ftr);
     }
@@ -582,7 +583,14 @@ async function environmentCatalog(req,env,url){
 const mobilityFeedListCache={t:0,feeds:null};
 const MOBILITY_FEED_LIST_TTL=10*60*1000; /* feed list rarely changes; avoid a token+list round trip on every request */
 async function movementTransit(env){
-  let feeds=String(env.GTFS_RT_URLS||'').split(',').map(s=>s.trim()).filter(Boolean).map(url=>({url,label:'Configured GTFS-Realtime',rail:/rail|metro|subway|tram|train/i.test(url)}));
+  let feeds=String(env.GTFS_RT_URLS||'').split(',').map(s=>s.trim()).filter(Boolean).map(url=>{
+    const label=url;
+    const kind=/metro|subway/i.test(label)?'metro':(/rail|train|tram/i.test(label)?'rail':'transit');
+    return {url,label,kind,rail:kind!=='transit'};
+  });
+  if(env.DELHI_OTD_API_KEY){
+    feeds.push({url:'https://otd.delhi.gov.in/api/realtime/VehiclePositions.pb?key='+encodeURIComponent(String(env.DELHI_OTD_API_KEY)),label:'Delhi Open Transit Data',kind:'transit',rail:false});
+  }
   if(!feeds.length&&env.MOBILITY_DB_REFRESH_TOKEN){
     if(mobilityFeedListCache.feeds&&Date.now()-mobilityFeedListCache.t<MOBILITY_FEED_LIST_TTL){
       feeds=mobilityFeedListCache.feeds;
@@ -597,7 +605,8 @@ async function movementTransit(env){
         feeds=list.map(f=>{
           const si=f.source_info||{},urls=si.urls||{},url=urls.direct_download_url||si.producer_url||'';
           const label=String(f.name||f.feed_name||f.provider||'GTFS-Realtime');
-          return {url,label,rail:/rail|metro|subway|tram|train/i.test(label)};
+          const kind=/metro|subway/i.test(label)?'metro':(/rail|train|tram/i.test(label)?'rail':'transit');
+          return {url,label,kind,rail:kind!=='transit'};
         }).filter(f=>f.url).slice(0,30);
         mobilityFeedListCache.feeds=feeds; mobilityFeedListCache.t=Date.now();
       }
@@ -619,6 +628,18 @@ async function movementTransit(env){
     {source:srcName,status:rail.length?'live':'no-current-vehicles',layer:'rail',count:rail.length,observedAt:latest(rail)?new Date(latest(rail)).toISOString():null,feeds:feeds.filter(f=>f.rail).length,error:rail.length?undefined:('No current railway/metro vehicle positions returned'+(feedErrors.length?' · '+feedErrors.slice(0,2).join(' | '):''))}
   ];
   return {features,sources,source:srcName,status:features.length?'live':'no-current-vehicles',observedAt:latest(features)?new Date(latest(features)).toISOString():null,feeds:feeds.length,error:features.length?undefined:(feedErrors.slice(0,3).join(' | ')||'No current vehicle positions returned')};
+}
+async function transitStatus(req,env){
+  const gtfs=String(env.GTFS_RT_URLS||'').split(',').map(s=>s.trim()).filter(Boolean);
+  const rail=String(env.RAIL_GTFS_RT_URLS||'').split(',').map(s=>s.trim()).filter(Boolean);
+  return json(req,env,{ok:true,generatedAt:nowIso(),modes:{
+    bus:{realtime:!!env.DELHI_OTD_API_KEY||!!env.GTFS_RT_URLS||!!env.MOBILITY_DB_REFRESH_TOKEN,source:env.DELHI_OTD_API_KEY?'Delhi Open Transit Data':(env.GTFS_RT_URLS||env.MOBILITY_DB_REFRESH_TOKEN?'GTFS-Realtime / Mobility Database':'feed-required')},
+    metro:{realtime:gtfs.some(u=>/metro|subway/i.test(u)),source:gtfs.find(u=>/metro|subway/i.test(u))||'feed-required',network:'OpenStreetMap / Overpass for stations'},
+    railway:{realtime:rail.length>0,source:rail.length?'Configured railway GTFS-Realtime':'feed-required',network:'OpenStreetMap / Overpass for stations'},
+    taxi:{realtime:!!env.TAXI_VEHICLE_URLS,source:env.TAXI_VEHICLE_URLS?'Authorized/public GBFS':'feed-required'},
+    bike:{realtime:!!env.GBFS_VEHICLE_URLS,source:env.GBFS_VEHICLE_URLS?'GBFS vehicle_status':'feed-required'},
+    car:{realtime:!!env.GBFS_VEHICLE_URLS,source:env.GBFS_VEHICLE_URLS?'GBFS vehicle_status':'feed-required'}
+  },policy:'No synthetic vehicle positions. Static network/station data may still be available through Overpass.'});
 }
 async function movement(req,env,url){
   const b=movementBbox(url.searchParams.get('bbox'));if(!b)return json(req,env,{ok:false,error:'Valid bbox=minLon,minLat,maxLon,maxLat is required'},400);
@@ -658,6 +679,7 @@ async function movement(req,env,url){
       if(layer==='flights') return layers.includes('flights');
       if(layer==='ships') return layers.includes('ships');
       if(kind==='rail'||layer==='rail') return layers.includes('rail');
+      if(kind==='metro'||layer==='metro') return layers.includes('metro');
       if(kind==='transit'||layer==='transit'||layer==='public-transport') return layers.includes('transit') || layers.includes('public-transport');
       return true;
     });
@@ -814,7 +836,7 @@ export default {
       if (url.pathname === '/api/earth-observation' && req.method === 'GET') {
         return json(req,env,{ok:true,source:'NASA GIBS / Copernicus public Earth observation',layers:[{id:'viirs-true-color',provider:'NASA GIBS',status:'public-near-real-time',url:'https://gibs.earthdata.nasa.gov/wmts/epsg3857/best/VIIRS_SNPP_CorrectedReflectance_TrueColor/default/'},{id:'viirs-fires',provider:'NASA GIBS',status:'public-near-real-time',url:'https://gibs.earthdata.nasa.gov/wmts/epsg3857/best/VIIRS_SNPP_Thermal_Anomalies_375m_Day/default/'},{id:'sentinel',provider:'Copernicus Sentinel',status:'public-data',url:'https://dataspace.copernicus.eu/'}],policy:'TrackMeNow uses the source data through its own map layers; reference websites are not embedded.'});
       }
-      if (url.pathname === '/api/transit/discovery' && req.method === 'GET') return await transitDiscovery(req,env,url);
+      if (url.pathname === '/api/transit/status' && req.method === 'GET') return await transitStatus(req,env);\n      if (url.pathname === '/api/transit/discovery' && req.method === 'GET') return await transitDiscovery(req,env,url);
       if (url.pathname === '/api/environment/catalog' && req.method === 'GET') return await environmentCatalog(req,env,url);
       if (url.pathname === '/api/references' && req.method === 'GET') return json(req,env,{ok:true,generatedAt:nowIso(),sources:referenceRegistry()});
       if (url.pathname === '/api/movement' && req.method === 'GET') return await movement(req, env, url);
