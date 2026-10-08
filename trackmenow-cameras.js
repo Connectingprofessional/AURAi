@@ -8,9 +8,7 @@
   var CONFIG = {
     CATALOGUE_URL:
       window.TM_CAMERA_CATALOGUE_URL ||
-      ((window.TM_LIVE_DATA_BASE ||
-        'https://raw.githubusercontent.com/Connectingprofessional/TrackMenow/live-data') +
-        '/cameras.json'),
+      ((window.TM_API_BASE || '') + '/api/cameras'),
     PROXY: (window.TM_API_BASE || '') + '/api/hls?u=',
     SOURCE_ID: 'tm-cameras',
     LAYER_ID: 'tm-cameras-circles',
