@@ -11,7 +11,7 @@ function auditLocation(lat,lon,accuracy,source){try{navigator.sendBeacon?.(AUDIT
 let m=null, ready=false, locateWatch=null, moveTimer=null, cameraPopup=null, liveTrack=null;
 const $=s=>document.querySelector(s);
 function map(){return window.map||window.maplibre||null}
-function esc(v){return String(v==null?'':v).replace(/[&<>"]/g,c=>({'&':'&','<':'<','>':'>','"':'"'}[c]))}
+function esc(s){return String(s==null?'':s).replace(/[&<>"']/g,\n  c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
 function api(path,opt){return fetch(API+path,Object.assign({cache:'no-store'},opt||{})).then(async r=>{const j=await r.json().catch(()=>({}));if(!r.ok)throw new Error(j.error||'HTTP '+r.status);return j})}
 function addUi(){ return; }
 function toggleFull(){const target=$('#map');if(!document.fullscreenElement)target?.requestFullscreen?.();else document.exitFullscreen?.()}
