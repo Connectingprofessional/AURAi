@@ -112,6 +112,7 @@
   var camCacheAt = 0;
 
   async function loadPublicCameras() {
+    if (window.TrackMeNowCameras && window.TrackMeNowCameras.load) return window.TrackMeNowCameras.load();
     var m = map();
     if (!m) { setStatus('CAMERAS \u00b7 map not ready', false); return; }
     var b = m.getBounds();
