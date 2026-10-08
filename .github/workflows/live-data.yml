@@ -38,6 +38,7 @@ jobs:
           AISSTREAM_API_KEY: ${{ secrets.AISSTREAM_API_KEY }}
           AVIATIONSTACK_API_KEY: ${{ secrets.AVIATIONSTACK_API_KEY }}
           MOBILITY_DB_REFRESH_TOKEN: ${{ secrets.MOBILITY_DB_REFRESH_TOKEN }}
+          DELHI_OTD_API_KEY: ${{ secrets.DELHI_OTD_API_KEY }}
           RAIL_GTFS_RT_URLS: ${{ vars.RAIL_GTFS_RT_URLS }}
           AIS_SECONDS: '60'
           MOBILITY_DB_MAX_FEEDS: '150'
