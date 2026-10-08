@@ -5,7 +5,9 @@
     ['▤','Railway','railway','Live rail where source exists'],
     ['⚓','Ships','ships','AIS vessels'],
     ['▰','Bus','bus','Public buses'],
-    ['🚕','Taxi','taxi','Available live feeds']
+    ['🚕','Taxi','taxi','Available live feeds'],
+    ['Ⓜ','Metro','metro','Metro systems'],
+    ['🚆','Trains','trains','Passenger and freight rail']
   ];
   const cameras=[
     ['●','Live','live','Public live streams'],
@@ -21,6 +23,7 @@
     d.classList.add('open');
     if(kind==='transit') d.innerHTML=panel('TRANSIT','<div class="tmx-section"><div class="tmx-sectionTitle">TRANSPORT</div><div class="tmx-grid">'+cards(transit,'transit')+'</div></div>');
     else if(kind==='cameras') d.innerHTML=panel('CAMERAS','<div class="tmx-section"><div class="tmx-sectionTitle">VISUAL SOURCES</div><div class="tmx-grid">'+cards(cameras,'camera')+'</div></div>');
+    else if(kind==='places') d.innerHTML=panel('PLACES','<div class="tmx-section"><div class="tmx-sectionTitle">PLACES & SERVICES</div><div class="tmx-grid">'+cards([['✚','Hospitals','hospitals','Healthcare locations'],['◆','Historical Places','historical','Historic and heritage sites']],'places')+'</div></div>');
     else d.innerHTML=panel(kind.toUpperCase(),'<div class="tmx-section"><div class="tmx-sectionTitle">LAYERS</div><div class="tmx-kicker">Select a layer to view available real data on the map.</div></div>');
     bind();
   }
@@ -41,7 +44,7 @@
       '<button class="tmx-railBtn" data-panel="map" title="Map">◉</button>'+
       '<button class="tmx-railBtn" data-panel="weather" title="Weather">☁</button>'+
       '<button class="tmx-railBtn" data-panel="transit" title="Transit">✈</button>'+
-      '<button class="tmx-railBtn" data-panel="cameras" title="Cameras">▣</button>'+
+      '<button class="tmx-railBtn" data-panel="cameras" title="Cameras">▣</button><button class="tmx-railBtn" data-panel="places" title="Places">⌂</button>'+
       '<button class="tmx-railBtn" data-panel="track" title="Track">⌖</button></div><div id="tmx-detail"></div></div>'+
       '<div id="tmx-bottom"><button class="tmx-mode active">MAP</button><button class="tmx-mode">SATELLITE</button><button class="tmx-mode">3D</button><button class="tmx-mode">RADAR</button><button class="tmx-mode">DAY / NIGHT</button></div>');
     document.querySelectorAll('.tmx-railBtn').forEach(b=>b.addEventListener('click',()=>{document.querySelectorAll('.tmx-railBtn').forEach(x=>x.classList.remove('active'));b.classList.add('active');open(b.dataset.panel)}));
