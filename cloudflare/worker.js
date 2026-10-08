@@ -259,55 +259,43 @@ async function devices(req, env, url, parts) {  const method = req.method, sub =
 const CAMERA_TTL = 15000;
 function cameraBbox(v){return parseBbox(v);}
 async function osmCameraCatalog(b,env){
-  const tiles=splitMovementBbox(b,35).slice(0,24), features=[], seen=new Set(), errors=[];
-  const endpoint=String(env.CAMERA_OVERPASS_URL||'https://overpass-api.de/api/interpreter');
-  const queryFor=t=>'[out:json][timeout:18];(node[man_made=surveillance]('+t.minLat+','+t.minLon+','+t.maxLat+','+t.maxLon+');way[man_made=surveillance]('+t.minLat+','+t.minLon+','+t.maxLat+','+t.maxLon+');node[contact:webcam]('+t.minLat+','+t.minLon+','+t.maxLat+','+t.maxLon+'););out center tags;';
-  for(let i=0;i<tiles.length;i+=4){
-    const batch=await Promise.all(tiles.slice(i,i+4).map(async t=>{
-      try{
-        const r=await fetchT(endpoint,{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded','Accept':'application/json'},body:'data='+encodeURIComponent(queryFor(t))},9000);
-        if(!r.ok)throw new Error('HTTP '+r.status);
-        return await r.json();
-      }catch(e){errors.push(e.message||String(e));return {elements:[]};}
-    }));
-    for(const body of batch) for(const n of (body.elements||[])){
-      const p=n.tags||{}, lat=Number(n.lat??n.center?.lat), lon=Number(n.lon??n.center?.lon);
-      if(!Number.isFinite(lat)||!Number.isFinite(lon))continue;
-      const id='osm-camera-'+n.type+'-'+n.id;
-      if(seen.has(id))continue; seen.add(id);
-      features.push({type:'Feature',id,geometry:{type:'Point',coordinates:[lon,lat]},properties:{
-        type:'camera',category:'camera',layer:'cameras',title:String(p.name||p.ref||'Public camera'),
-        provider:'OpenStreetMap / Overpass',location:String(p.addr_city||p.city||p.address||''),
-        imageUrl:String(p.image||p.image_url||''),streamUrl:String(p.webcam||p.url||p.contact_webcam||''),
-        sourceUrl:String(p.website||p.url||'https://www.openstreetmap.org/'),observedAt:nowIso(),
-        status:'PUBLIC CATALOGUE',catalogue:true
-      }});
-      if(features.length>=20000)break;
-    }
-    if(features.length>=20000)break;
-  }
-  return {features,sources:[{source:'OpenStreetMap / Overpass',layer:'cameras',status:features.length?'catalogue':'empty',count:features.length,observedAt:features.length?nowIso():null,error:features.length?undefined:(errors[0]||'No public camera catalogue records in this viewport')}],partial:errors.length>0};
-}
-async function movementCameras(b,env){
- const configured=String(env.CAMERA_GEOJSON_URLS||'').split(',').map(s=>s.trim()).filter(Boolean);
- const apiConfigured=String(env.CAMERA_API_URLS||'').split(',').map(s=>s.trim()).filter(Boolean);
- const urls=[...configured,...apiConfigured],out=[],errors=[];
- for(const sourceUrl of urls.slice(0,20)){try{
-   const r=await fetchT(sourceUrl,{headers:{Accept:'application/geo+json,application/json'}},8000);if(!r.ok)throw new Error('HTTP '+r.status);
-   const j=await r.json();
-   const records=Array.isArray(j?.features)?j.features:(Array.isArray(j?.cameras)?j.cameras:(Array.isArray(j?.data?.cameras)?j.data.cameras:(Array.isArray(j?.data)?j.data:[])));
-   for(const f of records){
-     const p=f?.properties||f||{},coords=f?.geometry?.coordinates||[];
-     const lon=Number(coords[0] ?? p.lon ?? p.lng ?? p.longitude ?? p.Longitude),lat=Number(coords[1] ?? p.lat ?? p.latitude ?? p.Latitude);
-     if(!Number.isFinite(lon)||!Number.isFinite(lat)||lon<b.minLon||lon>b.maxLon||lat<b.minLat||lat>b.maxLat)continue;
-     const id=String(f.id||p.id||p.ID||('camera-'+crypto.randomUUID()));
-     out.push({type:'Feature',id,geometry:{type:'Point',coordinates:[lon,lat]},properties:{type:'camera',category:'camera',layer:'cameras',title:String(p.title||p.name||p.label||p.address||p.Name||'Public camera'),provider:String(p.provider||p.source||p.Provider||'Official public camera source'),location:String(p.location||p.address||p.road||p.city||p.RoadwayName||''),imageUrl:String(p.imageUrl||p.image_url||p.snapshot||p.image||p.ImageUrl||''),streamUrl:String(p.streamUrl||p.stream_url||p.stream||p.VideoUrl||p.video_url||''),sourceUrl:String(p.sourceUrl||p.source_url||p.url||p.Url||sourceUrl),observedAt:String(p.observedAt||p.observed_at||p.timestamp||p.updated_at||nowIso()),status:String(p.status||'PUBLIC')}});
+ const area=Math.abs((b.maxLon-b.minLon)*(b.maxLat-b.minLat));
+ const endpoint=String(env.CAMERA_OVERPASS_URL||'https://overpass-api.de/api/interpreter');
+ const boxes=[];
+ // Global viewports used to be blocked by the single-query area guard. Tile large
+ // viewports into small Overpass requests so the camera atlas can render globally.
+ const nx=area>3000?6:1, ny=area>3000?3:1;
+ for(let ix=0;ix<nx;ix++){
+   const x0=b.minLon+(b.maxLon-b.minLon)*ix/nx, x1=b.minLon+(b.maxLon-b.minLon)*(ix+1)/nx;
+   for(let iy=0;iy<ny;iy++){
+     const y0=b.minLat+(b.maxLat-b.minLat)*iy/ny, y1=b.minLat+(b.maxLat-b.minLat)*(iy+1)/ny;
+     boxes.push({minLon:x0,minLat:y0,maxLon:x1,maxLat:y1});
    }
- }catch(e){errors.push(sourceUrl+' · '+(e.message||e));}}
- if(out.length)return {features:out.slice(0,20000),sources:[{source:'Configured public camera feeds',layer:'cameras',status:'live',count:out.length,observedAt:nowIso()}]};
- const cat=await osmCameraCatalog(b,env);
- if(cat.features?.length)return cat;
- return {features:[],sources:[{source:'OpenStreetMap / Overpass',layer:'cameras',status:'empty',count:0,observedAt:null,error:errors[0]||cat.sources?.[0]?.error||'No public camera records returned'}]};
+ }
+ async function queryBox(bb){
+   const q='[out:json][timeout:25];nwr[man_made=surveillance]('+bb.minLat+','+bb.minLon+','+bb.maxLat+','+bb.maxLon+');nwr[contact:webcam]('+bb.minLat+','+bb.minLon+','+bb.maxLat+','+bb.maxLon+');out center tags;';
+   const rr=await fetch(endpoint,{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded','Accept':'application/json'},body:'data='+encodeURIComponent(q)});
+   if(!rr.ok)throw new Error('Camera catalogue HTTP '+rr.status);
+   return rr.json();
+ }
+ const features=[],seen=new Set(); let failures=0;
+ for(let i=0;i<boxes.length;i+=3){
+   const batch=await Promise.all(boxes.slice(i,i+3).map(bb=>queryBox(bb).catch(()=>{failures++;return {elements:[]}})));
+   batch.forEach(j=>(j.elements||[]).forEach(e=>{
+     const p=e.tags||{},lon=e.lon??e.center?.lon,lat=e.lat??e.center?.lat,id='osm-camera-'+e.type+'-'+e.id;
+     if(seen.has(id)||!Number.isFinite(Number(lon))||!Number.isFinite(Number(lat)))return;
+     seen.add(id);
+     const live=String(p['contact:webcam']||p.webcam||'');
+     features.push({type:'Feature',id,geometry:{type:'Point',coordinates:[Number(lon),Number(lat)]},properties:{
+       type:'camera',category:'camera',layer:'cameras',title:String(p.name||p.ref||'PUBLIC CAMERA'),
+       provider:'OpenStreetMap',location:String(p['addr:city']||p['addr:street']||p.location||''),
+       imageUrl:'',streamUrl:live,sourceUrl:live||('https://www.openstreetmap.org/'+e.type+'/'+e.id),
+       observedAt:null,status:live?'PUBLIC SOURCE':'PUBLIC CATALOGUE',license:String(p.license||'')
+     }});
+   }));
+   if(features.length>=20000)break;
+ }
+ return {features:features.slice(0,20000),status:features.length?'catalogue':'empty',source:'OpenStreetMap / Overpass',partial:failures>0};
 }
 async function cameras(req,env,url){
  const b=cameraBbox(url.searchParams.get('bbox'));if(!b)return json(req,env,{ok:false,error:'Valid bbox is required'},400);
