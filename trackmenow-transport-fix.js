@@ -172,7 +172,7 @@
         });
         return new Response(JSON.stringify({
           ok: true, type: 'FeatureCollection', features: merged,
-          sources: [{ source: 'GitHub live-data', status: 'live', count: merged.length }],
+          sources: [{ source: 'GitHub live-data', status: merged.length > 0 ? 'live' : 'empty', count: merged.length }],
           generatedAt: new Date().toISOString(),
           architecture: 'github-live-data-offline'
         }), { status: 200, headers: { 'Content-Type': 'application/json' } });
