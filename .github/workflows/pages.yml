@@ -36,10 +36,15 @@ jobs:
           mkdir -p _site/vendor/maplibre-gl
 
           # Parse-check the browser scripts before anything is published.
-          node --check trackmenow.js
-          node --check visuals-ui.js
+          for f in *.js; do
+            case "$f" in
+              vendor/*) continue ;;
+            esac
+            node --check "$f"
+          done
 
           cp index.html _site/index.html
+          cp trackmenow-cameras.js _site/trackmenow-cameras.js
           cp admin.html _site/admin.html
           cp trackmenow.js _site/trackmenow.js
           cp trackmenow-transport-fix.js _site/trackmenow-transport-fix.js
@@ -53,6 +58,8 @@ jobs:
           cp water-effect.js _site/water-effect.js
           cp visuals-ui.js _site/visuals-ui.js
           cp visuals.css _site/visuals.css
+          mkdir -p _site/data
+          if [ -f data/nasa.json ]; then cp data/nasa.json _site/data/nasa.json; fi
           cp rtc-call.html _site/rtc-call.html
           cp -r vendor/maplibre-gl/. _site/vendor/maplibre-gl/
 
@@ -60,6 +67,7 @@ jobs:
           test -s _site/visuals-ui.js
           test -s _site/visuals.css
           test -s _site/trackmenow.js
+          test -s _site/trackmenow-cameras.js
           test -s _site/vendor/maplibre-gl/maplibre-gl.js
 
           echo "TrackMeNow Pages artifact:"
