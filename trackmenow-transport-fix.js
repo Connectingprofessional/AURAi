@@ -51,7 +51,7 @@
           title: title, name: title, h: heading, heading: heading, bearing: heading,
           speed: speed, velocity_mps: speed, speed_mps: speed,
           observedAt: new Date(t0).toISOString(),
-          source: src, sourceStatus: 'LIVE', status: 'LIVE'
+          source: src, sourceStatus: 'LAST_PUBLISHED', status: 'LAST_PUBLISHED'
         }, extra)
       });
     }
@@ -149,8 +149,8 @@
           layer: k === 'air' ? 'flights' : k,
           count: list.length,
           source: pack.src || 'GitHub live-data',
-          status: 'live',
-          observedAt: new Date().toISOString()
+          status: 'last-published',
+          observedAt: new Date(t0).toISOString()
         });
       });
       console.log('[TM] movement fill', kinds.join(','), '\u2192', merged.length);
@@ -172,7 +172,7 @@
         });
         return new Response(JSON.stringify({
           ok: true, type: 'FeatureCollection', features: merged,
-          sources: [{ source: 'GitHub live-data', status: merged.length > 0 ? 'live' : 'empty', count: merged.length }],
+          sources: [{ source: 'GitHub live-data snapshot', status: merged.length > 0 ? 'last-published' : 'empty', count: merged.length }],
           generatedAt: new Date().toISOString(),
           architecture: 'github-live-data-offline'
         }), { status: 200, headers: { 'Content-Type': 'application/json' } });
