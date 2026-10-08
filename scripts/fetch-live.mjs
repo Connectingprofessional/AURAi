@@ -120,32 +120,47 @@ async function ships() {
 
 /* ── transit: [id, lat, lon, bearing°, speed m/s, label, route] ── */
 async function transit() {
-  if (!E.MOBILITY_DB_REFRESH_TOKEN) throw new Error('skipped: MOBILITY_DB_REFRESH_TOKEN secret not set');
-  const tk = await getJSON(MDB + '/v1/tokens', { method: 'POST', headers: { ...UA, 'Content-Type': 'application/json' }, body: JSON.stringify({ refresh_token: E.MOBILITY_DB_REFRESH_TOKEN }) });
-  if (!tk.access_token) throw new Error('no access_token in token response');
-  const max = Number(E.MOBILITY_DB_MAX_FEEDS || 200), urls = [];
-  for (let off = 0; off < 4000 && urls.length < max; off += 1000) {
-    const list = await getJSON(`${MDB}/v1/gtfs_rt_feeds?entity_types=vp&limit=1000&offset=${off}`, { headers: { ...UA, Authorization: 'Bearer ' + tk.access_token } });
-    if (!Array.isArray(list)) break;
-    for (const f of list) { const si = f.source_info || {}; if (f.status === 'active' && si.producer_url && !si.authentication_type && !urls.includes(si.producer_url)) urls.push(si.producer_url); if (urls.length >= max) break; }
-    if (list.length < 1000) break;
-  }
-  if (!urls.length) throw new Error('Mobility Database returned no open vehicle feeds');
   const rows = []; let okFeeds = 0;
-  await pool(urls, 12, async (u) => {
-    const res = await fetch(u, { headers: { ...UA, Accept: 'application/x-protobuf,application/octet-stream' }, signal: AbortSignal.timeout(8000) });
-    if (!res.ok) throw new Error('HTTP ' + res.status);
-    const feed = GtfsRealtimeBindings.transit_realtime.FeedMessage.decode(new Uint8Array(await res.arrayBuffer())), n = now(); let got = 0;
+  if (E.MOBILITY_DB_REFRESH_TOKEN) {
+    const tk = await getJSON(MDB + '/v1/tokens', { method: 'POST', headers: { ...UA, 'Content-Type': 'application/json' }, body: JSON.stringify({ refresh_token: E.MOBILITY_DB_REFRESH_TOKEN }) });
+    if (!tk.access_token) throw new Error('no access_token in token response');
+    const max = Number(E.MOBILITY_DB_MAX_FEEDS || 200), urls = [];
+    for (let off = 0; off < 4000 && urls.length < max; off += 1000) {
+      const list = await getJSON(`${MDB}/v1/gtfs_rt_feeds?entity_types=vp&limit=1000&offset=${off}`, { headers: { ...UA, Authorization: 'Bearer ' + tk.access_token } });
+      if (!Array.isArray(list)) break;
+      for (const f of list) { const si = f.source_info || {}; if (f.status === 'active' && si.producer_url && !si.authentication_type && !urls.includes(si.producer_url)) urls.push(si.producer_url); if (urls.length >= max) break; }
+      if (list.length < 1000) break;
+    }
+    if (urls.length) {
+      await pool(urls, 12, async (u) => {
+        const res = await fetch(u, { headers: { ...UA, Accept: 'application/x-protobuf,application/octet-stream' }, signal: AbortSignal.timeout(8000) });
+        if (!res.ok) throw new Error('HTTP ' + res.status);
+        const feed = GtfsRealtimeBindings.transit_realtime.FeedMessage.decode(new Uint8Array(await res.arrayBuffer())), n = now(); let got = 0;
+        for (const e of feed.entity || []) {
+          const v = e.vehicle, p = v && v.position; if (!p || !Number.isFinite(p.latitude) || !Number.isFinite(p.longitude)) continue;
+          const ts = Number(v.timestamp || (feed.header && feed.header.timestamp) || 0); if (ts && n - ts > 300) continue;
+          rows.push([String((v.vehicle && v.vehicle.id) || e.id || ''), r(p.latitude, 5), r(p.longitude, 5), r(p.bearing ?? 0, 0), r(p.speed ?? 0, 1), String((v.vehicle && v.vehicle.label) || '').slice(0, 20), String((v.trip && v.trip.routeId) || '').slice(0, 20)]);
+          got++;
+        }
+        if (got) okFeeds++;
+      });
+    }
+  }
+
+  if (E.DELHI_OTD_API_KEY) {
+    const url = 'https://otd.delhi.gov.in/api/realtime/VehiclePositions.pb?key=' + encodeURIComponent(E.DELHI_OTD_API_KEY);
+    const res = await fetch(url, { headers: { ...UA, Accept: 'application/x-protobuf,application/octet-stream' }, signal: AbortSignal.timeout(10000) });
+    if (!res.ok) throw new Error('Delhi OTD HTTP ' + res.status);
+    const feed = GtfsRealtimeBindings.transit_realtime.FeedMessage.decode(new Uint8Array(await res.arrayBuffer())), n = now();
     for (const e of feed.entity || []) {
       const v = e.vehicle, p = v && v.position; if (!p || !Number.isFinite(p.latitude) || !Number.isFinite(p.longitude)) continue;
       const ts = Number(v.timestamp || (feed.header && feed.header.timestamp) || 0); if (ts && n - ts > 300) continue;
-      rows.push([String((v.vehicle && v.vehicle.id) || e.id || ''), r(p.latitude, 5), r(p.longitude, 5), r(p.bearing ?? 0, 0), r(p.speed ?? 0, 1), String((v.vehicle && v.vehicle.label) || '').slice(0, 20), String((v.trip && v.trip.routeId) || '').slice(0, 20)]);
-      got++;
+      rows.push([String((v.vehicle && v.vehicle.id) || e.id || ''), r(p.latitude, 5), r(p.longitude, 5), r(p.bearing ?? 0, 0), r(p.speed ?? 0, 1), String((v.vehicle && v.vehicle.label) || 'Delhi OTD').slice(0, 20), String((v.trip && v.trip.routeId) || '').slice(0, 20)]);
     }
-    if (got) okFeeds++;
-  });
-  if (rows.length < 20) throw new Error('only ' + rows.length + ' vehicles from ' + urls.length + ' feeds');
-  return { t: now(), src: 'GTFS-Realtime via Mobility Database', feeds: okFeeds, a: rows.slice(0, 40000) };
+  }
+
+  if (rows.length < 1) throw new Error('no transit vehicles from configured feeds');
+  return { t: now(), src: 'GTFS-Realtime', feeds: okFeeds, a: rows.slice(0, 40000) };
 }
 
 /* ── dedicated railway GTFS-Realtime feeds: [id, lat, lon, bearing°, speed m/s, label, route] ── */
