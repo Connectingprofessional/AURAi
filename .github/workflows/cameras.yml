@@ -1,5 +1,7 @@
 name: Build working cameras
 on:
+  push:
+    branches: [main]
   schedule:
     - cron: '*/5 * * * *'
   workflow_dispatch:
