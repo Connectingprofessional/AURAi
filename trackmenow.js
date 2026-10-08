@@ -1600,6 +1600,7 @@
     }
     maplibre = new maplibregl.Map({ container: 'map', style: style, center: [20, 15], zoom: useGlobe ? 1.4 : 2, minZoom: useGlobe ? 0.5 : 1, maxZoom: 20, maxPitch: useGlobe ? 85 : 60, attributionControl: false, failIfMajorPerformanceCaveat: false });
     window.map = maplibre;
+    if (window.TrackMeNowCameras && window.TrackMeNowCameras.init) window.TrackMeNowCameras.init(maplibre);
     maplibre.on('style.load', function () {
       try { var boot=document.getElementById('tm-boot'); if (boot) boot.classList.add('ready'); var bs=document.getElementById('tm-boot-status'); if (bs) bs.textContent='MAP READY · LIVE LAYERS LOADING'; } catch(e) {}
       if (useGlobe) {
