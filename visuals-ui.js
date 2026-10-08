@@ -418,6 +418,7 @@ function cameraBbox(){const m=map();if(!m)return null;const b=m.getBounds();retu
 let cameraLoadTimer=null,cameraLoadSeq=0;
 function scheduleCameraAtlas(delay=250){clearTimeout(cameraLoadTimer);cameraLoadTimer=setTimeout(()=>loadCameraAtlas(),delay);}
 async function loadCameraAtlas(){
+ if (window.TrackMeNowCameras && window.TrackMeNowCameras.load) return window.TrackMeNowCameras.load();
  const m=map();if(!m)return;const bbox=cameraBbox();if(!bbox)return;const seq=++cameraLoadSeq;
  if(!window.__tmCameraStore)window.__tmCameraStore=new Map();
  try{
