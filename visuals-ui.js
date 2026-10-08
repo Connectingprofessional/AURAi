@@ -181,9 +181,6 @@ function drawTransit(p){
  if(state.sub==='TAXI'){
    g.append(card('RIDE WORKFLOW','Open the public Uber ride-request workflow. TrackMeNow does not scrape private ride data or claim access to Uber vehicle positions.',()=>window.open('https://m.uber.com/go/home','_blank','noopener,noreferrer'),'OPEN RIDE WORKFLOW'));
  }
- const sim=el('button',{type:'button',class:'tm-action'},'RUN TRANSPORT SIMULATION');
- sim.onclick=()=>{const e=engine();if(e&&e.startTransportSimulation)e.startTransportSimulation();};
- p.append(sim);
 }
 function showSourceStatus(p,k){p.append(status(k+': no dedicated live feed is configured. TrackMeNow will not invent vehicle positions.'))}
 function drawWeather(p){
