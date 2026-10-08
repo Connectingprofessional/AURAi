@@ -622,10 +622,12 @@ async function movementTransit(env){
   const latest=(arr)=>arr.reduce((m,f)=>{const t=Date.parse(f.properties?.observedAt||'');return Number.isFinite(t)&&t>m?t:m;},0);
   const transit=features.filter(f=>f.properties?.kind==='transit');
   const rail=features.filter(f=>f.properties?.kind==='rail');
+  const metro=features.filter(f=>f.properties?.kind==='metro');
   const srcName='GTFS-Realtime'+(env.MOBILITY_DB_REFRESH_TOKEN?' via Mobility Database':'');
   const sources=[
-    {source:srcName,status:transit.length?'live':'no-current-vehicles',layer:'transit',count:transit.length,observedAt:latest(transit)?new Date(latest(transit)).toISOString():null,feeds:feeds.filter(f=>!f.rail).length,error:transit.length?undefined:('No current bus/public-transit vehicle positions returned'+(feedErrors.length?' · '+feedErrors.slice(0,2).join(' | '):''))},
-    {source:srcName,status:rail.length?'live':'no-current-vehicles',layer:'rail',count:rail.length,observedAt:latest(rail)?new Date(latest(rail)).toISOString():null,feeds:feeds.filter(f=>f.rail).length,error:rail.length?undefined:('No current railway/metro vehicle positions returned'+(feedErrors.length?' · '+feedErrors.slice(0,2).join(' | '):''))}
+    {source:srcName,status:transit.length?'live':'no-current-vehicles',layer:'transit',count:transit.length,observedAt:latest(transit)?new Date(latest(transit)).toISOString():null,feeds:feeds.filter(f=>f.kind==='transit').length,error:transit.length?undefined:('No current bus/public-transit vehicle positions returned'+(feedErrors.length?' · '+feedErrors.slice(0,2).join(' | '):''))},
+    {source:srcName,status:rail.length?'live':'no-current-vehicles',layer:'rail',count:rail.length,observedAt:latest(rail)?new Date(latest(rail)).toISOString():null,feeds:feeds.filter(f=>f.kind==='rail').length,error:rail.length?undefined:('No current railway vehicle positions returned'+(feedErrors.length?' · '+feedErrors.slice(0,2).join(' | '):''))}
+    {source:srcName,status:metro.length?'live':'no-current-vehicles',layer:'metro',count:metro.length,observedAt:latest(metro)?new Date(latest(metro)).toISOString():null,feeds:feeds.filter(f=>f.kind==='metro').length,error:metro.length?undefined:('No current metro vehicle positions returned'+(feedErrors.length?' · '+feedErrors.slice(0,2).join(' | '):''))}
   ];
   return {features,sources,source:srcName,status:features.length?'live':'no-current-vehicles',observedAt:latest(features)?new Date(latest(features)).toISOString():null,feeds:feeds.length,error:features.length?undefined:(feedErrors.slice(0,3).join(' | ')||'No current vehicle positions returned')};
 }
