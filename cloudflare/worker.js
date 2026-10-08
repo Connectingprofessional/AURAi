@@ -583,13 +583,27 @@ async function environmentCatalog(req,env,url){
 const mobilityFeedListCache={t:0,feeds:null};
 const MOBILITY_FEED_LIST_TTL=10*60*1000; /* feed list rarely changes; avoid a token+list round trip on every request */
 async function movementTransit(env){
-  let feeds=String(env.GTFS_RT_URLS||'').split(',').map(s=>s.trim()).filter(Boolean).map(url=>{
-    const label=url;
-    const kind=/metro|subway/i.test(label)?'metro':(/rail|train|tram/i.test(label)?'rail':'transit');
-    return {url,label,kind,rail:kind!=='transit'};
-  });
+  /* Each realtime feed is explicitly classified before ingestion. This keeps
+   * bus/public transit, metro and railway on their own map layers instead of
+   * relying on the frontend to guess from a generic transit response. */
+  const feedMap=new Map();
+  const addConfigured=(raw,forcedKind)=>{
+    String(raw||'').split(',').map(s=>s.trim()).filter(Boolean).forEach(url=>{
+      const label=url;
+      const kind=forcedKind || (/metro|subway/i.test(label)?'metro':(/rail|train|tram/i.test(label)?'rail':'transit'));
+      feedMap.set(url,{url,label,kind,rail:kind==='rail'});
+    });
+  };
+  /* Generic GTFS_RT_URLS remains supported, while dedicated mode variables
+   * take precedence for explicit railway/metro wiring. */
+  addConfigured(env.GTFS_RT_URLS,'');
+  addConfigured(env.RAIL_GTFS_RT_URLS,'rail');
+  addConfigured(env.METRO_GTFS_RT_URLS,'metro');
+  let feeds=[...feedMap.values()];
   if(env.DELHI_OTD_API_KEY){
-    feeds.push({url:'https://otd.delhi.gov.in/api/realtime/VehiclePositions.pb?key='+encodeURIComponent(String(env.DELHI_OTD_API_KEY)),label:'Delhi Open Transit Data',kind:'transit',rail:false});
+    const url='https://otd.delhi.gov.in/api/realtime/VehiclePositions.pb?key='+encodeURIComponent(String(env.DELHI_OTD_API_KEY));
+    feedMap.set(url,{url,label:'Delhi Open Transit Data',kind:'transit',rail:false});
+    feeds=[...feedMap.values()];
   }
   if(!feeds.length&&env.MOBILITY_DB_REFRESH_TOKEN){
     if(mobilityFeedListCache.feeds&&Date.now()-mobilityFeedListCache.t<MOBILITY_FEED_LIST_TTL){
@@ -602,12 +616,14 @@ async function movementTransit(env){
         const lr=await fetchT('https://api.mobilitydatabase.org/v1/gtfs_rt_feeds?entity_types=vp&status=active&limit=50',{headers:{Authorization:'Bearer '+access,Accept:'application/json'}},4000);
         if(!lr.ok)throw new Error('Mobility Database feeds HTTP '+lr.status);
         const body=await lr.json(),list=Array.isArray(body)?body:(body.data||body.results||[]);
-        feeds=list.map(f=>{
+        const discovered=list.map(f=>{
           const si=f.source_info||{},urls=si.urls||{},url=urls.direct_download_url||si.producer_url||'';
           const label=String(f.name||f.feed_name||f.provider||'GTFS-Realtime');
           const kind=/metro|subway/i.test(label)?'metro':(/rail|train|tram/i.test(label)?'rail':'transit');
-          return {url,label,kind,rail:kind!=='transit'};
+          return {url,label,kind,rail:kind==='rail'};
         }).filter(f=>f.url).slice(0,30);
+        discovered.forEach(f=>feedMap.set(f.url,f));
+        feeds=[...feedMap.values()];
         mobilityFeedListCache.feeds=feeds; mobilityFeedListCache.t=Date.now();
       }
     }catch(e){
@@ -634,10 +650,13 @@ async function movementTransit(env){
 async function transitStatus(req,env){
   const gtfs=String(env.GTFS_RT_URLS||'').split(',').map(s=>s.trim()).filter(Boolean);
   const rail=String(env.RAIL_GTFS_RT_URLS||'').split(',').map(s=>s.trim()).filter(Boolean);
+  const metro=String(env.METRO_GTFS_RT_URLS||'').split(',').map(s=>s.trim()).filter(Boolean);
+  const metroGeneric=gtfs.find(u=>/metro|subway/i.test(u));
+  const railGeneric=gtfs.find(u=>/rail|train|tram/i.test(u));
   return json(req,env,{ok:true,generatedAt:nowIso(),modes:{
-    bus:{realtime:!!env.DELHI_OTD_API_KEY||!!env.GTFS_RT_URLS||!!env.MOBILITY_DB_REFRESH_TOKEN,source:env.DELHI_OTD_API_KEY?'Delhi Open Transit Data':(env.GTFS_RT_URLS||env.MOBILITY_DB_REFRESH_TOKEN?'GTFS-Realtime / Mobility Database':'feed-required')},
-    metro:{realtime:gtfs.some(u=>/metro|subway/i.test(u)),source:gtfs.find(u=>/metro|subway/i.test(u))||'feed-required',network:'OpenStreetMap / Overpass for stations'},
-    railway:{realtime:rail.length>0,source:rail.length?'Configured railway GTFS-Realtime':'feed-required',network:'OpenStreetMap / Overpass for stations'},
+    bus:{realtime:!!env.DELHI_OTD_API_KEY||!!gtfs.length||!!env.MOBILITY_DB_REFRESH_TOKEN,source:env.DELHI_OTD_API_KEY?'Delhi Open Transit Data':(gtfs.length||env.MOBILITY_DB_REFRESH_TOKEN?'GTFS-Realtime / Mobility Database':'feed-required')},
+    metro:{realtime:!!metro.length||!!metroGeneric||!!env.MOBILITY_DB_REFRESH_TOKEN,source:metro[0]||metroGeneric||'GTFS-Realtime / Mobility Database','network':'OpenStreetMap / Overpass for stations'},
+    railway:{realtime:!!rail.length||!!railGeneric||!!env.MOBILITY_DB_REFRESH_TOKEN,source:rail[0]||railGeneric||'GTFS-Realtime / Mobility Database',network:'OpenStreetMap / Overpass for stations'},
     taxi:{realtime:!!env.TAXI_VEHICLE_URLS,source:env.TAXI_VEHICLE_URLS?'Authorized/public GBFS':'feed-required'},
     bike:{realtime:!!env.GBFS_VEHICLE_URLS,source:env.GBFS_VEHICLE_URLS?'GBFS vehicle_status':'feed-required'},
     car:{realtime:!!env.GBFS_VEHICLE_URLS,source:env.GBFS_VEHICLE_URLS?'GBFS vehicle_status':'feed-required'}
@@ -659,7 +678,7 @@ async function movement(req,env,url){
   const jobs=[];
   if(layers.includes('flights'))jobs.push(withDeadline(movementFlights(b,env),'flights'));
   if(layers.includes('ships'))jobs.push(withDeadline(movementShips(b,env),'AISstream.io'));
-  if(layers.includes('transit')||layers.includes('public-transport')||layers.includes('rail'))jobs.push(withDeadline(movementTransit(env),'GTFS-Realtime',16000));
+  if(layers.includes('transit')||layers.includes('public-transport')||layers.includes('rail')||layers.includes('metro'))jobs.push(withDeadline(movementTransit(env),'GTFS-Realtime',16000));
   if(layers.includes('taxi'))jobs.push(withDeadline(movementMobility(env,'taxi'),'taxi'));
   if(layers.includes('bike')||layers.includes('bikes'))jobs.push(withDeadline(movementMobility(env,'bike'),'bike'));
   if(layers.includes('car')||layers.includes('cars'))jobs.push(withDeadline(movementMobility(env,'car'),'car'));
