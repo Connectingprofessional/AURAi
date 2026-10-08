@@ -786,20 +786,9 @@ export default {
         return json(req, env, { ip: j.ip || ip, latitude: Number(j.latitude), longitude: Number(j.longitude), city: j.city || null, region: j.region || null, country: j.country_name || null, postalCode: j.postal || null, timezone: j.timezone || null, source: 'ipapi.co' });
       }
       if (url.pathname === '/api/cameras' && req.method === 'GET') {
-        const configured=String(env.CAMERA_GEOJSON_URLS||'').split(',').map(s=>s.trim()).filter(Boolean);
-        const urls=[...configured,'https://raw.githubusercontent.com/willytop8/Live-Environment-Streams/main/streams.geojson'];
-        const errors=[];
-        for(const source of urls){
-          try{
-            const r=await fetchT(source,{headers:{Accept:'application/geo+json,application/json,text/plain'}},10000);
-            if(!r.ok){errors.push(source+' HTTP '+r.status);continue;}
-            const j=await r.json();
-            const raw=Array.isArray(j)?j:(j&&Array.isArray(j.features)?j.features:(j&&Array.isArray(j.cameras)?j.cameras:(j&&Array.isArray(j.items)?j.items:[])));
-            if(!raw.length){errors.push(source+' empty');continue;}
-            return json(req,env,{ok:true,source,catalogue:j,checked:urls.length});
-          }catch(e){errors.push(source+' · '+(e.message||e));}
-        }
-        return json(req,env,{ok:false,status:'camera-feed-unavailable',source:'public camera catalogue',error:'No usable public camera catalogue returned',details:errors.slice(0,5)},502);
+        // Use the same viewport-aware camera pipeline that previously restored the map:
+        // bbox -> configured public feeds -> OpenStreetMap/Overpass fallback -> FeatureCollection.
+        return cameras(req, env, url);
       }
       if (url.pathname === '/api/visuals' && req.method === 'GET') {
         const allowed = ['LIVE','CAMERAS','WEBCAMS','IMAGES','VIDEOS','CLIPS','SOURCE HISTORY'];
