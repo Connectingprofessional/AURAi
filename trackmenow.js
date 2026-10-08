@@ -1217,7 +1217,7 @@
         props.entityId = id;
         props.i = grouped[k].length;
         const desc = String(p.vehicle_type||p.vehicleType||p.train_type||p.trainType||p.service_type||p.serviceType||p.model||p.name||p.label||'').toLowerCase();
-        props.iconKey = k === 'metro' ? 'tm-metro' : (k === 'rail' && /bullet|shinkansen|high.?speed|tgv|ice|av[eé]nt|vande bharat|semi.?high/.test(desc) ? 'tm-bullet' : (TP.kinds[k] && TP.kinds[k].icon) || 'tm-car');
+        props.iconKey = k === 'air' ? tpAirBrandIcon(p) : (k === 'metro' ? 'tm-metro' : (k === 'rail' && /bullet|shinkansen|high.?speed|tgv|ice|av[eé]nt|vande bharat|semi.?high/.test(desc) ? 'tm-bullet' : (TP.kinds[k] && TP.kinds[k].icon) || 'tm-car'));
         props.iconSize = k === 'air' ? 0.62 : (k === 'ships' ? 0.58 : (k === 'metro' ? 0.68 : (k === 'rail' ? 0.64 : 0.60)));
         props.h = Number(p.heading != null ? p.heading : p.bearing != null ? p.bearing : p.cog != null ? p.cog : 0) || 0;
         props.observedAt = p.observedAt || p.timestamp || p.last_contact || j.generatedAt || new Date(receivedAt).toISOString();
@@ -1289,11 +1289,38 @@
     } finally { TP.fetching = false; }
     tpTick(); tpStatus();
   }
+  const AIR_BRANDS = {
+    AIC:'#d71920', IGO:'#1f5aa6', VTI:'#e11d2e', SEJ:'#efb400', AXB:'#d71920',
+    UAE:'#d71920', QTR:'#6f1d46', SIA:'#f4c542', THA:'#5b2c83', BAW:'#d71920',
+    DLH:'#f2c300', AFR:'#173b8f', THY:'#d71920', KLM:'#00a1de', ETD:'#c8102e',
+    ELY:'#f5c400', SAS:'#005b9a', JBU:'#0b5fa5', ACA:'#d80621', JAL:'#d71920',
+    ANA:'#1b3f8f', CPA:'#c8102e', QFA:'#e4002b'
+  };
+  function tpAirBrandIcon(p) {
+    const raw=String(p&&(
+      p.airline_iata||p.airlineIata||p.airline_icao||p.airlineIcao||
+      p.callsign||p.flight||p.flight_number||p.flightNumber||''
+    )).toUpperCase().replace(/[^A-Z]/g,'');
+    let code='';
+    Object.keys(AIR_BRANDS).some(function(k){if(raw.indexOf(k)===0){code=k;return true;}return false;});
+    return code ? 'tm-air-'+code : 'tm-air';
+  }
+  function tpAirIcon(name,color) {
+    if (!maplibre || maplibre.hasImage(name)) return;
+    const c=document.createElement('canvas'); c.width=c.height=48; const x=c.getContext('2d');
+    x.fillStyle=color; x.strokeStyle='rgba(0,10,20,.96)'; x.lineWidth=2.2; x.lineJoin='round'; x.lineCap='round';
+    x.beginPath();
+    x.moveTo(24,3); x.lineTo(28,18); x.lineTo(44,24); x.lineTo(44,29); x.lineTo(28,26);
+    x.lineTo(27,38); x.lineTo(35,44); x.lineTo(34,46); x.lineTo(24,42);
+    x.lineTo(14,46); x.lineTo(13,44); x.lineTo(21,38); x.lineTo(20,26);
+    x.lineTo(4,29); x.lineTo(4,24); x.lineTo(20,18); x.closePath(); x.fill(); x.stroke();
+    maplibre.addImage(name,x.getImageData(0,0,48,48),{pixelRatio:2});
+  }
   function tpIcon(name, kind, draw) {
     if (!maplibre || maplibre.hasImage(name)) return;
     const c = document.createElement('canvas'); c.width = c.height = 48; const x = c.getContext('2d');
     const color = (TP.kinds[kind] || TP.kinds.transit).color;
-    x.fillStyle = color; x.strokeStyle = 'rgba(0,10,20,.95)'; x.lineWidth = 2.2; x.lineJoin = 'round'; x.lineCap = 'round';
+    x.fillStyle = color; x.strokeStyle = 'rgba(0,10,20,.96)'; x.lineWidth = 2.2; x.lineJoin = 'round'; x.lineCap = 'round';
     x.beginPath(); draw.forEach(function(p,i){ i ? x.lineTo(p[0],p[1]) : x.moveTo(p[0],p[1]); }); x.closePath(); x.fill(); x.stroke();
     maplibre.addImage(name, x.getImageData(0,0,48,48), {pixelRatio: 2});
   }
@@ -1301,33 +1328,61 @@
     if (!maplibre || maplibre.hasImage(name)) return;
     const c=document.createElement('canvas'); c.width=c.height=48; const x=c.getContext('2d');
     const color=(TP.kinds[kind]||TP.kinds.transit).color;
-    x.fillStyle=color; x.strokeStyle='rgba(0,10,20,.95)'; x.lineWidth=2; x.lineJoin='round';
+    x.fillStyle=color; x.strokeStyle='rgba(0,10,20,.96)'; x.lineWidth=2; x.lineJoin='round';
     x.beginPath(); body.forEach(function(p,i){i?x.lineTo(p[0],p[1]):x.moveTo(p[0],p[1]);}); x.closePath(); x.fill(); x.stroke();
-    if(windows){x.fillStyle='rgba(235,250,255,.9)'; windows.forEach(function(w){x.fillRect(w[0],w[1],w[2],w[3]);});}
+    if(windows){x.fillStyle='rgba(235,250,255,.94)'; windows.forEach(function(w){x.fillRect(w[0],w[1],w[2],w[3]);});}
     maplibre.addImage(name,x.getImageData(0,0,48,48),{pixelRatio:2});
   }
   function tpSetup() {
     if (!maplibre) return;
-    // Compact silhouettes: each moving object is recognizable at a glance.
-    tpIcon('tm-air','air',[[24,3],[28,18],[44,25],[44,29],[28,26],[27,39],[35,44],[35,46],[24,42],[13,46],[13,44],[21,39],[20,26],[4,29],[4,25],[20,18]]);
-    tpIcon('tm-ship','ships',[[6,22],[12,12],[36,12],[42,22],[38,34],[10,34]]);
-    tpLineIcon('tm-bus','transit',[[8,10],[40,10],[43,15],[43,36],[38,40],[10,40],[5,36],[5,15]],[[10,16,8,7],[20,16,8,7],[30,16,8,7]]);
-    tpLineIcon('tm-rail','rail',[[7,9],[38,9],[42,13],[42,35],[37,40],[11,40],[6,35],[6,13]],[[11,15,7,7],[20,15,7,7],[29,15,7,7]]);
-    // Metro: front-facing compact carriage with a distinct M and two rail lines.
-    tpLineIcon('tm-metro','metro',[[7,11],[41,11],[44,17],[44,37],[38,42],[10,42],[4,37],[4,17]],[[10,17,7,7],[20,17,7,7],[30,17,7,7]]);
-    if(!maplibre.hasImage('tm-metro')){} else {
-      const mc=document.createElement('canvas'); mc.width=mc.height=48; const mx=mc.getContext('2d');
-      mx.fillStyle=TP.kinds.metro.color; mx.strokeStyle='rgba(0,10,20,.95)'; mx.lineWidth=2;
-      mx.beginPath(); mx.moveTo(7,11);mx.lineTo(41,11);mx.lineTo(44,17);mx.lineTo(44,37);mx.lineTo(38,42);mx.lineTo(10,42);mx.lineTo(4,37);mx.lineTo(4,17);mx.closePath();mx.fill();mx.stroke();
-      mx.fillStyle='rgba(235,250,255,.92)'; [[10,17],[20,17],[30,17]].forEach(w=>mx.fillRect(w[0],w[1],7,7));
-      mx.fillStyle='#111827'; mx.font='bold 11px sans-serif'; mx.textAlign='center'; mx.textBaseline='middle'; mx.fillText('M',24,32);
-      mx.strokeStyle='rgba(255,255,255,.9)'; mx.lineWidth=2; mx.beginPath();mx.moveTo(11,44);mx.lineTo(19,44);mx.moveTo(29,44);mx.lineTo(37,44);mx.stroke();
-      maplibre.updateImage('tm-metro',{data:mx.getImageData(0,0,48,48).data,width:48,height:48});
+    /* Real-world silhouettes: aircraft, locomotive, modern metro and bullet train
+       are deliberately different shapes so the map can be read at a glance. */
+    tpAirIcon('tm-air','#58c8ff');
+    Object.keys(AIR_BRANDS).forEach(function(code){tpAirIcon('tm-air-'+code,AIR_BRANDS[code]);});
+
+    tpIcon('tm-ship','ships',[[5,25],[10,14],[36,14],[43,23],[39,33],[11,33]]);
+    tpLineIcon('tm-bus','transit',[[6,13],[40,13],[43,18],[43,35],[38,40],[10,40],[5,35],[5,18]],[[10,17,8,7],[20,17,8,7],[30,17,8,7]]);
+
+    /* Railway locomotive: sloped cab nose, tall windscreen, side windows and wheelbase. */
+    tpLineIcon('tm-rail','rail',[[5,33],[8,16],[14,11],[35,11],[41,17],[43,33],[40,38],[8,38]],[[14,15,8,7],[24,15,8,7]]);
+    /* add locomotive front marker and wheels */
+    if(maplibre&&!maplibre.hasImage('tm-rail-detail')){
+      const c=document.createElement('canvas');c.width=c.height=48;const x=c.getContext('2d');
+      x.fillStyle=TP.kinds.rail.color;x.strokeStyle='rgba(0,10,20,.96)';x.lineWidth=2;
+      x.beginPath();x.moveTo(5,33);x.lineTo(8,16);x.lineTo(14,11);x.lineTo(35,11);x.lineTo(41,17);x.lineTo(43,33);x.lineTo(40,38);x.lineTo(8,38);x.closePath();x.fill();x.stroke();
+      x.fillStyle='rgba(235,250,255,.94)';x.fillRect(14,15,8,7);x.fillRect(25,15,8,7);
+      x.fillStyle='#071018';x.beginPath();x.arc(13,38,4,0,Math.PI*2);x.arc(35,38,4,0,Math.PI*2);x.fill();
+      x.fillStyle='#dff8ff';x.fillRect(7,28,5,3);x.fillRect(36,28,5,3);
+      maplibre.addImage('tm-rail-detail',x.getImageData(0,0,48,48),{pixelRatio:2});
     }
-    tpLineIcon('tm-bullet','rail',[[5,28],[12,16],[31,16],[43,22],[43,35],[36,40],[11,40],[5,35]],[[16,20,7,6],[25,20,7,6]]);
-    tpLineIcon('tm-taxi','taxi',[[6,31],[9,22],[17,20],[21,13],[31,13],[35,20],[41,22],[44,31],[42,37],[35,37],[33,31],[15,31],[13,37],[7,37]]);
-    tpLineIcon('tm-car','car',[[6,31],[10,21],[17,19],[21,13],[31,13],[35,19],[40,21],[44,31],[42,37],[34,37],[32,31],[16,31],[14,37],[7,37]]);
-    tpLineIcon('tm-bike','bike',[[8,33],[15,33],[21,20],[30,33],[40,33],[34,21],[25,21]],null);
+
+    /* Metro: front-facing urban train with destination display, split windshield,
+       sliding-door seams and two visible rail/wheel marks. */
+    if(!maplibre.hasImage('tm-metro')){
+      const c=document.createElement('canvas');c.width=c.height=48;const x=c.getContext('2d');
+      x.fillStyle=TP.kinds.metro.color;x.strokeStyle='rgba(0,10,20,.96)';x.lineWidth=2.2;x.lineJoin='round';
+      x.beginPath();x.moveTo(6,37);x.lineTo(6,16);x.quadraticCurveTo(8,9,15,8);x.lineTo(33,8);x.quadraticCurveTo(40,9,42,16);x.lineTo(42,37);x.lineTo(37,42);x.lineTo(11,42);x.closePath();x.fill();x.stroke();
+      x.fillStyle='#101827';x.fillRect(11,12,26,5);
+      x.fillStyle='rgba(235,250,255,.94)';x.fillRect(11,19,11,9);x.fillRect(26,19,11,9);
+      x.strokeStyle='rgba(16,24,39,.75)';x.lineWidth=1.4;x.beginPath();x.moveTo(24,19);x.lineTo(24,28);x.moveTo(6,34);x.lineTo(42,34);x.stroke();
+      x.fillStyle='#071018';x.beginPath();x.arc(14,41,3,0,Math.PI*2);x.arc(34,41,3,0,Math.PI*2);x.fill();
+      x.fillStyle='#fff';x.font='bold 7px sans-serif';x.textAlign='center';x.textBaseline='middle';x.fillText('M',24,14.5);
+      maplibre.addImage('tm-metro',x.getImageData(0,0,48,48),{pixelRatio:2});
+    }
+
+    /* Bullet/high-speed train: long pointed nose, continuous windshield and low body. */
+    if(!maplibre.hasImage('tm-bullet')){
+      const c=document.createElement('canvas');c.width=c.height=48;const x=c.getContext('2d');
+      x.fillStyle=TP.kinds.rail.color;x.strokeStyle='rgba(0,10,20,.96)';x.lineWidth=2.2;x.lineJoin='round';
+      x.beginPath();x.moveTo(3,31);x.quadraticCurveTo(13,12,31,12);x.lineTo(44,21);x.lineTo(44,35);x.lineTo(38,40);x.lineTo(10,40);x.lineTo(3,35);x.closePath();x.fill();x.stroke();
+      x.fillStyle='rgba(235,250,255,.94)';x.fillRect(17,18,8,6);x.fillRect(27,19,8,6);
+      x.fillStyle='#071018';x.beginPath();x.arc(13,40,3,0,Math.PI*2);x.arc(35,40,3,0,Math.PI*2);x.fill();
+      maplibre.addImage('tm-bullet',x.getImageData(0,0,48,48),{pixelRatio:2});
+    }
+
+    tpLineIcon('tm-taxi','taxi',[[6,31],[9,23],[17,20],[21,14],[31,14],[35,20],[41,23],[44,31],[42,37],[35,37],[33,31],[15,31],[13,37],[7,37]],[[20,17,9,4]]);
+    tpLineIcon('tm-car','car',[[6,31],[10,21],[17,19],[21,13],[31,13],[35,19],[40,21],[44,31],[42,37],[34,37],[32,31],[16,31],[14,37],[7,37]],[[19,17,10,5]]);
+    tpIcon('tm-bike','bike',[[8,33],[15,33],[21,20],[30,33],[40,33],[34,21],[25,21]]);
     const empty = {type:'FeatureCollection',features:[]};
     ['air','ships','transit','rail','metro','taxi','car','bike'].forEach(function(k){
       if(!maplibre.getSource('tp-'+k)) maplibre.addSource('tp-'+k,{type:'geojson',data:empty});
