@@ -9,7 +9,7 @@
     'https://raw.githubusercontent.com/Connectingprofessional/TrackMenow/live-data';
   var cache = {};
   var cacheAt = 0;
-  var DEFAULT_ON = { air: true, ships: true, transit: true, rail: true, taxi: false, car: false, bike: false };
+  var DEFAULT_ON = { air: true, ships: true, transit: true, rail: true, metro: true, taxi: false, car: false, bike: false };
 
   function rowsToFeatures(kind, payload) {
     var rows = (payload && payload.a) || [];
@@ -101,14 +101,14 @@
     try {
       var u = new URL(url, location.href);
       var layers = (u.searchParams.get('layers') || '').split(',').map(function (s) { return s.trim(); }).filter(Boolean);
-      if (!layers.length) return ['air', 'ships', 'transit', 'rail'];
+      if (!layers.length) return ['air', 'ships', 'transit', 'rail', 'metro'];
       var map = { flights: 'air', ships: 'ships', transit: 'transit', rail: 'rail' };
       return layers.map(function (l) {
         if (map[l]) return map[l];
         if (l === 'public-transport') return 'transit';
         return l;
       });
-    } catch (e) { return ['air', 'ships', 'transit', 'rail']; }
+    } catch (e) { return ['air', 'ships', 'transit', 'rail', 'metro']; }
   }
 
   var origFetch = window.fetch;
@@ -181,7 +181,7 @@
   };
 
   function setLayers(eng, target) {
-    ['air', 'ships', 'transit', 'rail', 'taxi', 'car', 'bike'].forEach(function (k) {
+    ['air', 'ships', 'transit', 'rail', 'metro', 'taxi', 'car', 'bike'].forEach(function (k) {
       var want = !!target[k];
       var isOn = false;
       try { isOn = !!eng.transportOn(k); } catch (e) {}
