@@ -1,0 +1,39 @@
+name: Build working cameras
+on:
+  schedule:
+    - cron: '17 */3 * * *'
+  workflow_dispatch:
+permissions:
+  contents: write
+concurrency:
+  group: build-cameras
+  cancel-in-progress: false
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          path: main
+      - uses: actions/checkout@v4
+        with:
+          ref: live-data
+          path: live
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Test every camera
+        run: node main/scripts/build-cameras.mjs
+        env:
+          CAMERA_CATALOGUE_URL: ${{ vars.CAMERA_CATALOGUE_URL }}
+          # CAMERA_CATALOGUE_FILE: main/data/camera-catalogue.json
+          OUT_FILE: live/cameras.json
+      - name: Commit
+        working-directory: live
+        run: |
+          git config user.name "github-actions"
+          git config user.email "actions@users.noreply.github.com"
+          git add cameras.json
+          git diff --cached --quiet || (git commit -m "cameras: refresh working list" && git push)
