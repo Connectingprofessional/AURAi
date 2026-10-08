@@ -838,7 +838,8 @@ export default {
       if (url.pathname === '/api/earth-observation' && req.method === 'GET') {
         return json(req,env,{ok:true,source:'NASA GIBS / Copernicus public Earth observation',layers:[{id:'viirs-true-color',provider:'NASA GIBS',status:'public-near-real-time',url:'https://gibs.earthdata.nasa.gov/wmts/epsg3857/best/VIIRS_SNPP_CorrectedReflectance_TrueColor/default/'},{id:'viirs-fires',provider:'NASA GIBS',status:'public-near-real-time',url:'https://gibs.earthdata.nasa.gov/wmts/epsg3857/best/VIIRS_SNPP_Thermal_Anomalies_375m_Day/default/'},{id:'sentinel',provider:'Copernicus Sentinel',status:'public-data',url:'https://dataspace.copernicus.eu/'}],policy:'TrackMeNow uses the source data through its own map layers; reference websites are not embedded.'});
       }
-      if (url.pathname === '/api/transit/status' && req.method === 'GET') return await transitStatus(req,env);\n      if (url.pathname === '/api/transit/discovery' && req.method === 'GET') return await transitDiscovery(req,env,url);
+      if (url.pathname === '/api/transit/status' && req.method === 'GET') return await transitStatus(req,env);
+      if (url.pathname === '/api/transit/discovery' && req.method === 'GET') return await transitDiscovery(req,env,url);
       if (url.pathname === '/api/environment/catalog' && req.method === 'GET') return await environmentCatalog(req,env,url);
       if (url.pathname === '/api/references' && req.method === 'GET') return json(req,env,{ok:true,generatedAt:nowIso(),sources:referenceRegistry()});
       if (url.pathname === '/api/movement' && req.method === 'GET') return await movement(req, env, url);
