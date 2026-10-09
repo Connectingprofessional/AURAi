@@ -50,9 +50,22 @@
     }
   }
 
+  function setSurfaceTerrain(enabled) {
+    if (!map || !map.getSource || !map.getSource('terrainSource')) return;
+    try {
+      map.setTerrain(enabled ? { source: 'terrainSource', exaggeration: 1.1 } : null);
+      if (map.getLayer && map.getLayer('terrain-hillshade')) {
+        map.setLayoutProperty('terrain-hillshade', 'visibility', enabled ? 'visible' : 'none');
+      }
+    } catch (e) {
+      // Some renderer/projection combinations do not support terrain; camera controls still work.
+    }
+  }
+
   function resetCamera() {
     if (!map) return;
     tiltHigh = false;
+    setSurfaceTerrain(false);
     ease({ center: [20, 15], zoom: 1.4, bearing: 0, pitch: 0 });
   }
 
@@ -71,6 +84,7 @@
     addButton('tm-earth-tilt', 'Tilt to 3D surface view', '⤢', function () {
       if (!map) return;
       tiltHigh = map.getPitch() <= 10;
+      setSurfaceTerrain(tiltHigh);
       ease({ pitch: tiltHigh ? 68 : 0 });
     });
     addButton('tm-earth-compass', 'Reset bearing to north', '<span id="tm-earth-compass-needle">↑</span>', function () {
