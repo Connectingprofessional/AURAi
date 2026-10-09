@@ -77,7 +77,13 @@
       if (map.dragRotate && map.dragRotate.enable) map.dragRotate.enable();
       if (map.touchZoomRotate && map.touchZoomRotate.enableRotation) map.touchZoomRotate.enableRotation();
       if (map.setMaxPitch) map.setMaxPitch(85);
-      if (map.setMaxZoom) map.setMaxZoom(22);
+      if (map.setMaxZoom) map.setMaxZoom(23);
+      if (map.scrollZoom && map.scrollZoom.enable) {
+        map.scrollZoom.enable();
+        if (map.scrollZoom.setWheelZoomRate) map.scrollZoom.setWheelZoomRate(1 / 300);
+      }
+      if (map.doubleClickZoom && map.doubleClickZoom.enable) map.doubleClickZoom.enable();
+      if (map.keyboard && map.keyboard.enable) map.keyboard.enable();
     } catch (e) {}
 
     addStyles();
