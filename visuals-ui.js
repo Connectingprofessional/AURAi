@@ -4,7 +4,7 @@
 const API=(location.hostname==='localhost'||location.hostname==='127.0.0.1')?location.origin:'https://wispy-bush-9aee.recreationeeraj.workers.dev';
 const isLocal=location.hostname==='localhost'||location.hostname==='127.0.0.1';
 const T={
- MAP:['OVERVIEW','LAYERS','SEARCH'],
+ MAP:['GOOGLE EARTH','SATELLITE','LIVE','3D','FLAT','RADAR','DAY / NIGHT','WEATHER','OVERVIEW','LAYERS','SEARCH'],
  SPACE:['SOLAR SYSTEM','EARTH','MOON','MARS','SATELLITES','ISS / SPACE STATIONS','EARTH OBSERVATION','SPACE WEATHER'],
  TRANSIT:['ALL TRANSPORT','AIR','SHIP','TAXI','BUS','RAILWAY','METRO','BOAT','PERSONAL JET','CAR','BIKES'],
  WEATHER:['NATURAL CALAMITIES','WEATHER REPORT'],
@@ -13,7 +13,7 @@ const T={
  VISUALS:['LIVE','CAMERAS','IMAGES','VIDEOS','CLIPS','HISTORY','USER SHARED'],
  MORE:['ADMIN','SOURCES','STATUS','SETTINGS']
 };
-const state={tab:'MAP',sub:'OVERVIEW',stack:null,period:'DAY',panel:false};
+const state={tab:'MAP',sub:'GOOGLE EARTH',stack:null,period:'DAY',panel:false};
 const PHONE_SEARCH_HISTORY_KEY='tmPhoneSearchHistory';
 function phoneMask(v){const d=String(v||'').replace(/\\D/g,'');return d.length>=7?'+'+d.slice(0,2)+'•••••'+d.slice(-3):String(v||'');}
 function getPhoneSearchHistory(){
@@ -71,7 +71,7 @@ function build(){
 }
 function render(){
  const main=$('#tm-main-tabs'),sub=$('#tm-subbar'),panel=$('#tm-panel');Array.from(main.children).forEach(b=>b.classList.toggle('active',b.textContent===state.tab));
- sub.innerHTML='';T[state.tab].forEach(s=>{const b=el('button',{class:'tm-sub',type:'button'},s);b.classList.toggle('active',s===state.sub);b.onclick=()=>{state.sub=s;state.stack=null;state.panel=true;logUi('subtab',state.tab,s);render()};sub.append(b)});
+ sub.innerHTML='';T[state.tab].forEach(s=>{const b=el('button',{class:'tm-sub',type:'button'},s);b.classList.toggle('active',s===state.sub);b.onclick=()=>{state.sub=s;state.stack=null;if(state.tab==='MAP'&&['GOOGLE EARTH','SATELLITE','LIVE','3D','FLAT','RADAR','DAY / NIGHT','WEATHER'].includes(s)){state.panel=false;mapAction(s)}else state.panel=true;logUi('subtab',state.tab,s);render()};sub.append(b)});
  panel.classList.toggle('open',state.panel);setPanelTitle();if(state.panel)draw(panel);
  requestAnimationFrame(()=>document.documentElement.style.setProperty('--tm-dock-h',($('#tm-shell').offsetHeight||74)+'px'));
 }
@@ -89,7 +89,7 @@ function draw(panel){
 }
 function drawMap(p){
  if(state.sub==='SEARCH')return drawSearch(p);
- const items={OVERVIEW:['SATELLITE','LIVE','3D','FLAT','RADAR','DAY / NIGHT'],LAYERS:['SATELLITE','LIVE','RADAR','DAY / NIGHT'],SEARCH:[]}[state.sub]||[];
+ if(['GOOGLE EARTH','SATELLITE','LIVE','3D','FLAT','RADAR','DAY / NIGHT','WEATHER'].includes(state.sub))return;\n const items={OVERVIEW:['GOOGLE EARTH','SATELLITE','LIVE','3D','FLAT','RADAR','DAY / NIGHT','WEATHER'],LAYERS:['SATELLITE','LIVE','RADAR','DAY / NIGHT','WEATHER'],SEARCH:[]}[state.sub]||[];
  p.append(status('Map views are mutually selectable; the common zoom control stays in the dock.'));
  const g=el('div',{class:'tm-stack'});
  items.forEach(k=>g.append(card(k,'Select this map view.',()=>mapAction(k),'SELECT')));p.append(g);
