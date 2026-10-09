@@ -73,6 +73,7 @@ jobs:
           cp trackmenow-buildings.js _site/trackmenow-buildings.js
           cp trackmenow-streetview.js _site/trackmenow-streetview.js
           cp trackmenow-google-earth.js _site/trackmenow-google-earth.js
+          cp trackmenow-google-live.js _site/trackmenow-google-live.js
           cp trackmenow-globe-engine.js _site/trackmenow-globe-engine.js
           cp trackmenow-icons.js _site/trackmenow-icons.js
           cp water-effect.js _site/water-effect.js
