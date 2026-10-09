@@ -89,7 +89,7 @@
 
   function addToggle() {
     var stack = document.getElementById('tm-zoom-stack');
-    if (!stack || document.getElementById('tm-streetview-toggle')) return;
+    if (document.getElementById('tm-streetview-toggle')) return;
     var b = document.createElement('button');
     b.type = 'button';
     b.id = 'tm-streetview-toggle';
@@ -102,7 +102,17 @@
       if (map) map.getCanvas().style.cursor = active ? 'crosshair' : '';
       if (!active) hidePanel();
     });
-    stack.appendChild(b);
+    if (stack) {
+      stack.appendChild(b);
+    } else {
+      // The current TrackMeNow layout has no #tm-zoom-stack; keep Street View reachable.
+      b.style.position = 'fixed';
+      b.style.right = '14px';
+      b.style.top = '98px';
+      b.style.zIndex = '10021';
+      b.style.boxShadow = '0 4px 20px rgba(0,0,0,.35)';
+      document.body.appendChild(b);
+    }
   }
 
   function install() {
