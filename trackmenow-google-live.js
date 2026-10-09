@@ -34,7 +34,7 @@
     top.append(statusNode, close);
     var dock = document.createElement('div'); dock.id = 'tm-google-live-dock';
     [['HYBRID',function(){setMapType('hybrid')}],['SATELLITE',function(){setMapType('satellite')}],['ROADMAP',function(){setMapType('roadmap')}],['TERRAIN',function(){setMapType('terrain')}],
-      ['MOVEMENT',function(){toggleLayer('movement')}],['CAMERAS',function(){toggleLayer('cameras')}],['LIVE GPS',function(){toggleGps()}],['DAY / NIGHT',function(){toggleNight()}],['3D EARTH',function(){if(window.TrackMeNowGoogleEarth){closeMap();window.TrackMeNowGoogleEarth.open();}}]
+      ['MOVEMENT',function(){toggleLayer('movement')}],['CAMERAS',function(){toggleLayer('cameras')}],['LIVE GPS',function(){toggleGps()}],['NIGHT STYLE',function(){toggleNight()}],['RADAR',function(){nativeMode('RADAR')}],['WEATHER',function(){nativeMode('WEATHER')}],['FLAT MAP',function(){nativeMode('FLAT')}],['3D GLOBE',function(){nativeMode('3D')}]
     ].forEach(function(x){var b=button(x[0],x[1]);b.classList.toggle('on',x[0]==='HYBRID'||x[0]==='MOVEMENT'||x[0]==='CAMERAS');dock.appendChild(b);});
     overlay.append(mapNode,top,dock); document.body.appendChild(overlay);
     var open = button('GOOGLE MAP · LIVE',function(){openMap()}); open.id='tm-google-live-open';
@@ -139,7 +139,7 @@
       status('GOOGLE HYBRID · '+movementMarkers.size+' movement objects · '+cameraMarkers.size+' camera points');
     }catch(e){status('Camera catalogue unavailable: '+e.message);}
   }
-  function toggleGps(){
+  function nativeMode(mode){closeMap();var e=window.TrackMeNowEngine;if(!e)return;if(mode==='RADAR')e.selectWeather('radar');else if(mode==='WEATHER')e.selectWeather('precip');else if(mode==='FLAT'){e.setScale('earth');e.setEarthMode('flat');}else if(mode==='3D'){e.setScale('earth');e.setEarthMode('globe');}else if(mode==='DAY / NIGHT')e.setDayNight(true);}\n  function toggleGps(){
     if(gpsWatch!==null){navigator.geolocation.clearWatch(gpsWatch);gpsWatch=null;if(gpsMarker)gpsMarker.setMap(null);status('LIVE GPS stopped');return;}
     if(!navigator.geolocation){status('This browser does not provide GPS geolocation');return;}
     status('Requesting browser location permission…');
@@ -151,6 +151,6 @@
     },function(e){gpsWatch=null;status('GPS unavailable: '+e.message);},{enableHighAccuracy:true,maximumAge:3000,timeout:15000});
   }
   function esc(s){return String(s==null?'':s).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];});}
-  function init(){ensureUI();window.TrackMeNowGoogleLiveMap={open:openMap,close:closeMap,isActive:function(){return active;}};}
+  function init(){ensureUI();window.TrackMeNowGoogleLiveMap={open:openMap,close:closeMap,isActive:function(){return active;}};if(key())openMap();}
   if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',init);else init();
 })();
