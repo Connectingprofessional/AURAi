@@ -113,7 +113,7 @@
   let solarZoom = 1, solarCanvas = null, solarCtx = null, animId = 0;
   let activeWx = { satellite: true, live: true, radar: false, dark: false, precip: false, wind: false, temp: false, humidity: false, pressure: false, events: false, quakes: false, fires: false };
   let rvHost = '', rvFrames = [], rvIndex = 0, playTimer = null, playing = false;
-  let terminatorTimer = null, forecastTimer = null, gibsDayOffset = 0;
+  let terminatorTimer = null, forecastTimer = null, gibsDayOffset = 0, gibsReady = false;
 
   function setStatus(msg, ok) {
     const el = $('status');
@@ -1599,7 +1599,7 @@
     try {
       // Keep broad-view near-real-time NASA imagery separate from high-resolution basemap tiles.
       // At zoom 0–8 the live layer replaces the base imagery; at zoom 9+ use native satellite tiles.
-      var useBroadLive = activeWx.live && !activeWx.dark && maplibre.getZoom() < 9;
+      var useBroadLive = activeWx.live && gibsReady && !activeWx.dark && maplibre.getZoom() < 9;
       if (maplibre.getLayer('sat')) maplibre.setLayoutProperty('sat', 'visibility', activeWx.satellite && !activeWx.dark && !useBroadLive ? 'visible' : 'none');
       if (maplibre.getLayer('dark')) maplibre.setLayoutProperty('dark', 'visibility', activeWx.dark ? 'visible' : 'none');
       if (maplibre.getLayer('gibs-live')) maplibre.setLayoutProperty('gibs-live', 'visibility', useBroadLive ? 'visible' : 'none');
@@ -1627,6 +1627,7 @@
     const useGlobe = earthMode === 'globe';
     // The base map must never wait for optional weather/radar services.
     const date = gibsDateStr(-1);
+    gibsReady = false;
     const gibsAvailable = false;
     const radarPath = null;
     updateTimeLabel();
@@ -1716,7 +1717,8 @@
         try {
           if (maplibre.getSource('gibs')) {
             maplibre.getSource('gibs').setTiles([gibsTileUrl(realDate)]);
-            if (maplibre.getLayer('gibs-live')) maplibre.setLayoutProperty('gibs-live','visibility',activeWx.live&&!activeWx.dark?'visible':'none');
+            gibsReady = true;
+            applyLayers();
           }
         } catch(e) {}
       }).catch(function() {});
