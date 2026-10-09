@@ -89,19 +89,23 @@ function draw(panel){
 }
 function drawMap(p){
  if(state.sub==='SEARCH')return drawSearch(p);
- if(['GOOGLE EARTH','SATELLITE','LIVE','3D','FLAT','RADAR','DAY / NIGHT','WEATHER'].includes(state.sub))return;\n const items={OVERVIEW:['GOOGLE EARTH','SATELLITE','LIVE','3D','FLAT','RADAR','DAY / NIGHT','WEATHER'],LAYERS:['SATELLITE','LIVE','RADAR','DAY / NIGHT','WEATHER'],SEARCH:[]}[state.sub]||[];
+ if(['GOOGLE EARTH','SATELLITE','LIVE','3D','FLAT','RADAR','DAY / NIGHT','WEATHER'].includes(state.sub))return;
+ const items={OVERVIEW:['GOOGLE EARTH','SATELLITE','LIVE','3D','FLAT','RADAR','DAY / NIGHT','WEATHER'],LAYERS:['SATELLITE','LIVE','RADAR','DAY / NIGHT','WEATHER'],SEARCH:[]}[state.sub]||[];
  p.append(status('Map views are mutually selectable; the common zoom control stays in the dock.'));
  const g=el('div',{class:'tm-stack'});
  items.forEach(k=>g.append(card(k,'Select this map view.',()=>mapAction(k),'SELECT')));p.append(g);
 }
 function mapAction(k){
+ if(k==='GOOGLE EARTH'){if(window.TrackMeNowGoogleEarth)window.TrackMeNowGoogleEarth.open();return;}
+ if(window.TrackMeNowGoogleEarth)window.TrackMeNowGoogleEarth.close();
  const e=engine();if(!e)return;
  if(k==='SATELLITE')oldClick('[data-bar="satellite"]');
  if(k==='LIVE')e.selectWeather('live');
  if(k==='RADAR')e.selectWeather('radar');
- if(k==='DAY / NIGHT')oldClick('[data-bar="daynight"]');
- if(k==='FLAT')e.setEarthMode('flat');
- if(k==='3D')e.setEarthMode('globe');
+ if(k==='DAY / NIGHT')e.setDayNight(true);
+ if(k==='FLAT'){e.setScale('earth');e.setEarthMode('flat');}
+ if(k==='3D'){e.setScale('earth');e.setEarthMode('globe');}
+ if(k==='WEATHER')e.selectWeather('precip');
 }
 function drawSpace(p){
  const planetActions={'SOLAR SYSTEM':'solar','EARTH':'earth3d','MOON':'moon','MARS':'mars'};
