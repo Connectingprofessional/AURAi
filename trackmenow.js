@@ -1597,9 +1597,12 @@
   function applyLayers() {
     if (!maplibre) return;
     try {
-      if (maplibre.getLayer('sat')) maplibre.setLayoutProperty('sat', 'visibility', activeWx.satellite && !activeWx.dark ? 'visible' : 'none');
+      // Keep broad-view near-real-time NASA imagery separate from high-resolution basemap tiles.
+      // At zoom 0–8 the live layer replaces the base imagery; at zoom 9+ use native satellite tiles.
+      var useBroadLive = activeWx.live && !activeWx.dark && maplibre.getZoom() < 9;
+      if (maplibre.getLayer('sat')) maplibre.setLayoutProperty('sat', 'visibility', activeWx.satellite && !activeWx.dark && !useBroadLive ? 'visible' : 'none');
       if (maplibre.getLayer('dark')) maplibre.setLayoutProperty('dark', 'visibility', activeWx.dark ? 'visible' : 'none');
-      if (maplibre.getLayer('gibs-live')) maplibre.setLayoutProperty('gibs-live', 'visibility', activeWx.live && !activeWx.dark ? 'visible' : 'none');
+      if (maplibre.getLayer('gibs-live')) maplibre.setLayoutProperty('gibs-live', 'visibility', useBroadLive ? 'visible' : 'none');
       if (maplibre.getLayer('radar')) maplibre.setLayoutProperty('radar', 'visibility', activeWx.radar ? 'visible' : 'none');
       if (maplibre.getLayer('fires-layer')) maplibre.setLayoutProperty('fires-layer', 'visibility', activeWx.fires ? 'visible' : 'none');
       if (maplibre.getLayer('eonet-pts')) maplibre.setLayoutProperty('eonet-pts', 'visibility', activeWx.events ? 'visible' : 'none');
@@ -1645,7 +1648,7 @@
       layers: [
         { id: 'sat', type: 'raster', source: 'sat' },
         { id: 'dark', type: 'raster', source: 'dark', layout: { visibility: 'none' } },
-        { id: 'gibs-live', type: 'raster', source: 'gibs', layout: { visibility: gibsAvailable && activeWx.live ? 'visible' : 'none' }, paint: { 'raster-opacity': 0.55 } },
+        { id: 'gibs-live', type: 'raster', source: 'gibs', minzoom: 0, maxzoom: 9, layout: { visibility: gibsAvailable && activeWx.live ? 'visible' : 'none' }, paint: { 'raster-opacity': 1, 'raster-fade-duration': 0 } },
         { id: 'night-0', type: 'fill', source: 'terminator', filter: ['==', ['get', 'soft'], 0], layout: { visibility: dayNight ? 'visible' : 'none' }, paint: { 'fill-color': '#00060f', 'fill-opacity': 0.12 } },
         { id: 'night-1', type: 'fill', source: 'terminator', filter: ['==', ['get', 'soft'], 1], layout: { visibility: dayNight ? 'visible' : 'none' }, paint: { 'fill-color': '#00060f', 'fill-opacity': 0.16 } },
         { id: 'night-2', type: 'fill', source: 'terminator', filter: ['==', ['get', 'soft'], 2], layout: { visibility: dayNight ? 'visible' : 'none' }, paint: { 'fill-color': '#00060f', 'fill-opacity': 0.22 } },
@@ -1664,7 +1667,7 @@
       style.sources.radar = { type: 'raster', tileSize: 256, tiles: [radarPath] };
       style.layers.splice(3, 0, { id: 'radar', type: 'raster', source: 'radar', layout: { visibility: 'none' }, paint: { 'raster-opacity': 0.75 } });
     }
-    maplibre = new maplibregl.Map({ container: 'map', style: style, center: [20, 15], zoom: useGlobe ? 1.4 : 2, minZoom: useGlobe ? 0.5 : 1, maxZoom: 20, maxPitch: useGlobe ? 85 : 60, attributionControl: false, failIfMajorPerformanceCaveat: false });
+    maplibre = new maplibregl.Map({ container: 'map', style: style, center: [20, 15], zoom: useGlobe ? 1.4 : 2, minZoom: useGlobe ? 0.5 : 1, maxZoom: 19, maxPitch: useGlobe ? 85 : 60, attributionControl: false, failIfMajorPerformanceCaveat: false });
     window.map = maplibre;
     if (window.TrackMeNowCameras && window.TrackMeNowCameras.init) window.TrackMeNowCameras.init(maplibre);
     maplibre.on('style.load', function () {
@@ -1768,7 +1771,7 @@
       return;
     }
     if (maplibre) {
-      maplibre.easeTo({ zoom: Math.max(0.5, Math.min(20, maplibre.getZoom() + (dir > 0 ? 1.0 : -1.0))), duration: 250 });
+      maplibre.easeTo({ zoom: Math.max(0.5, Math.min(19, maplibre.getZoom() + (dir > 0 ? 1.0 : -1.0))), duration: 250 });
       return;
     }
     if (globe && og) {
