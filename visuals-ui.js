@@ -102,7 +102,7 @@ function mapAction(k){
  if(k==='SATELLITE')oldClick('[data-bar="satellite"]');
  if(k==='LIVE')e.selectWeather('live');
  if(k==='RADAR')e.selectWeather('radar');
- if(k==='DAY / NIGHT')e.setDayNight(true);
+ if(k==='DAY / NIGHT'){window.__tmDayNightMode=!window.__tmDayNightMode;e.setDayNight(window.__tmDayNightMode);}
  if(k==='FLAT'){e.setScale('earth');e.setEarthMode('flat');}
  if(k==='3D'){e.setScale('earth');e.setEarthMode('globe');}
  if(k==='WEATHER')e.selectWeather('precip');
