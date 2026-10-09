@@ -6,7 +6,7 @@
 (function () {
   'use strict';
   var LIVE = window.TM_LIVE_DATA_BASE ||
-    'https://raw.githubusercontent.com/Connectingprofessional/TrackMenow/live-data';
+    'https://raw.githubusercontent.com/connectingprofessional/trackmenow/live-data';
   var cache = {};
   var cacheAt = 0;
   var DEFAULT_ON = { air: true, ships: true, transit: true, rail: true, metro: true, taxi: false, car: false, bike: false };

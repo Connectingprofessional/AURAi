@@ -9,7 +9,7 @@
     CATALOGUE_URL:
       window.TM_CAMERA_CATALOGUE_URL ||
       ((window.TM_LIVE_DATA_BASE ||
-        'https://raw.githubusercontent.com/Connectingprofessional/TrackMenow/live-data') +
+        'https://raw.githubusercontent.com/connectingprofessional/trackmenow/live-data') +
         '/cameras.json'),
     PROXY: (window.TM_API_BASE || '') + '/api/hls?u=',
     SOURCE_ID: 'tm-cameras',
