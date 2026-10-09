@@ -318,6 +318,49 @@ async function cameras(req,env,url){
  cameraCache.set(key,{t:Date.now(),data});return json(req,env,data);
 }
 
+/* 3D building footprints for close-zoom city views. Zoom-gated like the camera catalogue so a
+   world-view bbox never triggers a slow/huge Overpass query. Heights are estimated from OSM
+   building:levels/height tags (3m per level) when the source doesn't give an explicit height. */
+const buildingsCache = new Map();
+const BUILDINGS_TTL = 60000;
+function buildingsBbox(v){return parseBbox(v);}
+async function osmBuildings(b,env){
+ const area=Math.abs((b.maxLon-b.minLon)*(b.maxLat-b.minLat));
+ if(area>0.02)return {features:[],status:'zoom-in-required'};
+ const endpoint=String(env.CAMERA_OVERPASS_URL||'https://overpass-api.de/api/interpreter');
+ const q='[out:json][timeout:25];way[building]('+b.minLat+','+b.minLon+','+b.maxLat+','+b.maxLon+');out geom tags;';
+ const r=await fetchT(endpoint,{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded','Accept':'application/json'},body:'data='+encodeURIComponent(q)},18000);
+ if(!r.ok)throw new Error('Buildings catalogue HTTP '+r.status);
+ const j=await r.json();
+ const features=(j.elements||[]).map(e=>{
+   const geom=e.geometry;
+   if(!Array.isArray(geom)||geom.length<3)return null;
+   const ring=geom.map(p=>[Number(p.lon),Number(p.lat)]);
+   const first=ring[0],last=ring[ring.length-1];
+   if(!first||!last||first[0]!==last[0]||first[1]!==last[1])ring.push(first);
+   const p=e.tags||{};
+   let height=Number(p.height||p['building:height']);
+   if(!Number.isFinite(height)){
+     const levels=Number(p['building:levels']||p.levels);
+     height=Number.isFinite(levels)&&levels>0?levels*3:9;
+   }
+   return {type:'Feature',id:'osm-bldg-'+e.id,geometry:{type:'Polygon',coordinates:[ring]},properties:{
+     type:'building',layer:'buildings',name:String(p.name||''),height,minHeight:Number(p['building:min_height'])||0,
+     kind:String(p.building||'yes'),source:'OpenStreetMap / Overpass'
+   }};
+ }).filter(Boolean).slice(0,20000);
+ return {features,status:features.length?'live':'empty'};
+}
+async function buildings(req,env,url){
+ const b=buildingsBbox(url.searchParams.get('bbox'));if(!b)return json(req,env,{ok:false,error:'Valid bbox is required'},400);
+ const key=[b.minLon,b.minLat,b.maxLon,b.maxLat].join('|'),hit=buildingsCache.get(key);if(hit&&Date.now()-hit.t<BUILDINGS_TTL)return json(req,env,hit.data);
+ let r;
+ try{ r=await osmBuildings(b,env); }
+ catch(e){ r={features:[],status:'error',error:e.message}; }
+ const data={type:'FeatureCollection',features:r.features||[],status:r.status,source:'OpenStreetMap / Overpass',generatedAt:nowIso(),error:r.error};
+ buildingsCache.set(key,{t:Date.now(),data});return json(req,env,data);
+}
+
 async function ensureCallTables(env){
  if(!env.DB)return;
  await env.DB.prepare('CREATE TABLE IF NOT EXISTS call_rooms (room_id TEXT PRIMARY KEY, peer_a TEXT, peer_b TEXT, created_at TEXT NOT NULL, updated_at TEXT NOT NULL)').run();
@@ -782,6 +825,10 @@ export default {
         // Use the same viewport-aware camera pipeline that previously restored the map:
         // bbox -> configured public feeds -> OpenStreetMap/Overpass fallback -> FeatureCollection.
         return cameras(req, env, url);
+      }
+      if (url.pathname === '/api/buildings' && req.method === 'GET') {
+        // Zoom-gated OSM building footprints with estimated heights, for 3D fill-extrusion.
+        return buildings(req, env, url);
       }
       if (url.pathname === '/api/visuals' && req.method === 'GET') {
         const allowed = ['LIVE','CAMERAS','WEBCAMS','IMAGES','VIDEOS','CLIPS','SOURCE HISTORY'];
