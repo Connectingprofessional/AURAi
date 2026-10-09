@@ -71,7 +71,7 @@
         info=new google.maps.InfoWindow();
         map.addListener('idle',function(){refreshMovement();});
       }
-      try{var cl=await loadClusterer();clusterer=new cl.MarkerClusterer({map:map,markers:[]});}catch(e){status('Google Maps ready · clustering fallback active');}
+      if(!clusterer){try{var cl=await loadClusterer();clusterer=new cl.MarkerClusterer({map:map,markers:[]});}catch(e){status('Google Maps ready · clustering fallback active');}}
       status('GOOGLE HYBRID · loading live movement and camera observations…');
       await Promise.allSettled([refreshMovement(),refreshCameras()]);
       if(timer)clearInterval(timer);timer=setInterval(function(){if(active){refreshMovement();refreshCameras();}},30000);
@@ -81,7 +81,19 @@
   function closeMap(){active=false;if(overlay)overlay.classList.remove('active');if(timer)clearInterval(timer);timer=null;}
   function setMapType(t){if(map)map.setMapTypeId(t);if(t==='hybrid'||t==='satellite')night=false;}
   function toggleNight(){night=!night;if(map){map.setOptions({styles:night?[{elementType:'geometry',stylers:[{color:'#151b24'}]},{elementType:'labels.text.fill',stylers:[{color:'#8c9bb0'}]},{featureType:'road',elementType:'geometry',stylers:[{color:'#303b4b'}]}]:null});status(night?'NIGHT STYLE · Google imagery remains provider-controlled':'DAY STYLE · Google hybrid imagery');}}
-  function toggleLayer(name){enabled[name]=!enabled[name];if(name==='movement')movementMarkers.forEach(function(m){m.setMap(enabled.movement?map:null)});if(name==='cameras')cameraMarkers.forEach(function(m){m.setMap(enabled.cameras?map:null)});if(name==='movement'&&clusterer)clusterer.render();status(name.toUpperCase()+' '+(enabled[name]?'ON':'OFF'));}
+  function syncClusterer(){
+    if(!clusterer)return;
+    var all=[];
+    if(enabled.movement)movementMarkers.forEach(function(m){all.push(m);});
+    if(enabled.cameras)cameraMarkers.forEach(function(m){all.push(m);});
+    clusterer.clearMarkers();clusterer.addMarkers(all);
+  }
+  function toggleLayer(name){
+    enabled[name]=!enabled[name];
+    if(name==='movement')movementMarkers.forEach(function(m){m.setMap(enabled.movement?map:null);});
+    if(name==='cameras')cameraMarkers.forEach(function(m){m.setMap(enabled.cameras?map:null);});
+    syncClusterer();status(name.toUpperCase()+' '+(enabled[name]?'ON':'OFF'));
+  }
   function boundsQuery(){
     if(!map)return '-180,-80,180,80';
     var b=map.getBounds();if(!b)return '-180,-80,180,80';
@@ -108,7 +120,7 @@
         marker.setMap(enabled.movement?map:null);changed.push(marker);
       });
       movementMarkers.forEach(function(m,id){if(!keep.has(id)){m.setMap(null);movementMarkers.delete(id);}});
-      if(clusterer){clusterer.clearMarkers();clusterer.addMarkers(Array.from(movementMarkers.values()).filter(function(m){return enabled.movement&&m.getMap()===map;}));}
+      syncClusterer();
       status('GOOGLE HYBRID · '+movementMarkers.size+' movement objects · observed feed · refresh 30s');
     }catch(e){status('GOOGLE HYBRID · movement feed unavailable: '+e.message);}
   }
@@ -136,6 +148,7 @@
         m.setMap(enabled.cameras?map:null);
       });
       cameraMarkers.forEach(function(m,id){if(!keep.has(id)){m.setMap(null);cameraMarkers.delete(id);}});
+      syncClusterer();
       status('GOOGLE HYBRID · '+movementMarkers.size+' movement objects · '+cameraMarkers.size+' camera points');
     }catch(e){status('Camera catalogue unavailable: '+e.message);}
   }
