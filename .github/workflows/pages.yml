@@ -26,6 +26,7 @@ jobs:
         shell: bash
         env:
           TM_GOOGLE_MAPS_3D_API_KEY: ${{ secrets.TM_GOOGLE_MAPS_3D_API_KEY }}
+          TM_GOOGLE_MAPS_API_KEY: ${{ secrets.TM_GOOGLE_MAPS_API_KEY || secrets.TM_GOOGLE_MAPS_3D_API_KEY }}
         run: |
           set -euo pipefail
           rm -rf _site
@@ -40,22 +41,25 @@ jobs:
           done
 
           cp index.html _site/index.html
-          # Optional deploy-time injection keeps the browser API key out of source control.
-          # Add TM_GOOGLE_MAPS_3D_API_KEY as a GitHub Actions repository secret after restricting it
-          # to the production domain and the required Google Maps APIs.
-          if [[ -n "${TM_GOOGLE_MAPS_3D_API_KEY:-}" ]]; then
-            python3 - <<'PY'
+          # Inject keys at build time, keeping them out of public source control.
+          # TM_GOOGLE_MAPS_API_KEY can be a separate Embed API key; if absent, reuse the 3D key.
+          python3 - <<'PY'
           import json, os
           from pathlib import Path
           target = Path("_site/index.html")
           html = target.read_text(encoding="utf-8")
-          marker = "window.TM_GOOGLE_MAPS_3D_API_KEY='';"
-          if marker not in html:
-              raise SystemExit("Google 3D Earth key placeholder not found in index.html")
-          value = json.dumps(os.environ["TM_GOOGLE_MAPS_3D_API_KEY"])
-          target.write_text(html.replace(marker, "window.TM_GOOGLE_MAPS_3D_API_KEY=" + value + ";", 1), encoding="utf-8")
+          keys = {
+              "TM_GOOGLE_MAPS_3D_API_KEY": os.environ.get("TM_GOOGLE_MAPS_3D_API_KEY", ""),
+              "TM_GOOGLE_MAPS_API_KEY": os.environ.get("TM_GOOGLE_MAPS_API_KEY", ""),
+          }
+          for name, secret in keys.items():
+              marker = "window." + name + "='';"
+              if secret:
+                  if marker not in html:
+                      raise SystemExit(name + " placeholder not found in index.html")
+                  html = html.replace(marker, "window." + name + "=" + json.dumps(secret) + ";", 1)
+          target.write_text(html, encoding="utf-8")
           PY
-          fi
           cp trackmenow-cameras.js _site/trackmenow-cameras.js
           cp admin.html _site/admin.html
           cp trackmenow.js _site/trackmenow.js
