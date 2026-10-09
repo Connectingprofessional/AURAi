@@ -24,6 +24,8 @@ jobs:
 
       - name: Build static TrackMeNow site
         shell: bash
+        env:
+          TM_GOOGLE_MAPS_3D_API_KEY: ${{ secrets.TM_GOOGLE_MAPS_3D_API_KEY }}
         run: |
           set -euo pipefail
           rm -rf _site
@@ -38,6 +40,22 @@ jobs:
           done
 
           cp index.html _site/index.html
+          # Optional deploy-time injection keeps the browser API key out of source control.
+          # Add TM_GOOGLE_MAPS_3D_API_KEY as a GitHub Actions repository secret after restricting it
+          # to the production domain and the required Google Maps APIs.
+          if [[ -n "${TM_GOOGLE_MAPS_3D_API_KEY:-}" ]]; then
+            python3 - <<'PY'
+          import json, os
+          from pathlib import Path
+          target = Path("_site/index.html")
+          html = target.read_text(encoding="utf-8")
+          marker = "window.TM_GOOGLE_MAPS_3D_API_KEY='';"
+          if marker not in html:
+              raise SystemExit("Google 3D Earth key placeholder not found in index.html")
+          value = json.dumps(os.environ["TM_GOOGLE_MAPS_3D_API_KEY"])
+          target.write_text(html.replace(marker, "window.TM_GOOGLE_MAPS_3D_API_KEY=" + value + ";", 1), encoding="utf-8")
+          PY
+          fi
           cp trackmenow-cameras.js _site/trackmenow-cameras.js
           cp admin.html _site/admin.html
           cp trackmenow.js _site/trackmenow.js
@@ -50,6 +68,7 @@ jobs:
           cp trackmenow-earth-camera.js _site/trackmenow-earth-camera.js
           cp trackmenow-buildings.js _site/trackmenow-buildings.js
           cp trackmenow-streetview.js _site/trackmenow-streetview.js
+          cp trackmenow-google-earth.js _site/trackmenow-google-earth.js
           cp trackmenow-globe-engine.js _site/trackmenow-globe-engine.js
           cp trackmenow-icons.js _site/trackmenow-icons.js
           cp water-effect.js _site/water-effect.js
@@ -68,6 +87,7 @@ jobs:
           test -s _site/trackmenow-earth-camera.js
           test -s _site/trackmenow-buildings.js
           test -s _site/trackmenow-streetview.js
+          test -s _site/trackmenow-google-earth.js
           test -s _site/vendor/maplibre-gl/maplibre-gl.js
 
           echo "TrackMeNow Pages artifact:"
