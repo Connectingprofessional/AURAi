@@ -34,7 +34,7 @@
     top.append(statusNode, close);
     var dock = document.createElement('div'); dock.id = 'tm-google-live-dock';
     [['HYBRID',function(){setMapType('hybrid')}],['SATELLITE',function(){setMapType('satellite')}],['ROADMAP',function(){setMapType('roadmap')}],['TERRAIN',function(){setMapType('terrain')}],
-      ['MOVEMENT',function(){toggleLayer('movement')}],['CAMERAS',function(){toggleLayer('cameras')}],['LIVE GPS',function(){toggleGps()}],['NIGHT STYLE',function(){toggleNight()}],['RADAR',function(){nativeMode('RADAR')}],['WEATHER',function(){nativeMode('WEATHER')}],['FLAT MAP',function(){nativeMode('FLAT')}],['3D GLOBE',function(){nativeMode('3D')}]
+      ['MOVEMENT',function(){toggleLayer('movement')}],['CAMERAS',function(){toggleLayer('cameras')}],['STREET VIEW',function(){toggleStreetView()}],['LIVE GPS',function(){toggleGps()}],['NIGHT STYLE',function(){toggleNight()}],['RADAR',function(){nativeMode('RADAR')}],['WEATHER',function(){nativeMode('WEATHER')}],['FLAT MAP',function(){nativeMode('FLAT')}],['3D GLOBE',function(){nativeMode('3D')}]
     ].forEach(function(x){var b=button(x[0],x[1]);b.classList.toggle('on',x[0]==='HYBRID'||x[0]==='MOVEMENT'||x[0]==='CAMERAS');dock.appendChild(b);});
     overlay.append(mapNode,top,dock); document.body.appendChild(overlay);
     var open = button('GOOGLE MAP · LIVE',function(){openMap()}); open.id='tm-google-live-open';
@@ -67,7 +67,7 @@
     try{
       await loadMaps();
       if(!map){
-        map=new google.maps.Map(mapNode,{center:{lat:20,lng:0},zoom:2,mapTypeId:'hybrid',tilt:0,heading:0,streetViewControl:false,fullscreenControl:false,mapTypeControl:false,gestureHandling:'greedy',clickableIcons:false});
+        map=new google.maps.Map(mapNode,{center:{lat:20,lng:0},zoom:2,mapTypeId:'hybrid',tilt:0,heading:0,streetViewControl:true,fullscreenControl:false,mapTypeControl:false,gestureHandling:'greedy',clickableIcons:false});
         info=new google.maps.InfoWindow();
         map.addListener('idle',function(){refreshMovement();});
       }
@@ -80,6 +80,24 @@
   }
   function closeMap(){active=false;if(overlay)overlay.classList.remove('active');var old3d=document.getElementById('tm-google-earth-toggle');if(old3d)old3d.style.display='';if(timer)clearInterval(timer);timer=null;if(gpsWatch!==null&&navigator.geolocation){navigator.geolocation.clearWatch(gpsWatch);gpsWatch=null;}if(gpsMarker)gpsMarker.setMap(null);}
   function setMapType(t){if(map)map.setMapTypeId(t);if(t==='hybrid'||t==='satellite')night=false;}
+  function toggleStreetView(){
+    if(!map||!window.google||!google.maps){status('Google Maps is not ready yet');return;}
+    var panorama=map.getStreetView();
+    if(panorama.getVisible()){panorama.setVisible(false);status('STREET VIEW closed · map restored');return;}
+    var center=map.getCenter();
+    if(!center){status('Choose a map location first');return;}
+    status('Searching for Street View imagery near map center…');
+    var service=new google.maps.StreetViewService();
+    service.getPanorama({location:center,radius:1000,preference:google.maps.StreetViewPreference.NEAREST})
+      .then(function(result){
+        if(!result||!result.data||!result.data.location){status('No Street View imagery found within 1 km of this location. Try a nearby road or use Pegman.');return;}
+        panorama.setPano(result.data.location.pano);
+        panorama.setPov({heading:map.getHeading()||0,pitch:0});
+        panorama.setVisible(true);
+        status('STREET VIEW · '+(result.data.location.description||'Street-level panorama'));
+      })
+      .catch(function(){status('No Street View panorama found here. Try a nearby road or drag Pegman onto a highlighted street.');});
+  }
   function toggleNight(){night=!night;if(map){map.setOptions({styles:night?[{elementType:'geometry',stylers:[{color:'#151b24'}]},{elementType:'labels.text.fill',stylers:[{color:'#8c9bb0'}]},{featureType:'road',elementType:'geometry',stylers:[{color:'#303b4b'}]}]:null});status(night?'NIGHT STYLE · Google imagery remains provider-controlled':'DAY STYLE · Google hybrid imagery');}}
   function syncClusterer(){
     if(!clusterer)return;
