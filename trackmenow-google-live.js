@@ -78,7 +78,7 @@
       status('GOOGLE HYBRID · movement refresh 30s · camera catalogue · click a marker for details');
     }catch(e){status(e.message||'Google Maps unavailable');}
   }
-  function closeMap(){active=false;if(overlay)overlay.classList.remove('active');var old3d=document.getElementById('tm-google-earth-toggle');if(old3d)old3d.style.display='';if(timer)clearInterval(timer);timer=null;}
+  function closeMap(){active=false;if(overlay)overlay.classList.remove('active');var old3d=document.getElementById('tm-google-earth-toggle');if(old3d)old3d.style.display='';if(timer)clearInterval(timer);timer=null;if(gpsWatch!==null&&navigator.geolocation){navigator.geolocation.clearWatch(gpsWatch);gpsWatch=null;}if(gpsMarker)gpsMarker.setMap(null);}
   function setMapType(t){if(map)map.setMapTypeId(t);if(t==='hybrid'||t==='satellite')night=false;}
   function toggleNight(){night=!night;if(map){map.setOptions({styles:night?[{elementType:'geometry',stylers:[{color:'#151b24'}]},{elementType:'labels.text.fill',stylers:[{color:'#8c9bb0'}]},{featureType:'road',elementType:'geometry',stylers:[{color:'#303b4b'}]}]:null});status(night?'NIGHT STYLE · Google imagery remains provider-controlled':'DAY STYLE · Google hybrid imagery');}}
   function syncClusterer(){
