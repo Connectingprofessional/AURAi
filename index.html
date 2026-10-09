@@ -68,6 +68,9 @@ window.TM_CAMERA_CATALOGUE_URL='https://raw.githubusercontent.com/connectingprof
    Leave blank until you have one — Street View just shows a "no key configured" message
    until then; nothing else on the site depends on this. */
 window.TM_GOOGLE_MAPS_API_KEY='';
+/* Add a browser-restricted Maps JavaScript API key with Maps 3D access here.
+   Do not commit service-account credentials or unrestricted keys to this public repository. */
+window.TM_GOOGLE_MAPS_3D_API_KEY='';
 setTimeout(function(){var b=document.getElementById('tm-boot');if(b&&!b.classList.contains('ready'))b.classList.add('ready');},12000);
 </script>
 <script src="./vendor/maplibre-gl/maplibre-gl.js"></script>
@@ -83,5 +86,6 @@ setTimeout(function(){var b=document.getElementById('tm-boot');if(b&&!b.classLis
 <script src="./trackmenow-earth-camera.js?v=1"></script>
 <script src="./trackmenow-buildings.js?v=1"></script>
 <script src="./trackmenow-streetview.js?v=1"></script>
+<script src="./trackmenow-google-earth.js?v=1"></script>
 </body>
 </html>
