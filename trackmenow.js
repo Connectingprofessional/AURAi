@@ -1721,6 +1721,7 @@
         } catch(e) {}
       }).catch(function() {});
     });
+    maplibre.on('zoomend', function () { applyLayers(); });
     maplibre.on('moveend', function () {
       if (forecastTimer) clearTimeout(forecastTimer);
       forecastTimer = setTimeout(function () { refreshWx(); if (activeForecastMode()) refreshForecast(); }, 500);
