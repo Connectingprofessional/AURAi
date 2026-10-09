@@ -51,7 +51,11 @@ jobs:
 
           if git ls-remote --exit-code --heads origin live-data >/dev/null 2>&1; then
             git fetch --depth=1 origin live-data
-            for f in flights ships transit; do
+            # Carry forward every file this workflow doesn't itself regenerate (cameras.json
+            # comes from the separate "Build working cameras" workflow) and every file this
+            # run's own collector might fail to produce, so the force-push below never wipes
+            # out data another job just published to this branch.
+            for f in flights ships transit rail cameras; do
               git show FETCH_HEAD:$f.json > out/$f.json 2>/dev/null || true
             done
           fi

@@ -20,7 +20,12 @@ body{overscroll-behavior:none}
 #map{position:fixed!important;inset:0 0 var(--tm-dock-h,76px) 0!important;z-index:1;background:transparent!important}
 .maplibregl-canvas{background:transparent!important}
 #legacy-controls{display:none!important}
-#status{display:none!important}
+/* #status is the live feedback line (transport/camera/weather/source status). It used to be
+   force-hidden with no way to ever show it again — every setStatus() call across the app was
+   silently going nowhere. Give it real, minimal styling and let the existing .tm-show class
+   (already toggled by setStatus() in several files) control visibility. */
+#status{position:fixed;z-index:4500;left:12px;top:52px;max-width:min(560px,calc(100vw - 24px));padding:6px 10px;border:1px solid rgba(150,190,220,.18);border-radius:7px;background:rgba(5,10,16,.92);-webkit-backdrop-filter:blur(10px);backdrop-filter:blur(10px);font-size:10px;line-height:1.4;color:#cfe3ee;opacity:0;visibility:hidden;transform:translateY(-4px);transition:opacity .25s ease,transform .25s ease;pointer-events:none}
+#status.tm-show{opacity:1;visibility:visible;transform:translateY(0)}
 #tm-bottom-bar{display:none!important;height:0!important;overflow:hidden!important;pointer-events:none!important}
 #tm-timebar{bottom:calc(var(--tm-dock-h,76px) + 10px)!important;z-index:5000!important}
 #tm-shell{z-index:6000!important}

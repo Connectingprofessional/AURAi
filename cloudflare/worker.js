@@ -860,7 +860,6 @@ export default {
       if (url.pathname === '/api/environment/catalog' && req.method === 'GET') return await environmentCatalog(req,env,url);
       if (url.pathname === '/api/references' && req.method === 'GET') return json(req,env,{ok:true,generatedAt:nowIso(),sources:referenceRegistry()});
       if (url.pathname === '/api/movement' && req.method === 'GET') return await movement(req, env, url);
-      if (url.pathname === '/api/cameras' && req.method === 'GET') return await cameras(req, env, url);
       if (url.pathname === '/api/cell' && req.method === 'GET') return await cellLookup(req, env, url);
       if (parts[0] === 'api' && parts[1] === 'devices') {
         if (!env.DB) return json(req, env, { error: 'D1 database binding "DB" is not configured on the Worker.' }, 503);
