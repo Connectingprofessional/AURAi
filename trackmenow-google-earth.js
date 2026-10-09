@@ -54,7 +54,7 @@
     style.textContent =
       '#tm-google-earth-toggle{position:fixed;z-index:10020;right:14px;top:52px;min-height:38px;padding:0 13px;border:1px solid rgba(98,215,255,.55);border-radius:8px;background:rgba(5,12,20,.96);color:#dff8ff;font:800 10px/1 system-ui,sans-serif;letter-spacing:1px;cursor:pointer;box-shadow:0 4px 20px rgba(0,0,0,.35)}' +
       '#tm-google-earth-toggle:hover{border-color:#62d7ff;color:#62d7ff}' +
-      '#tm-google-earth-overlay{position:fixed;inset:0;z-index:10000;background:#03070b;display:none;overflow:hidden}' +
+      '#tm-google-earth-overlay{position:fixed;inset:0 0 var(--tm-dock-h,76px) 0;z-index:10000;background:#03070b;display:none;overflow:hidden}' +
       '#tm-google-earth-stage{position:absolute;inset:0;width:100%;height:100%;background:#03070b}' +
       '#tm-google-earth-stage gmp-map-3d{display:block;width:100%;height:100%;min-height:100%;outline:0}' +
       '#tm-google-earth-status{position:absolute;left:14px;bottom:16px;max-width:min(560px,calc(100vw - 28px));padding:9px 12px;border:1px solid rgba(150,190,220,.2);border-radius:8px;background:rgba(4,10,16,.86);font:12px/1.5 system-ui,sans-serif;z-index:2}' +
