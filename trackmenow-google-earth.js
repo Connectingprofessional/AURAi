@@ -178,6 +178,8 @@
       isActive: function () { return active; },
       getMap: function () { return map3d; }
     };
+    // Default to Google Earth when a configured browser key is available; otherwise preserve the native map.
+    if (KEY()) openEarth();
   }
 
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init);
