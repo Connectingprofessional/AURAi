@@ -1664,7 +1664,7 @@
       style.sources.radar = { type: 'raster', tileSize: 256, tiles: [radarPath] };
       style.layers.splice(3, 0, { id: 'radar', type: 'raster', source: 'radar', layout: { visibility: 'none' }, paint: { 'raster-opacity': 0.75 } });
     }
-    maplibre = new maplibregl.Map({ container: 'map', style: style, center: [20, 15], zoom: useGlobe ? 1.4 : 2, minZoom: useGlobe ? 0.5 : 1, maxZoom: 22, maxPitch: useGlobe ? 85 : 60, attributionControl: false, failIfMajorPerformanceCaveat: false });
+    maplibre = new maplibregl.Map({ container: 'map', style: style, center: [20, 15], zoom: useGlobe ? 1.4 : 2, minZoom: useGlobe ? 0.5 : 1, maxZoom: 23, maxPitch: useGlobe ? 85 : 60, attributionControl: false, failIfMajorPerformanceCaveat: false });
     window.map = maplibre;
     if (window.TrackMeNowCameras && window.TrackMeNowCameras.init) window.TrackMeNowCameras.init(maplibre);
     maplibre.on('style.load', function () {
@@ -1768,7 +1768,7 @@
       return;
     }
     if (maplibre) {
-      maplibre.easeTo({ zoom: Math.max(0.5, Math.min(20, maplibre.getZoom() + (dir > 0 ? 1.0 : -1.0))), duration: 250 });
+      maplibre.easeTo({ zoom: Math.max(0.5, Math.min(23, maplibre.getZoom() + (dir > 0 ? 1.0 : -1.0))), duration: 250 });
       return;
     }
     if (globe && og) {
