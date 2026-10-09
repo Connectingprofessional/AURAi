@@ -139,7 +139,8 @@
       status('GOOGLE HYBRID · '+movementMarkers.size+' movement objects · '+cameraMarkers.size+' camera points');
     }catch(e){status('Camera catalogue unavailable: '+e.message);}
   }
-  function nativeMode(mode){closeMap();var e=window.TrackMeNowEngine;if(!e)return;if(mode==='RADAR')e.selectWeather('radar');else if(mode==='WEATHER')e.selectWeather('precip');else if(mode==='FLAT'){e.setScale('earth');e.setEarthMode('flat');}else if(mode==='3D'){e.setScale('earth');e.setEarthMode('globe');}else if(mode==='DAY / NIGHT')e.setDayNight(true);}\n  function toggleGps(){
+  function nativeMode(mode){closeMap();var e=window.TrackMeNowEngine;if(!e)return;if(mode==='RADAR')e.selectWeather('radar');else if(mode==='WEATHER')e.selectWeather('precip');else if(mode==='FLAT'){e.setScale('earth');e.setEarthMode('flat');}else if(mode==='3D'){e.setScale('earth');e.setEarthMode('globe');}else if(mode==='DAY / NIGHT')e.setDayNight(true);}
+  function toggleGps(){
     if(gpsWatch!==null){navigator.geolocation.clearWatch(gpsWatch);gpsWatch=null;if(gpsMarker)gpsMarker.setMap(null);status('LIVE GPS stopped');return;}
     if(!navigator.geolocation){status('This browser does not provide GPS geolocation');return;}
     status('Requesting browser location permission…');
