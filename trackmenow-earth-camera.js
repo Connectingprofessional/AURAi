@@ -66,7 +66,7 @@
     if (!map) return;
     tiltHigh = false;
     setSurfaceTerrain(false);
-    ease({ center: [20, 15], zoom: 1.4, bearing: 0, pitch: 0 });
+    ease({ center: [0, 0], zoom: 1.4, bearing: 0, pitch: 0 });
   }
 
   function install() {
