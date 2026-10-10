@@ -13,6 +13,9 @@ concurrency:
 jobs:
   build:
     runs-on: ubuntu-latest
+    # Makes secrets stored in the existing github-pages environment available during build-time injection.
+    environment:
+      name: github-pages
     permissions:
       contents: read
     steps:
@@ -25,8 +28,8 @@ jobs:
       - name: Build static TrackMeNow site
         shell: bash
         env:
-          TM_GOOGLE_MAPS_3D_API_KEY: ${{ secrets.TM_GOOGLE_MAPS_3D_API_KEY || secrets.GOOGLE_MAPS_API_KEY || secrets.TM_GOOGLE_MAPS_API_KEY || secrets.GOOGLE_MAP_API_KEY }}
-          TM_GOOGLE_MAPS_API_KEY: ${{ secrets.TM_GOOGLE_MAPS_API_KEY || secrets.GOOGLE_MAPS_API_KEY || secrets.TM_GOOGLE_MAPS_3D_API_KEY || secrets.GOOGLE_MAP_API_KEY }}
+          TM_GOOGLE_MAPS_3D_API_KEY: ${{ secrets.TM_GOOGLE_MAPS_3D_API_KEY || secrets.GOOGLE_MAPS_API_KEY || secrets.TM_GOOGLE_MAPS_API_KEY || secrets.GOOGLE_MAP_API_KEY || vars.TM_GOOGLE_MAPS_3D_API_KEY || vars.GOOGLE_MAPS_API_KEY || vars.TM_GOOGLE_MAPS_API_KEY || vars.GOOGLE_MAP_API_KEY }}
+          TM_GOOGLE_MAPS_API_KEY: ${{ secrets.TM_GOOGLE_MAPS_API_KEY || secrets.GOOGLE_MAPS_API_KEY || secrets.TM_GOOGLE_MAPS_3D_API_KEY || secrets.GOOGLE_MAP_API_KEY || vars.TM_GOOGLE_MAPS_API_KEY || vars.GOOGLE_MAPS_API_KEY || vars.TM_GOOGLE_MAPS_3D_API_KEY || vars.GOOGLE_MAP_API_KEY }}
         run: |
           set -euo pipefail
           rm -rf _site
@@ -52,13 +55,25 @@ jobs:
               "TM_GOOGLE_MAPS_3D_API_KEY": os.environ.get("TM_GOOGLE_MAPS_3D_API_KEY", ""),
               "TM_GOOGLE_MAPS_API_KEY": os.environ.get("TM_GOOGLE_MAPS_API_KEY", ""),
           }
+          # Never publish a broken build with empty Google Maps keys. Do not print key values.
+          missing = [name for name, secret in keys.items() if not secret.strip()]
+          if missing:
+              raise SystemExit(
+                  "Google Maps key injection failed: missing " + ", ".join(missing) +
+                  ". Add GOOGLE_MAPS_API_KEY (or TM_GOOGLE_MAPS_API_KEY / TM_GOOGLE_MAPS_3D_API_KEY) "
+                  "as a GitHub Actions repository secret or a secret/variable in the github-pages environment."
+              )
           for name, secret in keys.items():
               marker = "window." + name + "='';"
-              if secret:
-                  if marker not in html:
-                      raise SystemExit(name + " placeholder not found in index.html")
-                  html = html.replace(marker, "window." + name + "=" + json.dumps(secret) + ";", 1)
+              if marker not in html:
+                  raise SystemExit(name + " placeholder not found in index.html")
+              html = html.replace(marker, "window." + name + "=" + json.dumps(secret.strip()) + ";", 1)
+          # Validate injection without exposing the key in workflow logs.
+          for name in keys:
+              if ("window." + name + "=''") in html:
+                  raise SystemExit(name + " remained empty after injection")
           target.write_text(html, encoding="utf-8")
+          print("Google Maps key injection verified for both browser configuration variables.")
           PY
           cp trackmenow-cameras.js _site/trackmenow-cameras.js
           cp admin.html _site/admin.html
