@@ -89,18 +89,35 @@
   }
   function closeMap(){active=false;if(overlay)overlay.classList.remove('active');var old3d=document.getElementById('tm-google-earth-toggle');if(old3d)old3d.style.display='';if(timer)clearInterval(timer);timer=null;if(gpsWatch!==null&&navigator.geolocation){navigator.geolocation.clearWatch(gpsWatch);gpsWatch=null;}if(gpsMarker)gpsMarker.setMap(null);}
   function setMapType(t){if(map)map.setMapTypeId(t);else if(fallbackFrame){var mode=(t==='satellite'||t==='hybrid')?'k':(t==='terrain'?'p':'m');fallbackFrame.src='https://maps.google.com/maps?q=Earth&z=2&t='+mode+'&output=embed';}if(t==='hybrid'||t==='satellite')night=false;}
-  function toggleStreetView(){
-    if(!map||!window.google||!google.maps){status('Google Maps is not ready yet');return;}
-    var panorama=map.getStreetView();
-    if(panorama.getVisible()){panorama.setVisible(false);status('STREET VIEW closed · map restored');return;}
-    var center=map.getCenter();if(!center){status('Choose a map location first');return;}
-    status('Searching for Street View imagery near map center…');
-    var service=new google.maps.StreetViewService();
-    service.getPanorama({location:center,radius:1000,preference:google.maps.StreetViewPreference.NEAREST}).then(function(result){
-      if(!result||!result.data||!result.data.location){status('No Street View imagery found within 1 km of this location. Try a nearby road or use Pegman.');return;}
-      panorama.setPano(result.data.location.pano);panorama.setPov({heading:map.getHeading()||0,pitch:0});panorama.setVisible(true);
+  async function toggleStreetView(){
+    // The dock can be clicked before the Google map instance has finished initializing.
+    // Wait for the API, then initialize the map before attempting Street View.
+    status('Preparing Google Street View…');
+    try {
+      await loadMaps();
+      if (!map) await openMap();
+      if (!map || !window.google || !google.maps || typeof map.getStreetView !== 'function') {
+        status('Google Maps could not initialize. Check the Maps JavaScript API, billing, browser key restrictions, and deployed key configuration.');
+        return;
+      }
+      var panorama=map.getStreetView();
+      if(panorama.getVisible()){panorama.setVisible(false);status('STREET VIEW closed · map restored');return;}
+      var center=map.getCenter();
+      if(!center){status('Google Maps is still positioning the view. Try Street View again in a moment.');return;}
+      status('Searching for Street View imagery near map center…');
+      var service=new google.maps.StreetViewService();
+      var result=await service.getPanorama({location:center,radius:1000,preference:google.maps.StreetViewPreference.NEAREST}).catch(function(){return null;});
+      if(!result||!result.data||!result.data.location){
+        status('No Street View imagery found within 1 km of this map center. Zoom to a road with coverage or click the map with Pegman enabled.');
+        return;
+      }
+      panorama.setPano(result.data.location.pano);
+      panorama.setPov({heading:map.getHeading()||0,pitch:0});
+      panorama.setVisible(true);
       status('STREET VIEW · '+(result.data.location.description||'Street-level panorama'));
-    }).catch(function(){status('No Street View panorama found here. Try a nearby road or drag Pegman onto a highlighted street.');});
+    } catch (err) {
+      status('Street View failed: '+(err&&err.message?err.message:'Google Maps API unavailable')+'. Check Maps JavaScript API, billing, referrer restrictions, and Street View coverage.');
+    }
   }
   function toggleNight(){night=!night;if(map){map.setOptions({styles:night?[{elementType:'geometry',stylers:[{color:'#151b24'}]},{elementType:'labels.text.fill',stylers:[{color:'#8c9bb0'}]},{featureType:'road',elementType:'geometry',stylers:[{color:'#303b4b'}]}]:null});status(night?'NIGHT STYLE · Google imagery remains provider-controlled':'DAY STYLE · Google hybrid imagery');}}
   function syncClusterer(){if(!clusterer)return;var all=[];if(enabled.movement)movementMarkers.forEach(function(m){all.push(m);});if(enabled.cameras)cameraMarkers.forEach(function(m){all.push(m);});clusterer.clearMarkers();clusterer.addMarkers(all);}
