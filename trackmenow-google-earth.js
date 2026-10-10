@@ -15,6 +15,8 @@
   var map3d = null;
   var apiPromise = null;
   var active = false;
+  var lastClickedPosition = null;
+  var cameraControls = null;
 
   function getLegacyMap() {
     var m = window.map || window.maplibre;
@@ -58,7 +60,10 @@
       '#tm-google-earth-status{position:absolute;left:14px;bottom:16px;max-width:min(560px,calc(100vw - 28px));padding:9px 12px;border:1px solid rgba(150,190,220,.2);border-radius:8px;background:rgba(4,10,16,.86);font:12px/1.5 system-ui,sans-serif;z-index:2}' +
       '#tm-google-earth-status[hidden]{display:none}' +
       '#tm-google-earth-status a{color:#62d7ff}' +
-      '@media(max-width:600px){#tm-google-earth-overlay{inset:52px 0 var(--tm-dock-h,76px) 0}#tm-google-earth-status{left:8px;bottom:8px}}';
+      '#tm-earth-camera-controls{position:absolute;z-index:5;right:12px;top:12px;display:flex;flex-direction:column;gap:5px;padding:6px;border:1px solid rgba(170,210,235,.22);border-radius:10px;background:rgba(4,10,16,.88);box-shadow:0 6px 24px #0006}' +
+      '.tm-earth-cam-btn{width:38px;height:36px;border:1px solid #ffffff25;border-radius:7px;background:#0b1823;color:#eaf7ff;font:700 16px system-ui;cursor:pointer;touch-action:manipulation}' +
+      '.tm-earth-cam-btn:focus-visible{outline:2px solid #62d7ff;outline-offset:2px}' +
+      '@media(max-width:600px){#tm-google-earth-overlay{inset:52px 0 var(--tm-dock-h,76px) 0}#tm-google-earth-status{left:8px;bottom:8px;max-width:calc(100vw - 76px)}#tm-earth-camera-controls{right:7px;top:7px;gap:4px;padding:4px}.tm-earth-cam-btn{width:34px;height:33px}}';
     document.head.appendChild(style);
 
     overlay = document.createElement('section');
@@ -72,6 +77,11 @@
     status.hidden = true;
     overlay.appendChild(stage);
     overlay.appendChild(status);
+    cameraControls = document.createElement('div');
+    cameraControls.id = 'tm-earth-camera-controls';
+    cameraControls.setAttribute('aria-label', 'Earth camera controls');
+    [['＋','Zoom in',function(){adjustCamera('zoom',-0.65)}],['−','Zoom out',function(){adjustCamera('zoom',0.65)}],['↶','Rotate left',function(){adjustCamera('heading',-25)}],['↷','Rotate right',function(){adjustCamera('heading',25)}],['▲','Tilt up',function(){adjustCamera('tilt',10)}],['▼','Tilt down',function(){adjustCamera('tilt',-10)}],['⌂','Reset camera',resetCamera]].forEach(function(item){var b=document.createElement('button');b.type='button';b.className='tm-earth-cam-btn';b.textContent=item[0];b.title=item[1];b.setAttribute('aria-label',item[1]);b.addEventListener('click',item[2]);cameraControls.appendChild(b);});
+    overlay.appendChild(cameraControls);
     document.body.appendChild(overlay);
 
     // Earth is activated only through MAP → GOOGLE EARTH; no floating button or second page.
@@ -144,8 +154,20 @@
       map3d.heading = camera.heading;
       map3d.tilt = camera.tilt;
     }
-    setStatus('Google 3D Earth is active. Use the MAP subtabs to switch views; coverage and detail vary by location.', false);
+    if (!map3d.__tmPegmanClickBound) {
+      map3d.addEventListener('gmp-click', function(event){var p=event&&(event.position||event.latLng||(event.detail&&event.detail.position));if(!p)return;var lat=typeof p.lat==='function'?p.lat():p.lat;var lng=typeof p.lng==='function'?p.lng():(p.lng!==undefined?p.lng:p.longitude);if(Number.isFinite(Number(lat))&&Number.isFinite(Number(lng)))lastClickedPosition={lat:Number(lat),lng:Number(lng)};});
+      map3d.__tmPegmanClickBound=true;
+    }
+    setStatus('Google 3D Earth active · drag Pegman onto the map for Street View · camera controls at right.', false);
   }
+
+  function adjustCamera(kind, amount) {
+    if (!map3d) return;
+    if (kind === 'zoom') map3d.range = Math.max(250, Math.min(38000000, (Number(map3d.range) || 20000000) * Math.pow(2, amount)));
+    if (kind === 'heading') map3d.heading = ((Number(map3d.heading) || 0) + amount + 360) % 360;
+    if (kind === 'tilt') map3d.tilt = Math.max(0, Math.min(85, (Number(map3d.tilt) || 45) + amount));
+  }
+  function resetCamera() { if (!map3d) return; var c=currentCamera(); map3d.range=rangeForZoom(c.zoom); map3d.heading=0; map3d.tilt=55; }
 
   async function openEarth() {
     ensureUI();
@@ -171,9 +193,11 @@
       open: openEarth,
       close: closeEarth,
       isActive: function () { return active; },
-      getMap: function () { return map3d; }
+      getMap: function () { return map3d; },
+      getDropPosition: function () { return lastClickedPosition || (map3d && map3d.center ? { lat: map3d.center.lat, lng: map3d.center.lng } : null); }
     };
-    // Intentionally do not auto-open or force a city-centre view on page load. The user selects the Earth subtab.
+    // Start with Google-style 3D Earth on the landing page; keep the legacy map underneath as fallback.
+    window.setTimeout(function () { openEarth(); }, 900);
   }
 
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init);
