@@ -114,13 +114,28 @@
     if (map && map.getCanvas) map.getCanvas().style.cursor = active ? 'crosshair' : '';
   }
 
-  function loadGoogleApi() {
+  async function resolveKey() {
+    var k = key();
+    if (k) return k;
+    try {
+      var r = await fetch((window.TM_API_BASE || 'https://wispy-bush-9aee.recreationeeraj.workers.dev') + '/api/google/maps-config', { cache: 'no-store' });
+      var j = await r.json();
+      if (j && j.configured && j.key) {
+        window.TM_GOOGLE_MAPS_API_KEY = String(j.key);
+        window.TM_GOOGLE_MAPS_3D_API_KEY = String(j.key);
+        return String(j.key);
+      }
+    } catch (e) {}
+    return '';
+  }
+
+  async function loadGoogleApi() {
     if (window.google && window.google.maps && typeof window.google.maps.importLibrary === 'function') {
-      return Promise.resolve();
+      return;
     }
     if (apiPromise) return apiPromise;
-    var k = key();
-    if (!k) return Promise.reject(new Error('Google Maps API key is not present in the published build. The deployment must inject TM_GOOGLE_MAPS_API_KEY or TM_GOOGLE_MAPS_3D_API_KEY.'));
+    var k = await resolveKey();
+    if (!k) throw new Error('Google Maps browser key is unavailable. TrackMeNow checked both the published build and the secure Worker configuration endpoint.');
     apiPromise = new Promise(function (resolve, reject) {
       var existing = document.querySelector('script[data-tm-google-3d-api]');
       if (existing) {
