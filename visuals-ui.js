@@ -91,7 +91,9 @@ function drawRoadDeviceIntelligence(p){
  const m=map();
  const b=m&&m.getBounds?m.getBounds():null;
  const bbox=b?[b.getWest(),b.getSouth(),b.getEast(),b.getNorth()].join(','):'-180,-85,180,85';
- p.append(status('LIVE INTELLIGENCE · Counts are shown only when a real feed exposes individual vehicles or registered devices. Traffic-flow colours are not a car counter.'));
+ p.append(status('LIVE INTELLIGENCE · Click a road to inspect sourced car/taxi observations within 250 m. This is a nearby-feed count, not a guaranteed census of every vehicle. Traffic-flow colours alone cannot count cars.'));
+ const probe=status('ROAD PROBE · Click a road on the map to check nearby live vehicle observations.');
+ p.append(probe);
  const g=el('div',{class:'tm-stack'});
  g.append(card('ROAD TRAFFIC','Checking current viewport for traffic and vehicle feeds…',null,'CHECKING'));
  g.append(card('LIVE VEHICLES','Checking whether a provider supplies individual vehicle positions…',null,'CHECKING'));
@@ -99,8 +101,9 @@ function drawRoadDeviceIntelligence(p){
  p.append(g);
  Promise.all([
    api('/api/sources?bbox='+encodeURIComponent(bbox)).catch(e=>({error:e.message,sources:[]})),
-   api('/health').catch(e=>({ok:false,error:e.message}))
- ]).then(([j,h])=>{
+   api('/health').catch(e=>({ok:false,error:e.message})),
+   api('/api/devices/stats').catch(e=>({ok:false,error:e.message}))
+ ]).then(([j,h,deviceStats])=>{
    g.innerHTML='';
    const sources=Array.isArray(j.sources)?j.sources:[];
    const live=s=>/live|active|configured|ok|healthy/i.test(String(s.status||''))&&!/error|missing|disabled|unavailable/i.test(String(s.status||''));
@@ -123,12 +126,12 @@ function drawRoadDeviceIntelligence(p){
        : 'No individual live vehicle-position feed is configured for this viewport. The current traffic overlay cannot reliably count cars; connect an authorized city/fleet/GTFS-Realtime source to enable counts.',
      null,vehicleSources.length?'SOURCED COUNT':'NO VEHICLE FEED'));
    g.append(card('CONSENTED PHONES',
-     deviceSources.length
-       ? (deviceCountKnown?deviceCount.toLocaleString()+' device records reported by the configured source registry. Only consented, registered TrackMeNow devices may be tracked.':'A consented-device source is configured, but it does not expose an aggregate count.')
-       : (h&&h.devices
-         ? 'Device service is configured, but the current public API does not expose a total registered-phone count. Add a privacy-safe aggregate endpoint before displaying a number.'
-         : 'Device service is not reporting as configured. Register and pair phones only with explicit owner consent.'),
-     null,deviceSources.length?'SOURCED COUNT':(h&&h.devices?'COUNT ENDPOINT NEEDED':'DEVICE API STATUS')));
+     deviceStats&&deviceStats.ok
+       ? Number(deviceStats.registered||0).toLocaleString()+' active registered devices · '+Number(deviceStats.online||0).toLocaleString()+' reported online (GPS received within '+Number(deviceStats.onlineWindowSeconds||120)+' seconds) · '+Number(deviceStats.activeLastHour||0).toLocaleString()+' reported in the last hour. Aggregate counts only; no phone numbers or locations shown.'
+       : (deviceSources.length
+         ? (deviceCountKnown?deviceCount.toLocaleString()+' device records reported by the configured source registry.':'A consented-device source is configured, but it does not expose an aggregate count.')
+         : (h&&h.devices?'Device service is configured, but its aggregate count endpoint is unavailable.':'Device service is not reporting as configured. Register and pair phones only with explicit owner consent.')),
+     null,deviceStats&&deviceStats.ok?'LIVE AGGREGATES':(h&&h.devices?'COUNT UNAVAILABLE':'DEVICE API STATUS')));
    g.append(card('NEXT ENHANCEMENT',
      'Add a server-side traffic provider adapter for vehicle observations, an aggregate count endpoint for consented devices, timestamps and source-health badges. Keep API keys server-side and show “unavailable” instead of zero when data is missing.',
      null,'ROADMAP'));
@@ -136,6 +139,40 @@ function drawRoadDeviceIntelligence(p){
    g.innerHTML='';
    g.append(card('LIVE SOURCE STATUS','Could not read the source registry: '+(e.message||'service unavailable'),null,'UNAVAILABLE'));
  });
+ // Click-to-inspect is deliberately a proximity query; it never claims an exact road-level census.
+ if(m&&typeof m.on==='function'){
+   if(window.__tmRoadInspectorMap&&window.__tmRoadInspectorHandler){
+     try{window.__tmRoadInspectorMap.off('click',window.__tmRoadInspectorHandler)}catch(e){}
+   }
+   window.__tmRoadInspectorMap=m;
+   window.__tmRoadInspectorHandler=async function(ev){
+     if(state.tab!=='MAP'||state.sub!=='INTELLIGENCE'||!ev||!ev.lngLat)return;
+     const lat=Number(ev.lngLat.lat),lon=Number(ev.lngLat.lng);
+     const dLat=250/111320,dLon=250/(111320*Math.max(.15,Math.cos(lat*Math.PI/180)));
+     const box=[lon-dLon,lat-dLat,lon+dLon,lat+dLat].map((v,i)=>i%2===0?Math.max(-180,Math.min(180,v)):Math.max(-90,Math.min(90,v)));
+     probe.textContent='ROAD PROBE · checking live car/taxi feeds near '+lat.toFixed(5)+', '+lon.toFixed(5)+'…';
+     try{
+       const mv=await api('/api/movement?bbox='+encodeURIComponent(box.join(','))+'&layers=car,taxi');
+       const features=Array.isArray(mv.features)?mv.features:[];
+       const relevant=(mv.sources||[]).filter(s=>/car|taxi|vehicle|gbfs/i.test(String(s.layer||'')+' '+String(s.source||'')));
+       const dist=(a,b)=>{const rad=Math.PI/180,dl=(a.lat-b.lat)*rad,dn=(a.lon-b.lon)*rad,x=Math.sin(dl/2)**2+Math.cos(a.lat*rad)*Math.cos(b.lat*rad)*Math.sin(dn/2)**2;return 6371000*2*Math.atan2(Math.sqrt(x),Math.sqrt(Math.max(0,1-x)))};
+       const near=features.filter(f=>{
+         const p=f.properties||{},kind=String(p.kind||p.category||p.layer||'').toLowerCase(),xy=f.geometry&&f.geometry.coordinates;
+         if(!xy||!Number.isFinite(Number(xy[0]))||!Number.isFinite(Number(xy[1]))||!/car|taxi|vehicle/.test(kind))return false;
+         return dist({lat,lon},{lat:Number(xy[1]),lon:Number(xy[0])})<=250;
+       });
+       const configured=relevant.some(s=>!/feed-required|error|unavailable|no-current-vehicles/i.test(String(s.status||'')));
+       if(!configured){
+         probe.textContent='ROAD PROBE · no live car/taxi position feed is configured for this area. Connect an authorized vehicle/GBFS feed; traffic-colour tiles do not provide car counts.';
+       }else if(!near.length){
+         probe.textContent='ROAD PROBE · 0 car/taxi records were returned within 250 m of this point. This means no vehicles were observed in the configured feed—not proof that the road is empty.';
+       }else{
+         probe.textContent='ROAD PROBE · '+near.length.toLocaleString()+' sourced car/taxi records within 250 m of '+lat.toFixed(5)+', '+lon.toFixed(5)+' · feed '+relevant.map(s=>s.source||s.layer).filter(Boolean).join(', ')+' · '+(mv.generatedAt||'timestamp unavailable')+'. Not a complete road census.';
+       }
+     }catch(e){probe.textContent='ROAD PROBE · feed lookup failed: '+(e.message||'service unavailable')}
+   };
+   m.on('click',window.__tmRoadInspectorHandler);
+ }
 }
 function drawMap(p){
  if(state.sub==='SEARCH')return drawSearch(p);
