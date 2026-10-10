@@ -41,13 +41,22 @@
     document.body.appendChild(open);
   }
   function button(label,fn){var b=document.createElement('button');b.type='button';b.className='tm-gl-btn';b.textContent=label;b.onclick=fn;return b;}
-  function loadMaps(){
-    if(window.google&&window.google.maps&&window.google.maps.Map)return Promise.resolve();
-    if(!key())return Promise.reject(new Error('Google Maps JavaScript API key missing. Showing Google satellite-map fallback; configure a restricted key to enable live overlays and Street View.'));
+  async function resolveKey(){
+    var k=key(); if(k)return k;
+    try{
+      var r=await fetch(API+'/api/google/maps-config',{cache:'no-store'}),j=await r.json();
+      if(j&&j.configured&&j.key){window.TM_GOOGLE_MAPS_API_KEY=String(j.key);window.TM_GOOGLE_MAPS_3D_API_KEY=String(j.key);return String(j.key);}
+    }catch(e){}
+    return '';
+  }
+  async function loadMaps(){
+    if(window.google&&window.google.maps&&window.google.maps.Map)return;
     if(window.__tmGoogleMapsApiPromise)return window.__tmGoogleMapsApiPromise;
+    var k=await resolveKey();
+    if(!k)throw new Error('Google Maps JavaScript API key is unavailable from the published build and secure Worker configuration.');
     apiPromise=new Promise(function(resolve,reject){
       var s=document.createElement('script');s.async=true;s.defer=true;
-      s.src='https://maps.googleapis.com/maps/api/js?key='+encodeURIComponent(key())+'&v=beta&loading=async&libraries=maps3d,marker';
+      s.src='https://maps.googleapis.com/maps/api/js?key='+encodeURIComponent(k)+'&v=weekly&loading=async&libraries=marker,streetView';
       s.onload=resolve;s.onerror=function(){reject(new Error('Google Maps failed to load. Check API enablement, billing and HTTP referrer restrictions.'));};
       document.head.appendChild(s);
     });
