@@ -1,6 +1,6 @@
-/* TrackMeNow — Google Photorealistic 3D Earth map mode.
- * This is an in-page map mode selected from MAP subtabs, not a separate page.
- * It never opens automatically and never adds a city-centre marker.
+/* TrackMeNow — Google Maps Platform 3D Maps.
+ * Uses Google's own photorealistic 3D map imagery; imagery capture dates and coverage are controlled by Google.
+ * Provides in-map camera and imagery-mode controls plus a link to Google's official 3D Maps demo.
  */
 (function () {
   'use strict';
@@ -60,10 +60,14 @@
       '#tm-google-earth-status{position:absolute;left:14px;bottom:16px;max-width:min(560px,calc(100vw - 28px));padding:9px 12px;border:1px solid rgba(150,190,220,.2);border-radius:8px;background:rgba(4,10,16,.86);font:12px/1.5 system-ui,sans-serif;z-index:2}' +
       '#tm-google-earth-status[hidden]{display:none}' +
       '#tm-google-earth-status a{color:#62d7ff}' +
-      '#tm-earth-camera-controls{position:absolute;z-index:5;right:12px;top:12px;display:flex;flex-direction:column;gap:5px;padding:6px;border:1px solid rgba(170,210,235,.22);border-radius:10px;background:rgba(4,10,16,.88);box-shadow:0 6px 24px #0006}' +
-      '.tm-earth-cam-btn{width:38px;height:36px;border:1px solid #ffffff25;border-radius:7px;background:#0b1823;color:#eaf7ff;font:700 16px system-ui;cursor:pointer;touch-action:manipulation}' +
-      '.tm-earth-cam-btn:focus-visible{outline:2px solid #62d7ff;outline-offset:2px}' +
-      '@media(max-width:600px){#tm-google-earth-overlay{inset:52px 0 var(--tm-dock-h,76px) 0}#tm-google-earth-status{left:8px;bottom:8px;max-width:calc(100vw - 76px)}#tm-earth-camera-controls{right:7px;top:7px;gap:4px;padding:4px}.tm-earth-cam-btn{width:34px;height:33px}}';
+      '#tm-earth-controls{position:absolute;z-index:5;right:12px;top:12px;display:flex;flex-direction:column;align-items:stretch;gap:6px;padding:7px;border:1px solid rgba(170,210,235,.22);border-radius:10px;background:rgba(4,10,16,.9);box-shadow:0 6px 24px #0006}' +
+      '#tm-earth-mode-controls{display:flex;gap:4px;flex-wrap:wrap;max-width:220px}' +
+      '.tm-earth-mode-btn,.tm-earth-demo-btn{min-height:30px;border:1px solid #ffffff2c;border-radius:6px;padding:0 8px;background:#0b1823;color:#eaf7ff;font:800 9px system-ui;letter-spacing:.35px;cursor:pointer;touch-action:manipulation}' +
+      '.tm-earth-mode-btn.on{border-color:#62d7ff;background:#12324a;color:#fff}' +
+      '.tm-earth-demo-btn{display:block;text-align:center;text-decoration:none;background:#1a73e8;border-color:#4c95f5;color:#fff;padding:8px 10px}' +
+      '.tm-earth-cam-btn{width:38px;height:34px;border:1px solid #ffffff25;border-radius:7px;background:#0b1823;color:#eaf7ff;font:700 16px system-ui;cursor:pointer;touch-action:manipulation}' +
+      '.tm-earth-cam-btn:focus-visible,.tm-earth-mode-btn:focus-visible,.tm-earth-demo-btn:focus-visible{outline:2px solid #62d7ff;outline-offset:2px}' +
+      '@media(max-width:600px){#tm-google-earth-overlay{inset:52px 0 var(--tm-dock-h,76px) 0}#tm-google-earth-status{left:8px;bottom:8px;max-width:calc(100vw - 76px)}#tm-earth-controls{right:7px;top:7px;gap:4px;padding:4px}#tm-earth-mode-controls{max-width:190px}.tm-earth-cam-btn{width:34px;height:32px}.tm-earth-mode-btn{padding:0 6px;font-size:8px}}';
     document.head.appendChild(style);
 
     overlay = document.createElement('section');
@@ -77,11 +81,24 @@
     status.hidden = true;
     overlay.appendChild(stage);
     overlay.appendChild(status);
+    var controls = document.createElement('div');
+    controls.id = 'tm-earth-controls';
+    controls.setAttribute('aria-label', 'Google Maps Platform 3D map controls');
+    var modeControls = document.createElement('div');
+    modeControls.id = 'tm-earth-mode-controls';
+    modeControls.setAttribute('aria-label', '3D imagery mode');
+    [['HYBRID','HYBRID'],['SATELLITE','SATELLITE']].forEach(function(item){
+      var b=document.createElement('button');b.type='button';b.className='tm-earth-mode-btn';b.textContent=item[0];b.dataset.mode=item[1];
+      b.addEventListener('click',function(){setMapMode(item[1]);});modeControls.appendChild(b);
+    });
+    var demo=document.createElement('a');demo.className='tm-earth-demo-btn';demo.href='https://mapsplatform.google.com/demos/3d-maps/?utm_experiment=13103223';demo.target='_blank';demo.rel='noopener noreferrer';demo.textContent='OPEN GOOGLE 3D MAPS DEMO ↗';
+    controls.appendChild(modeControls);controls.appendChild(demo);
     cameraControls = document.createElement('div');
     cameraControls.id = 'tm-earth-camera-controls';
     cameraControls.setAttribute('aria-label', 'Earth camera controls');
     [['＋','Zoom in',function(){adjustCamera('zoom',-0.65)}],['−','Zoom out',function(){adjustCamera('zoom',0.65)}],['↶','Rotate left',function(){adjustCamera('heading',-25)}],['↷','Rotate right',function(){adjustCamera('heading',25)}],['▲','Tilt up',function(){adjustCamera('tilt',10)}],['▼','Tilt down',function(){adjustCamera('tilt',-10)}],['⌂','Reset camera',resetCamera]].forEach(function(item){var b=document.createElement('button');b.type='button';b.className='tm-earth-cam-btn';b.textContent=item[0];b.title=item[1];b.setAttribute('aria-label',item[1]);b.addEventListener('click',item[2]);cameraControls.appendChild(b);});
-    overlay.appendChild(cameraControls);
+    controls.appendChild(cameraControls);
+    overlay.appendChild(controls);
     document.body.appendChild(overlay);
 
     // Earth is activated only through MAP → GOOGLE EARTH; no floating button or second page.
@@ -120,7 +137,7 @@
       script.dataset.tmGoogle3dApi = '1';
       script.async = true;
       script.src = 'https://maps.googleapis.com/maps/api/js?key=' + encodeURIComponent(key) +
-        '&v=beta&loading=async&libraries=maps3d';
+        '&v=alpha&loading=async&libraries=maps3d';
       script.onload = resolve;
       script.onerror = function () { reject(new Error('Google Maps JavaScript API failed to load. Check key restrictions and API access.')); };
       document.head.appendChild(script);
@@ -158,8 +175,20 @@
       map3d.addEventListener('gmp-click', function(event){var p=event&&(event.position||event.latLng||(event.detail&&event.detail.position));if(!p)return;var lat=typeof p.lat==='function'?p.lat():p.lat;var lng=typeof p.lng==='function'?p.lng():(p.lng!==undefined?p.lng:p.longitude);if(Number.isFinite(Number(lat))&&Number.isFinite(Number(lng))){lastClickedPosition={lat:Number(lat),lng:Number(lng)};if(window.TrackMeNowStreetView&&window.TrackMeNowStreetView.handleEarthClick)window.TrackMeNowStreetView.handleEarthClick(lastClickedPosition);}});
       map3d.__tmPegmanClickBound=true;
     }
-    setStatus('Google 3D Earth active · drag Pegman onto the map for Street View · camera controls at right.', false);
+    modeControlsUpdate(map3d.mode || 'HYBRID');
+    setStatus('Google Maps Platform 3D Maps active. Use SATELLITE/HYBRID for imagery; building freshness depends on Google capture coverage. Drag Pegman for Street View.', false);
   }
+
+  function setMapMode(mode) {
+    if (!map3d) return;
+    try { map3d.mode = mode; } catch (error) { setStatus('Could not switch 3D imagery mode. Check Maps 3D API access.', true); return; }
+    if (modeControlsUpdate) modeControlsUpdate(mode);
+    setStatus(mode + ' imagery selected. Building and imagery capture dates depend on Google coverage; Street View shows the latest panorama available for a location.', false);
+  }
+  var modeControlsUpdate = function(mode) {
+    var nodes = document.querySelectorAll('#tm-earth-mode-controls .tm-earth-mode-btn');
+    Array.prototype.forEach.call(nodes,function(b){b.classList.toggle('on',b.dataset.mode===mode);});
+  };
 
   function adjustCamera(kind, amount) {
     if (!map3d) return;
@@ -197,7 +226,7 @@
       setStatus: function (message) { setStatus(message, false); },
       getDropPosition: function () { return lastClickedPosition || (map3d && map3d.center ? { lat: map3d.center.lat, lng: map3d.center.lng } : null); }
     };
-    // Start with Google-style 3D Earth on the landing page; keep the legacy map underneath as fallback.
+    // Start with Google Maps Platform 3D Maps on the landing page; keep the legacy map underneath as fallback.
     window.setTimeout(function () { openEarth(); }, 900);
   }
 
