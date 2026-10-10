@@ -69,7 +69,7 @@
     active=true;overlay.classList.add('active');var old3d=document.getElementById('tm-google-earth-toggle');if(old3d)old3d.style.display='none';status('Connecting to Google Maps…');
     try{
       await loadMaps();
-      if(!map){map=new google.maps.Map(mapNode,{center:{lat:20,lng:0},zoom:2,mapTypeId:'hybrid',tilt:0,heading:0,streetViewControl:true,fullscreenControl:false,mapTypeControl:false,gestureHandling:'greedy',clickableIcons:false});info=new google.maps.InfoWindow();map.addListener('idle',function(){refreshMovement();});}
+      if(!map){map=new google.maps.Map(mapNode,{center:{lat:0,lng:0},zoom:2,mapTypeId:'hybrid',tilt:0,heading:0,streetViewControl:true,fullscreenControl:false,mapTypeControl:false,gestureHandling:'greedy',clickableIcons:false});info=new google.maps.InfoWindow();map.addListener('idle',function(){refreshMovement();});}
       if(!clusterer){try{var cl=await loadClusterer();clusterer=new cl.MarkerClusterer({map:map,markers:[]});}catch(e){status('Google Maps ready · clustering fallback active');}}
       status('GOOGLE HYBRID · loading live movement and camera observations…');
       await Promise.allSettled([refreshMovement(),refreshCameras()]);
