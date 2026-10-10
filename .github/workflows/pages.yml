@@ -28,8 +28,9 @@ jobs:
       - name: Build static TrackMeNow site
         shell: bash
         env:
-          TM_GOOGLE_MAPS_3D_API_KEY: ${{ secrets.TM_GOOGLE_MAPS_3D_API_KEY || secrets.GOOGLE_MAPS_API_KEY || secrets.TM_GOOGLE_MAPS_API_KEY || secrets.GOOGLE_MAP_API_KEY || vars.TM_GOOGLE_MAPS_3D_API_KEY || vars.GOOGLE_MAPS_API_KEY || vars.TM_GOOGLE_MAPS_API_KEY || vars.GOOGLE_MAP_API_KEY }}
-          TM_GOOGLE_MAPS_API_KEY: ${{ secrets.TM_GOOGLE_MAPS_API_KEY || secrets.GOOGLE_MAPS_API_KEY || secrets.TM_GOOGLE_MAPS_3D_API_KEY || secrets.GOOGLE_MAP_API_KEY || vars.TM_GOOGLE_MAPS_API_KEY || vars.GOOGLE_MAPS_API_KEY || vars.TM_GOOGLE_MAPS_3D_API_KEY || vars.GOOGLE_MAP_API_KEY }}
+          # Accept any one of the existing Google key names and publish the same browser key to both runtime variables.
+          TM_GOOGLE_MAPS_3D_API_KEY: ${{ secrets.TM_GOOGLE_MAPS_3D_API_KEY || secrets.TM_GOOGLE_MAPS_API_KEY || secrets.GOOGLE_MAPS_API_KEY || secrets.GOOGLE_MAP_API_KEY || vars.TM_GOOGLE_MAPS_3D_API_KEY || vars.TM_GOOGLE_MAPS_API_KEY || vars.GOOGLE_MAPS_API_KEY || vars.GOOGLE_MAP_API_KEY }}
+          TM_GOOGLE_MAPS_API_KEY: ${{ secrets.TM_GOOGLE_MAPS_3D_API_KEY || secrets.TM_GOOGLE_MAPS_API_KEY || secrets.GOOGLE_MAPS_API_KEY || secrets.GOOGLE_MAP_API_KEY || vars.TM_GOOGLE_MAPS_3D_API_KEY || vars.TM_GOOGLE_MAPS_API_KEY || vars.GOOGLE_MAPS_API_KEY || vars.GOOGLE_MAP_API_KEY }}
         run: |
           set -euo pipefail
           rm -rf _site
@@ -51,18 +52,17 @@ jobs:
           from pathlib import Path
           target = Path("_site/index.html")
           html = target.read_text(encoding="utf-8")
-          keys = {
-              "TM_GOOGLE_MAPS_3D_API_KEY": os.environ.get("TM_GOOGLE_MAPS_3D_API_KEY", ""),
-              "TM_GOOGLE_MAPS_API_KEY": os.environ.get("TM_GOOGLE_MAPS_API_KEY", ""),
-          }
-          # Never publish a broken build with empty Google Maps keys. Do not print key values.
-          missing = [name for name, secret in keys.items() if not secret.strip()]
-          if missing:
+          primary = (os.environ.get("TM_GOOGLE_MAPS_API_KEY", "") or os.environ.get("TM_GOOGLE_MAPS_3D_API_KEY", "")).strip()
+          if not primary:
               raise SystemExit(
-                  "Google Maps key injection failed: missing " + ", ".join(missing) +
-                  ". Add GOOGLE_MAPS_API_KEY (or TM_GOOGLE_MAPS_API_KEY / TM_GOOGLE_MAPS_3D_API_KEY) "
-                  "as a GitHub Actions repository secret or a secret/variable in the github-pages environment."
+                  "Google Maps key injection failed: no key found. Add GOOGLE_MAPS_API_KEY, TM_GOOGLE_MAPS_API_KEY, "
+                  "or TM_GOOGLE_MAPS_3D_API_KEY as a GitHub Actions repository secret or github-pages environment variable."
               )
+          # Use one valid browser-restricted key for both consumers. Never print the key.
+          keys = {
+              "TM_GOOGLE_MAPS_3D_API_KEY": primary,
+              "TM_GOOGLE_MAPS_API_KEY": primary,
+          }
           for name, secret in keys.items():
               marker = "window." + name + "='';"
               if marker not in html:
