@@ -40,7 +40,7 @@
       '#tm-streetview-status[hidden]{display:none}' +
       '#tm-streetview-status a{color:#62d7ff}' +
       'body.tm-pegman-dragging #map,body.tm-pegman-dragging #tm-google-earth-stage{outline:2px dashed #62d7ff;outline-offset:-5px}' +
-      '##tm-streetview-head{left:8px;top:8px}#tm-streetview-overlay{inset:0}}';
+      '@media(max-width:600px){#tm-streetview-toggle{right:52px;top:68px}#tm-streetview-head{left:8px;top:8px}#tm-streetview-overlay{inset:0}}';
     document.head.appendChild(style);
 
     overlay = document.createElement('section');
