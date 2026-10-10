@@ -5,7 +5,8 @@
 (function () {
   'use strict';
   var API = window.TM_API_BASE || 'https://wispy-bush-9aee.recreationeeraj.workers.dev';
-  var key = function () { return String(window.TM_GOOGLE_MAPS_API_KEY || '').trim(); };
+  var key = function () { return String(window.TM_GOOGLE_MAPS_API_KEY || window.TM_GOOGLE_MAPS_3D_API_KEY || '').trim(); };
+  var fallbackFrame = null;
   var overlay, mapNode, map, statusNode, info, clusterer, apiPromise, timer;
   var active = false, night = false, gpsWatch = null;
   var movementMarkers = new Map(), cameraMarkers = new Map(), gpsMarker = null;
@@ -42,7 +43,7 @@
   function button(label,fn){var b=document.createElement('button');b.type='button';b.className='tm-gl-btn';b.textContent=label;b.onclick=fn;return b;}
   function loadMaps(){
     if(window.google&&window.google.maps&&window.google.maps.Map)return Promise.resolve();
-    if(!key())return Promise.reject(new Error('Google Maps JavaScript API key missing. Configure TM_GOOGLE_MAPS_API_KEY and enable Maps JavaScript API.'));
+    if(!key())return Promise.reject(new Error('Google Maps JavaScript API key missing. Showing Google satellite-map fallback; configure a restricted key to enable live overlays and Street View.'));
     if(window.__tmGoogleMapsApiPromise)return window.__tmGoogleMapsApiPromise;
     apiPromise=new Promise(function(resolve,reject){
       var s=document.createElement('script');s.async=true;s.defer=true;
@@ -74,10 +75,20 @@
       await Promise.allSettled([refreshMovement(),refreshCameras()]);
       if(timer)clearInterval(timer);timer=setInterval(function(){if(active){refreshMovement();refreshCameras();}},30000);
       status('GOOGLE HYBRID · movement refresh 30s · camera catalogue · click a marker for details');
-    }catch(e){status(e.message||'Google Maps unavailable');}
+    }catch(e){
+      status(e.message||'Google Maps unavailable');
+      // Keep the button useful even before a JavaScript API key is configured.
+      // Google Maps URLs support an embedded map without enabling the JS API; advanced live layers remain unavailable.
+      if(!key()){
+        if(!fallbackFrame){fallbackFrame=document.createElement('iframe');fallbackFrame.title='Google satellite map fallback';fallbackFrame.loading='lazy';fallbackFrame.referrerPolicy='no-referrer-when-downgrade';fallbackFrame.allowFullscreen=true;fallbackFrame.style.cssText='position:absolute;inset:0 0 76px 0;width:100%;height:calc(100% - 76px);border:0;background:#03070b';}
+        fallbackFrame.src='https://maps.google.com/maps?q=Earth&z=2&t=k&output=embed';
+        if(!fallbackFrame.parentNode)overlay.appendChild(fallbackFrame);
+        status('SATELLITE FALLBACK · Google Maps JavaScript API key is not configured. Live movement overlays and Street View require a restricted API key.');
+      }
+    }
   }
   function closeMap(){active=false;if(overlay)overlay.classList.remove('active');var old3d=document.getElementById('tm-google-earth-toggle');if(old3d)old3d.style.display='';if(timer)clearInterval(timer);timer=null;if(gpsWatch!==null&&navigator.geolocation){navigator.geolocation.clearWatch(gpsWatch);gpsWatch=null;}if(gpsMarker)gpsMarker.setMap(null);}
-  function setMapType(t){if(map)map.setMapTypeId(t);if(t==='hybrid'||t==='satellite')night=false;}
+  function setMapType(t){if(map)map.setMapTypeId(t);else if(fallbackFrame){var mode=(t==='satellite'||t==='hybrid')?'k':(t==='terrain'?'p':'m');fallbackFrame.src='https://maps.google.com/maps?q=Earth&z=2&t='+mode+'&output=embed';}if(t==='hybrid'||t==='satellite')night=false;}
   function toggleStreetView(){
     if(!map||!window.google||!google.maps){status('Google Maps is not ready yet');return;}
     var panorama=map.getStreetView();
