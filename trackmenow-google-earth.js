@@ -155,7 +155,7 @@
       map3d.tilt = camera.tilt;
     }
     if (!map3d.__tmPegmanClickBound) {
-      map3d.addEventListener('gmp-click', function(event){var p=event&&(event.position||event.latLng||(event.detail&&event.detail.position));if(!p)return;var lat=typeof p.lat==='function'?p.lat():p.lat;var lng=typeof p.lng==='function'?p.lng():(p.lng!==undefined?p.lng:p.longitude);if(Number.isFinite(Number(lat))&&Number.isFinite(Number(lng)))lastClickedPosition={lat:Number(lat),lng:Number(lng)};});
+      map3d.addEventListener('gmp-click', function(event){var p=event&&(event.position||event.latLng||(event.detail&&event.detail.position));if(!p)return;var lat=typeof p.lat==='function'?p.lat():p.lat;var lng=typeof p.lng==='function'?p.lng():(p.lng!==undefined?p.lng:p.longitude);if(Number.isFinite(Number(lat))&&Number.isFinite(Number(lng))){lastClickedPosition={lat:Number(lat),lng:Number(lng)};if(window.TrackMeNowStreetView&&window.TrackMeNowStreetView.handleEarthClick)window.TrackMeNowStreetView.handleEarthClick(lastClickedPosition);}});
       map3d.__tmPegmanClickBound=true;
     }
     setStatus('Google 3D Earth active · drag Pegman onto the map for Street View · camera controls at right.', false);
