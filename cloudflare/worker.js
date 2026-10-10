@@ -157,6 +157,26 @@ async function cellLookup(req, env, url) {
 /* ───────── device API ───────── */
 const devOut = (d) => ({ id: d.id, phone: d.phone, label: d.label });
 async function devices(req, env, url, parts) {  const method = req.method, sub = parts[2] || '', id = parts[2] && parts[3] ? parts[2] : null, act = parts[3] || '';  const byPhone = (phone, activeOnly = true) => { const [a, b] = phoneForms(phone); return env.DB.prepare('SELECT * FROM devices WHERE phone IN (?, ?)' + (activeOnly ? ' AND revoked_at IS NULL' : '') + ' LIMIT 1').bind(a, b).first(); };
+  // Privacy-safe aggregate only: never return phone numbers, IDs, coordinates or per-device rows.
+  if (method === 'GET' && sub === 'stats') {
+    const onlineSince = new Date(Date.now() - 120000).toISOString();
+    const hourSince = new Date(Date.now() - 3600000).toISOString();
+    const [registered, online, activeHour] = await Promise.all([
+      env.DB.prepare('SELECT COUNT(*) AS count FROM devices WHERE revoked_at IS NULL').first(),
+      env.DB.prepare('SELECT COUNT(DISTINCT d.id) AS count FROM devices d JOIN telemetry t ON t.device_id = d.id WHERE d.revoked_at IS NULL AND t.recorded_at >= ?').bind(onlineSince).first(),
+      env.DB.prepare('SELECT COUNT(DISTINCT d.id) AS count FROM devices d JOIN telemetry t ON t.device_id = d.id WHERE d.revoked_at IS NULL AND t.recorded_at >= ?').bind(hourSince).first()
+    ]);
+    return json(req, env, {
+      ok: true,
+      source: 'TrackMeNow D1 device registry',
+      registered: Number(registered && registered.count || 0),
+      online: Number(online && online.count || 0),
+      activeLastHour: Number(activeHour && activeHour.count || 0),
+      onlineWindowSeconds: 120,
+      asOf: nowIso(),
+      privacy: 'Aggregate counts only; no phone numbers, device identifiers or coordinates are returned.'
+    });
+  }
   if (method === 'POST' && sub === 'register') {
     if (await limited(env, req, 'register', 10, 3600)) return json(req, env, { error: 'Too many registrations. Try later.' }, 429);
     const b = await readBody(req), phone = normalizePhone(b.phone), label = String(b.label || '').trim().slice(0, 80);
