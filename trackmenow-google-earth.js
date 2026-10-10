@@ -23,7 +23,7 @@
 
   function currentCamera() {
     var m = getLegacyMap();
-    if (!m) return { lat: 20, lng: 15, zoom: 1.5, heading: 0, tilt: 45 };
+    if (!m) return { lat: 0, lng: 0, zoom: 1.5, heading: 0, tilt: 45 };
     var c = m.getCenter();
     var z = Number(m.getZoom()) || 1.5;
     return {
