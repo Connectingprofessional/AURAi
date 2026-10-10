@@ -28,7 +28,7 @@
     var style = document.createElement('style');
     style.id = 'tm-streetview-css';
     style.textContent =
-      '#tm-streetview-toggle{position:fixed;z-index:10021;right:14px;top:98px;width:44px;height:48px;padding:0;border:1px solid rgba(255,255,255,.28);border-radius:10px;background:rgba(6,12,18,.96);color:#eaf4fa;cursor:grab;font:700 23px system-ui;display:flex;align-items:center;justify-content:center;box-shadow:0 4px 20px rgba(0,0,0,.35);touch-action:none;user-select:none}#tm-streetview-toggle:active{cursor:grabbing}#tm-streetview-toggle::after{content:"DRAG";position:absolute;top:100%;margin-top:3px;font:700 8px system-ui;letter-spacing:1px;color:#d8e9f3}' +
+      '#tm-streetview-toggle{position:fixed;z-index:10021;right:64px;top:78px;width:44px;height:48px;padding:0;border:1px solid rgba(255,255,255,.28);border-radius:10px;background:rgba(6,12,18,.96);color:#eaf4fa;cursor:grab;font:700 23px system-ui;display:flex;align-items:center;justify-content:center;box-shadow:0 4px 20px rgba(0,0,0,.35);touch-action:none;user-select:none}#tm-streetview-toggle:active{cursor:grabbing}#tm-streetview-toggle::after{content:"DRAG";position:absolute;top:100%;margin-top:3px;font:700 8px system-ui;letter-spacing:1px;color:#d8e9f3}' +
       '#tm-streetview-toggle.on{border-color:#62d7ff;color:#62d7ff}' +
       '#tm-streetview-overlay{position:fixed;inset:0 0 var(--tm-dock-h,76px) 0;z-index:10010;background:#05080c;display:none}' +
       '#tm-streetview-overlay.open{display:block}' +
@@ -40,7 +40,7 @@
       '#tm-streetview-status[hidden]{display:none}' +
       '#tm-streetview-status a{color:#62d7ff}' +
       'body.tm-pegman-dragging #map,body.tm-pegman-dragging #tm-google-earth-stage{outline:2px dashed #62d7ff;outline-offset:-5px}' +
-      '@media(max-width:600px){#tm-streetview-toggle{right:8px;top:92px}#tm-streetview-head{left:8px;top:8px}#tm-streetview-overlay{inset:0}}';
+      '##tm-streetview-head{left:8px;top:8px}#tm-streetview-overlay{inset:0}}';
     document.head.appendChild(style);
 
     overlay = document.createElement('section');
@@ -101,10 +101,13 @@
     var targets=[document.getElementById('map'),document.getElementById('tm-google-earth-stage')];
     targets.forEach(function(target){if(!target)return;
       target.addEventListener('dragover',function(event){event.preventDefault();if(event.dataTransfer)event.dataTransfer.dropEffect='copy';});
-      target.addEventListener('drop',function(event){event.preventDefault();active=false;if(toggle)toggle.classList.remove('on');var pos=null;
-        if(target.id==='tm-google-earth-stage'&&window.TrackMeNowGoogleEarth&&window.TrackMeNowGoogleEarth.getDropPosition)pos=window.TrackMeNowGoogleEarth.getDropPosition();
-        if(!pos&&map&&typeof map.getCenter==='function'){var c=map.getCenter();pos={lat:c.lat,lng:c.lng};}
-        if(pos)showAt(pos.lat,pos.lng);else showStatus('Pegman dropped. Click a map location to select a Street View panorama.');
+      target.addEventListener('drop',function(event){event.preventDefault();
+        if(target.id==='map'&&map&&typeof map.unproject==='function'){
+          var rect=target.getBoundingClientRect();var p=map.unproject([event.clientX-rect.left,event.clientY-rect.top]);
+          active=false;if(toggle)toggle.classList.remove('on');showAt(p.lat,p.lng);return;
+        }
+        active=true;if(toggle)toggle.classList.add('on');
+        showStatus('Pegman is ready. Click the exact point on the 3D Earth to open the nearest Street View panorama.');
       });
     });
   }
@@ -278,6 +281,7 @@
   window.TrackMeNowStreetView = {
     attach: function (m) { map = m; install(); },
     show: showAt,
+    handleEarthClick: function(pos){if(active&&pos&&Number.isFinite(Number(pos.lat))&&Number.isFinite(Number(pos.lng))){active=false;if(toggle)toggle.classList.remove('on');showAt(Number(pos.lat),Number(pos.lng));}},
     hide: hideView
   };
 })();
