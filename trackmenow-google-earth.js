@@ -10,7 +10,7 @@
   };
   var overlay = null;
   var stage = null;
-  var button = null;
+  var button = null; // Reserved for compatibility; navigation is handled by MAP subtabs.
   var status = null;
   var map3d = null;
   var apiPromise = null;
@@ -129,7 +129,7 @@
       map3d.heading = camera.heading;
       map3d.tilt = camera.tilt;
     }
-    setStatus('Google 3D Earth is active. Coverage and detail vary by location; choose “TRACKMENOW MAP” to return to the existing map.', false);
+    setStatus('Google 3D Earth is active. Use the MAP subtabs to switch views; coverage and detail vary by location.', false);
   }
 
   async function openEarth() {
@@ -141,7 +141,7 @@
       await createOrUpdateMap();
     } catch (err) {
       setStatus((err && err.message ? err.message : 'Google 3D Earth could not be loaded.') +
-        ' The original TrackMeNow map is still available using the button above. Check that Maps JavaScript API and Maps 3D access are enabled for this key.', true);
+        ' The existing TrackMeNow map remains underneath. Select another MAP subtab to return. Check Maps JavaScript API and Maps 3D access for this key.', true);
     }
   }
 
