@@ -780,6 +780,15 @@ export default {
         return json(req, env, { ok: true, database: 'connected', tables: { devices: t.has('devices'), telemetry: t.has('telemetry'), rate_limits: t.has('rate_limits') }, pairingExpiryColumn: migrated });
       }
       if (!['GET', 'POST'].includes(req.method)) return json(req, env, { ok: false, error: 'Method not allowed' }, 405);
+      if (url.pathname === '/api/google/maps-config' && req.method === 'GET') {
+        const key = String(env.GOOGLE_MAPS_API_KEY || '').trim();
+        return json(req, env, {
+          ok: true,
+          configured: !!key,
+          key: key || null,
+          usage: 'Browser key only. Restrict this key by HTTP referrer to the TrackMeNow domain and enable Maps JavaScript API + Street View.'
+        });
+      }
       if (url.pathname === '/api/visitor' && req.method === 'POST') {
         try { const b=await readBody(req); await adminLog(env,req,b.event||'page-visit',b.tab||'',b.sub||'',b.detail||b.screen||''); return json(req,env,{ok:true}); } catch(e) { return json(req,env,{ok:false,error:'audit logging failed'},500); }
       }
