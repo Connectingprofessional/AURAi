@@ -72,7 +72,7 @@
     toggle = document.createElement('button');
     toggle.type = 'button';
     toggle.id = 'tm-streetview-toggle';
-    toggle.textContent = '👤';
+    toggle.textContent = '🚶';
     toggle.title = 'Drag Pegman onto the map for Street View, or click then select a location';
     toggle.setAttribute('aria-label', 'Drag Pegman onto the map for Street View');
     toggle.draggable = true;
