@@ -1,6 +1,6 @@
-/* TrackMeNow — opt-in Google Photorealistic 3D Earth view.
- * This is an isolated overlay: the existing MapLibre map keeps running underneath as fallback.
- * Requires a Google Maps JavaScript API key with Maps 3D support. Demo keys are for prototyping.
+/* TrackMeNow — Google Photorealistic 3D Earth map mode.
+ * This is an in-page map mode selected from MAP subtabs, not a separate page.
+ * It never opens automatically and never adds a city-centre marker.
  */
 (function () {
   'use strict';
@@ -52,15 +52,13 @@
     var style = document.createElement('style');
     style.id = 'tm-google-earth-css';
     style.textContent =
-      '#tm-google-earth-toggle{position:fixed;z-index:10020;right:14px;top:52px;min-height:38px;padding:0 13px;border:1px solid rgba(98,215,255,.55);border-radius:8px;background:rgba(5,12,20,.96);color:#dff8ff;font:800 10px/1 system-ui,sans-serif;letter-spacing:1px;cursor:pointer;box-shadow:0 4px 20px rgba(0,0,0,.35)}' +
-      '#tm-google-earth-toggle:hover{border-color:#62d7ff;color:#62d7ff}' +
-      '#tm-google-earth-overlay{position:fixed;inset:0 0 var(--tm-dock-h,76px) 0;z-index:10000;background:#03070b;display:none;overflow:hidden}' +
+      '#tm-google-earth-overlay{position:fixed;inset:58px 0 var(--tm-dock-h,76px) 0;z-index:3;background:#03070b;display:none;overflow:hidden}' +
       '#tm-google-earth-stage{position:absolute;inset:0;width:100%;height:100%;background:#03070b}' +
       '#tm-google-earth-stage gmp-map-3d{display:block;width:100%;height:100%;min-height:100%;outline:0}' +
       '#tm-google-earth-status{position:absolute;left:14px;bottom:16px;max-width:min(560px,calc(100vw - 28px));padding:9px 12px;border:1px solid rgba(150,190,220,.2);border-radius:8px;background:rgba(4,10,16,.86);font:12px/1.5 system-ui,sans-serif;z-index:2}' +
       '#tm-google-earth-status[hidden]{display:none}' +
       '#tm-google-earth-status a{color:#62d7ff}' +
-      '@media(max-width:600px){#tm-google-earth-toggle{right:8px;top:48px;padding:0 9px;font-size:9px}#tm-google-earth-status{left:8px;bottom:8px}}';
+      '@media(max-width:600px){#tm-google-earth-overlay{inset:52px 0 var(--tm-dock-h,76px) 0}#tm-google-earth-status{left:8px;bottom:8px}}';
     document.head.appendChild(style);
 
     overlay = document.createElement('section');
@@ -76,17 +74,7 @@
     overlay.appendChild(status);
     document.body.appendChild(overlay);
 
-    button = document.createElement('button');
-    button.type = 'button';
-    button.id = 'tm-google-earth-toggle';
-    button.textContent = '3D EARTH';
-    button.setAttribute('aria-label', 'Open Google 3D Earth view');
-    button.title = 'Open Google Photorealistic 3D Earth; current TrackMeNow map remains available as fallback';
-    button.addEventListener('click', function () {
-      if (active) closeEarth();
-      else openEarth();
-    });
-    document.body.appendChild(button);
+    // Earth is activated only through MAP → GOOGLE EARTH; no floating button or second page.
   }
 
   function loadGoogleApi() {
@@ -148,9 +136,6 @@
     ensureUI();
     active = true;
     overlay.style.display = 'block';
-    button.textContent = 'TRACKMENOW MAP';
-    button.setAttribute('aria-label', 'Return to the existing TrackMeNow map');
-    button.title = 'Return to the original TrackMeNow MapLibre view';
     setStatus('Loading Google 3D Earth…', false);
     try {
       await createOrUpdateMap();
@@ -163,11 +148,6 @@
   function closeEarth() {
     active = false;
     if (overlay) overlay.style.display = 'none';
-    if (button) {
-      button.textContent = '3D EARTH';
-      button.setAttribute('aria-label', 'Open Google 3D Earth view');
-      button.title = 'Open Google Photorealistic 3D Earth; current TrackMeNow map remains available as fallback';
-    }
   }
 
   function init() {
@@ -178,8 +158,7 @@
       isActive: function () { return active; },
       getMap: function () { return map3d; }
     };
-    // Default to Google Earth when a configured browser key is available; otherwise preserve the native map.
-    if (KEY()) openEarth();
+    // Intentionally do not auto-open or force a city-centre view on page load. The user selects the Earth subtab.
   }
 
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init);
