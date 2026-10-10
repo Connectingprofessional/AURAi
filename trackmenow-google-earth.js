@@ -194,6 +194,7 @@
       close: closeEarth,
       isActive: function () { return active; },
       getMap: function () { return map3d; },
+      setStatus: function (message) { setStatus(message, false); },
       getDropPosition: function () { return lastClickedPosition || (map3d && map3d.center ? { lat: map3d.center.lat, lng: map3d.center.lng } : null); }
     };
     // Start with Google-style 3D Earth on the landing page; keep the legacy map underneath as fallback.
