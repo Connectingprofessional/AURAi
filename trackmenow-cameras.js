@@ -253,55 +253,63 @@
     });
   }
 
+  function bboxString() {
+    if (!map || !map.getBounds) return '';
+    var b = map.getBounds();
+    if (!b) return '';
+    return [b.getWest(), b.getSouth(), b.getEast(), b.getNorth()].join(',');
+  }
+  function apiBase() { return window.TM_API_BASE || 'https://wispy-bush-9aee.recreationeeraj.workers.dev'; }
+
+  function loadFromWorker() {
+    var bbox = bboxString();
+    if (!bbox) return Promise.reject(new Error('map bounds unavailable'));
+    return fetch(apiBase() + '/api/cameras?bbox=' + encodeURIComponent(bbox), { cache: 'no-store' })
+      .then(function (r) { if (!r.ok) throw new Error('camera service HTTP ' + r.status); return r.json(); })
+      .then(function (j) {
+        var raw = Array.isArray(j) ? j : (j.features || j.cameras || j.items || []);
+        var list = raw.map(normalise).filter(function (cam) {
+          return isFinite(cam.lat) && isFinite(cam.lon) && Math.abs(cam.lat) <= 90 && Math.abs(cam.lon) <= 180;
+        });
+        addToMap(list);
+        return { count:list.length, source:(j.sources||[]).map(function(x){return x.source;}).filter(Boolean).join(', ')||'TrackMeNow camera catalogue', status:(j.sources||[])[0]&&(j.sources||[])[0].status };
+      });
+  }
+
   function load() {
     if (loadPromise) return loadPromise;
-
-    loadPromise = fetch(CONFIG.CATALOGUE_URL, { cache: 'no-store' })
-      .then(function (r) {
-        if (!r.ok) throw new Error('catalogue HTTP ' + r.status);
-        return r.json();
-      })
-      .then(function (j) {
-        var raw = Array.isArray(j)
-          ? j
-          : (j.cameras || j.items || (Array.isArray(j.features) ? j.features : []));
-
-        var list = raw.map(normalise).filter(function (c) {
-          return isFinite(c.lat) &&
-            isFinite(c.lon) &&
-            c.url &&
-            !(CONFIG.HIDE_TOKEN_REFRESH && c.stale);
+    loadPromise = loadFromWorker().catch(function () {
+      return fetch(CONFIG.CATALOGUE_URL, { cache: 'no-store' })
+        .then(function (r) { if (!r.ok) throw new Error('catalogue HTTP ' + r.status); return r.json(); })
+        .then(function (j) {
+          var raw = Array.isArray(j) ? j : (j.cameras || j.items || (Array.isArray(j.features) ? j.features : []));
+          var list = raw.map(normalise).filter(function (cam) {
+            return isFinite(cam.lat) && isFinite(cam.lon) && Math.abs(cam.lat) <= 90 && Math.abs(cam.lon) <= 180 &&
+              !(CONFIG.HIDE_TOKEN_REFRESH && cam.stale);
+          });
+          addToMap(list);
+          return { count:list.length, source:'public camera catalogue', status:'fallback' };
         });
-
-        addToMap(list);
-        return list.length;
-      })
-      .catch(function (e) {
-        console.warn('[cameras]', e);
-        loadPromise = null;
-        return 0;
-      });
-
+    }).catch(function (e) {
+      console.warn('[cameras]', e); loadPromise = null; return {count:0,source:'camera service',status:'error'};
+    });
     return loadPromise;
+  }
+
+  var moveTimer = null;
+  function queueLoad() {
+    clearTimeout(moveTimer);
+    moveTimer = setTimeout(function () { loadPromise = null; load(); }, 450);
   }
 
   function init(m) {
     map = m || window.map;
-
-    if (!map) {
-      return console.warn('[cameras] no map instance');
-    }
-
+    if (!map) return console.warn('[cameras] no map instance');
     var go = function () { load(); };
-
-    if (map.isStyleLoaded()) go();
-    else map.once('load', go);
-
+    if (map.isStyleLoaded()) go(); else map.once('load', go);
+    map.on('moveend', queueLoad);
     map.on('style.load', function () {
-      if (!map.getSource(CONFIG.SOURCE_ID)) {
-        loadPromise = null;
-        load();
-      }
+      if (!map.getSource(CONFIG.SOURCE_ID)) { loadPromise = null; load(); }
     });
   }
 
