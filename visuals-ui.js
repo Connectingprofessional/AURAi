@@ -107,8 +107,11 @@ function drawRoadDeviceIntelligence(p){
    const vehicleSources=sources.filter(s=>/vehicle|car|taxi|fleet|gtfs.?rt|moving object/i.test(String(s.layer||'')+' '+String(s.source||''))&&live(s));
    const trafficSources=sources.filter(s=>/traffic|flow|congestion|road speed/i.test(String(s.layer||'')+' '+String(s.source||''))&&live(s));
    const deviceSources=sources.filter(s=>/consented device|registered phone|device telemetry/i.test(String(s.layer||'')+' '+String(s.source||''))&&live(s));
-   const vehicleCount=vehicleSources.reduce((n,s)=>n+(Number.isFinite(Number(s.count))?Number(s.count):0),0);
-   const deviceCount=deviceSources.reduce((n,s)=>n+(Number.isFinite(Number(s.count))?Number(s.count):0),0);
+   const hasCount=s=>s.count!==null&&s.count!==undefined&&s.count!==''&&Number.isFinite(Number(s.count));
+   const vehicleCountKnown=vehicleSources.length>0&&vehicleSources.every(hasCount);
+   const deviceCountKnown=deviceSources.length>0&&deviceSources.every(hasCount);
+   const vehicleCount=vehicleCountKnown?vehicleSources.reduce((n,s)=>n+Number(s.count),0):null;
+   const deviceCount=deviceCountKnown?deviceSources.reduce((n,s)=>n+Number(s.count),0):null;
    g.append(card('ROAD TRAFFIC',
      trafficSources.length
        ? trafficSources.map(s=>(s.source||s.layer||'Traffic')+' · '+(s.status||'available')).join(' / ')+' · flow/speed data; not necessarily a count of individual cars.'
@@ -116,12 +119,12 @@ function drawRoadDeviceIntelligence(p){
      null,trafficSources.length?'SOURCE AVAILABLE':'FEED NEEDED'));
    g.append(card('LIVE VEHICLES',
      vehicleSources.length
-       ? vehicleCount.toLocaleString()+' sourced vehicle records in the current viewport. This is a feed-record count, not a guaranteed count of every car on the road.'
+       ? (vehicleCountKnown?vehicleCount.toLocaleString()+' sourced vehicle records in the current viewport. This is a feed-record count, not a guaranteed count of every car on the road.':'A live vehicle source is configured, but it does not expose a reliable count for this viewport.')
        : 'No individual live vehicle-position feed is configured for this viewport. The current traffic overlay cannot reliably count cars; connect an authorized city/fleet/GTFS-Realtime source to enable counts.',
      null,vehicleSources.length?'SOURCED COUNT':'NO VEHICLE FEED'));
    g.append(card('CONSENTED PHONES',
      deviceSources.length
-       ? deviceCount.toLocaleString()+' device records reported by the configured source registry. Only consented, registered TrackMeNow devices may be tracked.'
+       ? (deviceCountKnown?deviceCount.toLocaleString()+' device records reported by the configured source registry. Only consented, registered TrackMeNow devices may be tracked.':'A consented-device source is configured, but it does not expose an aggregate count.')
        : (h&&h.devices
          ? 'Device service is configured, but the current public API does not expose a total registered-phone count. Add a privacy-safe aggregate endpoint before displaying a number.'
          : 'Device service is not reporting as configured. Register and pair phones only with explicit owner consent.'),
