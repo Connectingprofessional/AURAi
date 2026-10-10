@@ -63,7 +63,7 @@ function build(){
  const admin=el('button',{id:'tm-admin',type:'button','aria-label':'Admin'},'⚙');admin.onclick=openAdmin;
  top.append(brand,search,admin);document.body.append(top);
  const shell=el('div',{id:'tm-shell'});
- const main=el('nav',{id:'tm-main-tabs'});Object.keys(T).forEach(k=>{const b=el('button',{class:'tm-tab',type:'button'},k);b.onclick=()=>{state.tab=k;state.sub=T[k][0];state.stack=null;state.panel=false;logUi('tab',k,'');render()};main.append(b)});
+ const main=el('nav',{id:'tm-main-tabs'});Object.keys(T).forEach(k=>{const b=el('button',{class:'tm-tab',type:'button'},k);b.onclick=()=>{if(k!=='MAP'&&window.TrackMeNowGoogleEarth)window.TrackMeNowGoogleEarth.close();state.tab=k;state.sub=T[k][0];state.stack=null;state.panel=false;logUi('tab',k,'');render()};main.append(b)});
  const sub=el('div',{id:'tm-subbar'});
  const zoom=el('div',{class:'tm-zoom-common'});[['−',-1],['+',1]].forEach(([txt,d])=>{const b=el('button',{type:'button'},txt);b.onclick=()=>engine()&&engine().zoomBy(d);zoom.append(b)});
  const panel=el('section',{id:'tm-panel'});const head=el('div',{class:'tm-panel-head'}),title=el('div',{id:'tm-panel-title',class:'tm-panel-title'}),meta=el('div',{class:'tm-panel-meta'},'LIVE / PUBLIC / CONSENT-BASED'),close=el('button',{class:'tm-close',type:'button'},'×');close.onclick=()=>{state.panel=false;render()};head.append(title,meta,close);panel.append(head);
@@ -71,7 +71,7 @@ function build(){
 }
 function render(){
  const main=$('#tm-main-tabs'),sub=$('#tm-subbar'),panel=$('#tm-panel');Array.from(main.children).forEach(b=>b.classList.toggle('active',b.textContent===state.tab));
- sub.innerHTML='';T[state.tab].forEach(s=>{const b=el('button',{class:'tm-sub',type:'button'},s);b.classList.toggle('active',s===state.sub);b.onclick=()=>{state.sub=s;state.stack=null;if(state.tab==='MAP'&&['GOOGLE EARTH','SATELLITE','LIVE','3D','FLAT','RADAR','DAY / NIGHT','WEATHER'].includes(s)){state.panel=false;mapAction(s)}else state.panel=true;logUi('subtab',state.tab,s);render()};sub.append(b)});
+ sub.innerHTML='';T[state.tab].forEach(s=>{const b=el('button',{class:'tm-sub',type:'button'},s);b.classList.toggle('active',s===state.sub);b.onclick=()=>{state.sub=s;state.stack=null;if(state.tab==='MAP'&&['GOOGLE EARTH','SATELLITE','LIVE','3D','FLAT','RADAR','DAY / NIGHT','WEATHER'].includes(s)){state.panel=false;mapAction(s)}else{if(window.TrackMeNowGoogleEarth)window.TrackMeNowGoogleEarth.close();state.panel=true;}logUi('subtab',state.tab,s);render()};sub.append(b)});
  panel.classList.toggle('open',state.panel);setPanelTitle();if(state.panel)draw(panel);
  requestAnimationFrame(()=>document.documentElement.style.setProperty('--tm-dock-h',($('#tm-shell').offsetHeight||74)+'px'));
 }
@@ -586,6 +586,6 @@ async function doSearch(q){
    else alert('No live/public result found.');
  }catch(e){alert(e.message)}
 }
-function start(){const l=el('link',{rel:'stylesheet',href:'./visuals.css?v=trackmenow-live-19'});document.head.append(l);build();window.TrackMeNowCameraAtlas={load:loadCameraAtlas,schedule:scheduleCameraAtlas,bind:bindCameraMap};let tries=0;const bootCameraLayer=()=>{const m=map();if(m){try{bindCameraMap();scheduleCameraAtlas(0)}catch(e){}return}if(++tries<80)setTimeout(bootCameraLayer,250)};bootCameraLayer();setTimeout(()=>{const z=$('#tm-zoom-common');if(z)z.title='Common map zoom'},100)}
+function start(){const l=el('link',{rel:'stylesheet',href:'./visuals.css?v=trackmenow-premium-23'});document.head.append(l);build();window.TrackMeNowCameraAtlas={load:loadCameraAtlas,schedule:scheduleCameraAtlas,bind:bindCameraMap};let tries=0;const bootCameraLayer=()=>{const m=map();if(m){try{bindCameraMap();scheduleCameraAtlas(0)}catch(e){}return}if(++tries<80)setTimeout(bootCameraLayer,250)};bootCameraLayer();setTimeout(()=>{const z=$('#tm-zoom-common');if(z)z.title='Common map zoom'},100)}
 if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',start);else start();
 })();
