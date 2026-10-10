@@ -7,7 +7,7 @@
   var API = window.TM_API_BASE || 'https://wispy-bush-9aee.recreationeeraj.workers.dev';
   var key = function () { return String(window.TM_GOOGLE_MAPS_API_KEY || window.TM_GOOGLE_MAPS_3D_API_KEY || '').trim(); };
   var fallbackFrame = null;
-  var overlay, mapNode, map, statusNode, info, clusterer, apiPromise, timer;
+  var overlay, mapNode, map, statusNode, info, clusterer, apiPromise, timer, trafficLayer;
   var active = false, night = false, gpsWatch = null;
   var movementMarkers = new Map(), cameraMarkers = new Map(), gpsMarker = null;
   var enabled = { movement: true, cameras: true, gps: true };
@@ -33,7 +33,7 @@
     var close = button('TRACKMENOW MAP', function(){ closeMap(); }); close.id = 'tm-google-live-close';
     top.append(statusNode, close);
     var dock = document.createElement('div'); dock.id = 'tm-google-live-dock';
-    [['HYBRID',function(){setMapType('hybrid')}],['SATELLITE',function(){setMapType('satellite')}],['ROADMAP',function(){setMapType('roadmap')}],['TERRAIN',function(){setMapType('terrain')}],['MOVEMENT',function(){toggleLayer('movement')}],['CAMERAS',function(){toggleLayer('cameras')}],['STREET VIEW',function(){toggleStreetView()}],['LIVE GPS',function(){toggleGps()}],['NIGHT STYLE',function(){toggleNight()}],['RADAR',function(){nativeMode('RADAR')}],['WEATHER',function(){nativeMode('WEATHER')}],['FLAT MAP',function(){nativeMode('FLAT')}],['3D GLOBE',function(){nativeMode('3D')}]]
+    [['HYBRID',function(){setMapType('hybrid')}],['TRAFFIC',function(){toggleTraffic()}],['SATELLITE',function(){setMapType('satellite')}],['ROADMAP',function(){setMapType('roadmap')}],['TERRAIN',function(){setMapType('terrain')}],['MOVEMENT',function(){toggleLayer('movement')}],['CAMERAS',function(){toggleLayer('cameras')}],['STREET VIEW',function(){toggleStreetView()}],['LIVE GPS',function(){toggleGps()}],['NIGHT STYLE',function(){toggleNight()}],['RADAR',function(){nativeMode('RADAR')}],['WEATHER',function(){nativeMode('WEATHER')}],['FLAT MAP',function(){nativeMode('FLAT')}],['3D GLOBE',function(){nativeMode('3D')}]]
       .forEach(function(x){var b=button(x[0],x[1]);b.classList.toggle('on',x[0]==='HYBRID'||x[0]==='MOVEMENT'||x[0]==='CAMERAS');dock.appendChild(b);});
     overlay.append(mapNode,top,dock); document.body.appendChild(overlay);
     var open = button('GOOGLE MAP · LIVE',function(){openMap()}); open.id='tm-google-live-open';
@@ -127,6 +127,13 @@
     } catch (err) {
       status('Street View failed: '+(err&&err.message?err.message:'Google Maps API unavailable')+'. Check Maps JavaScript API, billing, referrer restrictions, and Street View coverage.');
     }
+  }
+  function toggleTraffic(){
+    if(!map||!window.google||!google.maps||!google.maps.TrafficLayer){status('Google traffic layer is unavailable until Maps JavaScript API loads.');return;}
+    if(!trafficLayer) trafficLayer=new google.maps.TrafficLayer();
+    var visible=trafficLayer.getMap()!=null;
+    trafficLayer.setMap(visible?null:map);
+    status(visible?'GOOGLE TRAFFIC · overlay OFF':'GOOGLE TRAFFIC · live provider overlay ON · traffic colours are provider data, not vehicle counts');
   }
   function toggleNight(){night=!night;if(map){map.setOptions({styles:night?[{elementType:'geometry',stylers:[{color:'#151b24'}]},{elementType:'labels.text.fill',stylers:[{color:'#8c9bb0'}]},{featureType:'road',elementType:'geometry',stylers:[{color:'#303b4b'}]}]:null});status(night?'NIGHT STYLE · Google imagery remains provider-controlled':'DAY STYLE · Google hybrid imagery');}}
   function syncClusterer(){if(!clusterer)return;var all=[];if(enabled.movement)movementMarkers.forEach(function(m){all.push(m);});if(enabled.cameras)cameraMarkers.forEach(function(m){all.push(m);});clusterer.clearMarkers();clusterer.addMarkers(all);}
