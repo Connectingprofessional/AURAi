@@ -107,7 +107,8 @@
           active=false;if(toggle)toggle.classList.remove('on');showAt(p.lat,p.lng);return;
         }
         active=true;if(toggle)toggle.classList.add('on');
-        showStatus('Pegman is ready. Click the exact point on the 3D Earth to open the nearest Street View panorama.');
+        if(window.TrackMeNowGoogleEarth&&window.TrackMeNowGoogleEarth.setStatus)window.TrackMeNowGoogleEarth.setStatus('Pegman ready · click the exact point on 3D Earth to open Street View.');
+        else showStatus('Pegman is ready. Click the exact point on the map to open Street View.');
       });
     });
   }
