@@ -179,7 +179,7 @@
     gpsWatch=navigator.geolocation.watchPosition(function(p){var pos={lat:p.coords.latitude,lng:p.coords.longitude};
       if(!gpsMarker)gpsMarker=new google.maps.Marker({map:map,position:pos,title:'Your consented live GPS',icon:{path:google.maps.SymbolPath.CIRCLE,scale:7,fillColor:'#39ffb0',fillOpacity:1,strokeColor:'#fff',strokeWeight:2}});
       else gpsMarker.setPosition(pos);map.panTo(pos);map.setZoom(Math.max(map.getZoom(),14));status('LIVE GPS · ±'+Math.round(p.coords.accuracy)+'m · this device only');
-    },function(e){gpsWatch=null;status('GPS unavailable: '+e.message);},{enableHighAccuracy:true,maximumAge:3000,timeout:15000});
+    },function(e){gpsWatch=null; var msg=e && e.code===1 ? 'GPS permission was denied. Allow Location for this site in the browser address-bar settings, then press LIVE GPS again.' : (e && e.message ? e.message : 'Location unavailable'); status('GPS unavailable: '+msg);},{enableHighAccuracy:true,maximumAge:3000,timeout:15000});
   }
   function esc(s){return String(s==null?'':s).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];});}
   function init(){ensureUI();window.TrackMeNowGoogleLiveMap={open:openMap,close:closeMap,isActive:function(){return active;}};if(key())openMap();}
