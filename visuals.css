@@ -156,3 +156,69 @@ html,body{background:#04080e}
  .tm-card{min-height:0}
 }
 @media(prefers-reduced-motion:reduce){.tm-gl-btn{transition:none}.tm-gl-btn:hover{transform:none}}
+
+/* TrackMeNow premium cartography shell — inspired by professional GIS command centers */
+:root{
+  --tm-bg:#03070b;--tm-panel:rgba(5,12,19,.88);--tm-panel-strong:rgba(4,10,16,.96);
+  --tm-line:rgba(173,218,238,.14);--tm-line-strong:rgba(100,217,255,.34);
+  --tm-cyan:#67dcff;--tm-mint:#67e6b5;--tm-text:#effaff;--tm-muted:#8da4b1;
+}
+html,body{background:radial-gradient(circle at 50% 20%,#0a1520 0,#03070b 55%,#020407 100%)}
+#map-bg-scan{opacity:.25;background-size:72px 72px;background-image:linear-gradient(rgba(103,220,255,.04) 1px,transparent 1px),linear-gradient(90deg,rgba(103,220,255,.04) 1px,transparent 1px)}
+#tm-top{
+  top:10px;left:12px;right:12px;min-height:54px;padding:8px 10px;gap:10px;
+  border:1px solid var(--tm-line);border-radius:17px;
+  background:linear-gradient(135deg,rgba(4,11,18,.94),rgba(5,12,20,.72));
+  box-shadow:0 18px 55px rgba(0,0,0,.32),inset 0 1px rgba(255,255,255,.045);
+  backdrop-filter:blur(24px);-webkit-backdrop-filter:blur(24px)
+}
+.tm-brand{display:flex;align-items:center;gap:7px;font-size:12px;letter-spacing:2.5px;font-weight:950;color:var(--tm-text)}
+.tm-brand:before{content:"";width:7px;height:7px;border-radius:50%;background:var(--tm-mint);box-shadow:0 0 16px rgba(103,230,181,.8)}
+.tm-brand span{color:var(--tm-cyan)}
+.tm-search{max-width:760px}
+.tm-search input,.tm-search button{height:36px;border-color:var(--tm-line);background:rgba(2,8,14,.78)}
+.tm-search input:focus{border-color:var(--tm-line-strong);box-shadow:0 0 0 3px rgba(103,220,255,.06),0 0 25px rgba(103,220,255,.05)}
+#tm-admin{width:36px;height:36px;border-radius:10px;border:1px solid var(--tm-line);background:rgba(255,255,255,.035)}
+#tm-shell{
+  background:linear-gradient(180deg,rgba(3,8,14,.68),rgba(3,7,11,.96));
+  border:1px solid var(--tm-line);border-bottom:0;border-radius:19px 19px 0 0;
+  box-shadow:0 -20px 70px rgba(0,0,0,.34);backdrop-filter:blur(22px);-webkit-backdrop-filter:blur(22px)
+}
+#tm-main-tabs{gap:4px;padding:6px 8px}
+.tm-tab{height:31px;border-radius:9px;border:1px solid transparent;letter-spacing:.9px;font-weight:850}
+.tm-tab.active{border-color:rgba(103,220,255,.22);background:linear-gradient(135deg,rgba(103,220,255,.12),rgba(103,230,181,.05));box-shadow:inset 0 1px rgba(255,255,255,.03)}
+#tm-subbar{gap:5px;padding:4px 8px 7px}
+.tm-sub{height:28px;border-radius:8px;border-color:rgba(173,218,238,.1);background:rgba(255,255,255,.02)}
+.tm-sub.active{border-color:rgba(103,220,255,.34);background:rgba(103,220,255,.1);color:#f4fcff}
+#tm-panel{
+  margin:8px 10px 10px;padding:12px;border-radius:15px;border:1px solid var(--tm-line);
+  background:linear-gradient(145deg,rgba(5,12,19,.97),rgba(3,8,13,.94));
+  box-shadow:0 20px 60px rgba(0,0,0,.4),inset 0 1px rgba(255,255,255,.025)
+}
+.tm-panel-head{min-height:34px}
+.tm-panel-meta{color:#6f8997}
+.tm-stack{grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:10px}
+.tm-card{
+  min-height:104px;padding:14px;border-radius:13px;border:1px solid rgba(173,218,238,.11);
+  background:linear-gradient(145deg,rgba(255,255,255,.042),rgba(255,255,255,.012));
+  box-shadow:inset 0 1px rgba(255,255,255,.025);transition:transform .18s ease,border-color .18s ease,box-shadow .18s ease
+}
+.tm-card:hover{transform:translateY(-2px);border-color:rgba(103,220,255,.28);box-shadow:0 12px 28px rgba(0,0,0,.2),inset 0 1px rgba(255,255,255,.04)}
+.tm-card b{font-size:10px;letter-spacing:1.05px;color:#f4fbff}
+.tm-card p{font-size:9px;line-height:1.6;color:var(--tm-muted);margin-top:8px}
+.tm-action{height:30px;border-radius:8px;border:1px solid rgba(103,220,255,.22);background:rgba(103,220,255,.07);font-weight:850;letter-spacing:.65px}
+.tm-action:hover{background:rgba(103,220,255,.14);border-color:rgba(103,220,255,.5)}
+.tm-status{border-radius:8px}
+.tm-global-feed-status.ok{color:#9ceccf}
+.tm-global-feed-status.error{color:#ffad9f}
+.tm-zoom-common{filter:drop-shadow(0 10px 25px rgba(0,0,0,.35))}
+.tm-zoom-common button{width:32px;height:32px;border-radius:9px;border-color:var(--tm-line);background:rgba(4,10,16,.9)}
+@media(max-width:800px){
+ #tm-top{top:7px;left:7px;right:7px;border-radius:13px;padding:7px}
+ .tm-brand{font-size:10px;letter-spacing:1.5px}
+ .tm-search{min-width:0}
+ .tm-search input{font-size:10px}
+ #tm-shell{border-radius:14px 14px 0 0}
+ .tm-stack{grid-template-columns:1fr 1fr}
+}
+@media(max-width:560px){.tm-stack{grid-template-columns:1fr}.tm-card{min-height:84px}}
