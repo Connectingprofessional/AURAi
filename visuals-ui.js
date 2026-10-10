@@ -4,7 +4,7 @@
 const API=(location.hostname==='localhost'||location.hostname==='127.0.0.1')?location.origin:'https://wispy-bush-9aee.recreationeeraj.workers.dev';
 const isLocal=location.hostname==='localhost'||location.hostname==='127.0.0.1';
 const T={
- MAP:['GOOGLE EARTH','SATELLITE','LIVE','3D','FLAT','RADAR','DAY / NIGHT','WEATHER','OVERVIEW','LAYERS','SEARCH'],
+ MAP:['GOOGLE EARTH','SATELLITE','LIVE','3D','FLAT','RADAR','DAY / NIGHT','WEATHER','OVERVIEW','LAYERS','INTELLIGENCE','SEARCH'],
  SPACE:['SOLAR SYSTEM','EARTH','MOON','MARS','SATELLITES','ISS / SPACE STATIONS','EARTH OBSERVATION','SPACE WEATHER'],
  TRANSIT:['ALL TRANSPORT','AIR','SHIP','TAXI','BUS','RAILWAY','METRO','BOAT','PERSONAL JET','CAR','BIKES'],
  WEATHER:['NATURAL CALAMITIES','WEATHER REPORT'],
@@ -87,8 +87,56 @@ function draw(panel){
  if(state.tab==='VISUALS')return drawVisuals(body);
  return drawMore(body);
 }
+function drawRoadDeviceIntelligence(p){
+ const m=map();
+ const b=m&&m.getBounds?m.getBounds():null;
+ const bbox=b?[b.getWest(),b.getSouth(),b.getEast(),b.getNorth()].join(','):'-180,-85,180,85';
+ p.append(status('LIVE INTELLIGENCE · Counts are shown only when a real feed exposes individual vehicles or registered devices. Traffic-flow colours are not a car counter.'));
+ const g=el('div',{class:'tm-stack'});
+ g.append(card('ROAD TRAFFIC','Checking current viewport for traffic and vehicle feeds…',null,'CHECKING'));
+ g.append(card('LIVE VEHICLES','Checking whether a provider supplies individual vehicle positions…',null,'CHECKING'));
+ g.append(card('CONSENTED PHONES','Checking device service status. Phone numbers alone never reveal location.',null,'CHECKING'));
+ p.append(g);
+ Promise.all([
+   api('/api/sources?bbox='+encodeURIComponent(bbox)).catch(e=>({error:e.message,sources:[]})),
+   api('/health').catch(e=>({ok:false,error:e.message}))
+ ]).then(([j,h])=>{
+   g.innerHTML='';
+   const sources=Array.isArray(j.sources)?j.sources:[];
+   const live=s=>/live|active|configured|ok|healthy/i.test(String(s.status||''))&&!/error|missing|disabled|unavailable/i.test(String(s.status||''));
+   const vehicleSources=sources.filter(s=>/vehicle|car|taxi|fleet|gtfs.?rt|moving object/i.test(String(s.layer||'')+' '+String(s.source||''))&&live(s));
+   const trafficSources=sources.filter(s=>/traffic|flow|congestion|road speed/i.test(String(s.layer||'')+' '+String(s.source||''))&&live(s));
+   const deviceSources=sources.filter(s=>/consented device|registered phone|device telemetry/i.test(String(s.layer||'')+' '+String(s.source||''))&&live(s));
+   const vehicleCount=vehicleSources.reduce((n,s)=>n+(Number.isFinite(Number(s.count))?Number(s.count):0),0);
+   const deviceCount=deviceSources.reduce((n,s)=>n+(Number.isFinite(Number(s.count))?Number(s.count):0),0);
+   g.append(card('ROAD TRAFFIC',
+     trafficSources.length
+       ? trafficSources.map(s=>(s.source||s.layer||'Traffic')+' · '+(s.status||'available')).join(' / ')+' · flow/speed data; not necessarily a count of individual cars.'
+       : 'No live traffic-flow feed is currently reported by the source registry. A provider key/feed is needed for real road conditions.',
+     null,trafficSources.length?'SOURCE AVAILABLE':'FEED NEEDED'));
+   g.append(card('LIVE VEHICLES',
+     vehicleSources.length
+       ? vehicleCount.toLocaleString()+' sourced vehicle records in the current viewport. This is a feed-record count, not a guaranteed count of every car on the road.'
+       : 'No individual live vehicle-position feed is configured for this viewport. The current traffic overlay cannot reliably count cars; connect an authorized city/fleet/GTFS-Realtime source to enable counts.',
+     null,vehicleSources.length?'SOURCED COUNT':'NO VEHICLE FEED'));
+   g.append(card('CONSENTED PHONES',
+     deviceSources.length
+       ? deviceCount.toLocaleString()+' device records reported by the configured source registry. Only consented, registered TrackMeNow devices may be tracked.'
+       : (h&&h.devices
+         ? 'Device service is configured, but the current public API does not expose a total registered-phone count. Add a privacy-safe aggregate endpoint before displaying a number.'
+         : 'Device service is not reporting as configured. Register and pair phones only with explicit owner consent.'),
+     null,deviceSources.length?'SOURCED COUNT':(h&&h.devices?'COUNT ENDPOINT NEEDED':'DEVICE API STATUS')));
+   g.append(card('NEXT ENHANCEMENT',
+     'Add a server-side traffic provider adapter for vehicle observations, an aggregate count endpoint for consented devices, timestamps and source-health badges. Keep API keys server-side and show “unavailable” instead of zero when data is missing.',
+     null,'ROADMAP'));
+ }).catch(e=>{
+   g.innerHTML='';
+   g.append(card('LIVE SOURCE STATUS','Could not read the source registry: '+(e.message||'service unavailable'),null,'UNAVAILABLE'));
+ });
+}
 function drawMap(p){
  if(state.sub==='SEARCH')return drawSearch(p);
+ if(state.sub==='INTELLIGENCE')return drawRoadDeviceIntelligence(p);
  if(['GOOGLE EARTH','SATELLITE','LIVE','3D','FLAT','RADAR','DAY / NIGHT','WEATHER'].includes(state.sub))return;
  const items={OVERVIEW:['GOOGLE EARTH','SATELLITE','LIVE','3D','FLAT','RADAR','DAY / NIGHT','WEATHER'],LAYERS:['SATELLITE','LIVE','RADAR','DAY / NIGHT','WEATHER'],SEARCH:[]}[state.sub]||[];
  p.append(status('Map views are mutually selectable; the common zoom control stays in the dock.'));
