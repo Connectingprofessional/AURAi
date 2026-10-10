@@ -31,6 +31,7 @@ jobs:
           OPENCELLID_API_KEY: ${{ secrets.OPENCELLID_API_KEY }}
           ADMIN_USER: ${{ secrets.ADMIN_USER }}
           ADMIN_PASSWORD: ${{ secrets.ADMIN_PASSWORD }}
+          GOOGLE_MAPS_API_KEY: ${{ secrets.GOOGLE_MAPS_API_KEY || secrets.TM_GOOGLE_MAPS_API_KEY || secrets.TM_GOOGLE_MAPS_3D_API_KEY }}
         run: |
           set -euo pipefail
           if [ -n "${AISSTREAM_API_KEY:-}" ]; then printf '%s' "$AISSTREAM_API_KEY" | npx wrangler@latest secret put AISSTREAM_API_KEY; fi
@@ -41,6 +42,7 @@ jobs:
           if [ -n "${OPENCELLID_API_KEY:-}" ]; then printf '%s' "$OPENCELLID_API_KEY" | npx wrangler@latest secret put OPENCELLID_API_KEY; fi
           if [ -n "${ADMIN_USER:-}" ]; then printf '%s' "$ADMIN_USER" | npx wrangler@latest secret put ADMIN_USER; fi
           if [ -n "${ADMIN_PASSWORD:-}" ]; then printf '%s' "$ADMIN_PASSWORD" | npx wrangler@latest secret put ADMIN_PASSWORD; fi
+          if [ -n "${GOOGLE_MAPS_API_KEY:-}" ]; then printf '%s' "$GOOGLE_MAPS_API_KEY" | npx wrangler@latest secret put GOOGLE_MAPS_API_KEY; fi
 
       - name: Deploy
         uses: cloudflare/wrangler-action@v3
