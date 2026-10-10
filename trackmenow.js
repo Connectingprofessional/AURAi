@@ -346,7 +346,7 @@
     $('tm-zoom-in').onclick = function () { zoomBy(1); };
     $('tm-zoom-out').onclick = function () { zoomBy(-1); };
     $('tm-zoom-home').onclick = function () {
-      if (maplibre) maplibre.flyTo({ center: [20, 15], zoom: earthMode === 'globe' ? 1.5 : 2, duration: 800 });
+      if (maplibre) maplibre.flyTo({ center: [0, 0], zoom: earthMode === 'globe' ? 1.5 : 2, duration: 800 });
       else if (scale === 'solar' || scale === 'universe') resetSky();
     };
     $('tm-play').onclick = togglePlay;
@@ -1664,7 +1664,7 @@
       style.sources.radar = { type: 'raster', tileSize: 256, tiles: [radarPath] };
       style.layers.splice(3, 0, { id: 'radar', type: 'raster', source: 'radar', layout: { visibility: 'none' }, paint: { 'raster-opacity': 0.75 } });
     }
-    maplibre = new maplibregl.Map({ container: 'map', style: style, center: [20, 15], zoom: useGlobe ? 1.4 : 2, minZoom: useGlobe ? 0.5 : 1, maxZoom: 23, maxPitch: useGlobe ? 85 : 60, attributionControl: false, failIfMajorPerformanceCaveat: false });
+    maplibre = new maplibregl.Map({ container: 'map', style: style, center: [0, 0], zoom: useGlobe ? 1.4 : 2, minZoom: useGlobe ? 0.5 : 1, maxZoom: 23, maxPitch: useGlobe ? 85 : 60, attributionControl: false, failIfMajorPerformanceCaveat: false });
     window.map = maplibre;
     if (window.TrackMeNowCameras && window.TrackMeNowCameras.init) window.TrackMeNowCameras.init(maplibre);
     maplibre.on('style.load', function () {
@@ -1682,8 +1682,8 @@
       setStatus('EARTH · ' + (useGlobe ? '3D GLOBE' : 'FLAT') + ' · transport + terrain + ' + (gibsAvailable ? 'LIVE CLOUD · ' + date : 'satellite fallback'), true);
       if (useGlobe) {
         try {
-          maplibre.jumpTo({ center: [20, 15], zoom: 0.65, pitch: 0, bearing: 0 });
-          maplibre.easeTo({ center: [20, 15], zoom: 1.4, duration: fromSolar ? 1400 : 700, easing: function(t){ return 1 - Math.pow(1 - t, 3); } });
+          maplibre.jumpTo({ center: [0, 0], zoom: 0.65, pitch: 0, bearing: 0 });
+          maplibre.easeTo({ center: [0, 0], zoom: 1.4, duration: fromSolar ? 1400 : 700, easing: function(t){ return 1 - Math.pow(1 - t, 3); } });
         } catch (e) {}
       }
       if (fromSolar) {
