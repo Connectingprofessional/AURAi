@@ -781,7 +781,7 @@ export default {
       }
       if (!['GET', 'POST'].includes(req.method)) return json(req, env, { ok: false, error: 'Method not allowed' }, 405);
       if (url.pathname === '/api/google/maps-config' && req.method === 'GET') {
-        const key = String(env.GOOGLE_MAPS_API_KEY || '').trim();
+        const key = String(env.GOOGLE_MAPS_API_KEY || env.TM_GOOGLE_MAPS_API_KEY || env.TM_GOOGLE_MAPS_3D_API_KEY || '').trim();
         return json(req, env, {
           ok: true,
           configured: !!key,
