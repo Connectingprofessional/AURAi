@@ -77,13 +77,28 @@
     // Earth is activated only through MAP → GOOGLE EARTH; no floating button or second page.
   }
 
-  function loadGoogleApi() {
+  async function resolveKey() {
+    var key = KEY();
+    if (key) return key;
+    try {
+      var response = await fetch((window.TM_API_BASE || 'https://wispy-bush-9aee.recreationeeraj.workers.dev') + '/api/google/maps-config', { cache: 'no-store' });
+      var config = await response.json();
+      if (config && config.configured && config.key) {
+        window.TM_GOOGLE_MAPS_API_KEY = String(config.key);
+        window.TM_GOOGLE_MAPS_3D_API_KEY = String(config.key);
+        return String(config.key);
+      }
+    } catch (error) {}
+    return '';
+  }
+
+  async function loadGoogleApi() {
     if (window.google && window.google.maps && typeof window.google.maps.importLibrary === 'function') {
-      return Promise.resolve();
+      return;
     }
     if (apiPromise) return apiPromise;
-    var key = KEY();
-    if (!key) return Promise.reject(new Error('Google 3D Maps key is not configured.'));
+    var key = await resolveKey();
+    if (!key) throw new Error('Google 3D Maps browser key is unavailable from both the published build and Worker configuration.');
     apiPromise = new Promise(function (resolve, reject) {
       var existing = document.querySelector('script[data-tm-google-3d-api]');
       if (existing) {
