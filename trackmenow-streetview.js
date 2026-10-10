@@ -120,7 +120,7 @@
     }
     if (apiPromise) return apiPromise;
     var k = key();
-    if (!k) return Promise.reject(new Error('Google Maps API key is missing. The published site must receive TM_GOOGLE_MAPS_API_KEY or TM_GOOGLE_MAPS_3D_API_KEY.'));
+    if (!k) return Promise.reject(new Error('Google Maps API key is not present in the published build. The deployment must inject TM_GOOGLE_MAPS_API_KEY or TM_GOOGLE_MAPS_3D_API_KEY.'));
     apiPromise = new Promise(function (resolve, reject) {
       var existing = document.querySelector('script[data-tm-google-3d-api]');
       if (existing) {
@@ -131,7 +131,7 @@
       var script = document.createElement('script');
       script.dataset.tmGoogle3dApi = '1';
       script.async = true;
-      script.src = 'https://maps.googleapis.com/maps/api/js?key=' + encodeURIComponent(k) + '&v=beta&loading=async&libraries=maps3d';
+      script.src = 'https://maps.googleapis.com/maps/api/js?key=' + encodeURIComponent(k) + '&v=weekly&loading=async&libraries=maps3d';
       script.onload = resolve;
       script.onerror = function () { reject(new Error('Google Maps JavaScript API failed to load. Check the browser key restrictions and API access.')); };
       document.head.appendChild(script);
@@ -213,7 +213,7 @@
       if (token !== requestToken) return;
       panoramaHost.style.display = 'none';
       var message = err && err.message ? err.message : 'Street View could not be loaded.';
-      showStatus(message + ' If the error mentions authorization, check Maps JavaScript API enablement, billing, and HTTP-referrer restrictions for the TrackMeNow domain.');
+      showStatus(message + ' Google key: ' + (key() ? 'PRESENT' : 'MISSING') + '. If authorization is reported, check Maps JavaScript API, billing, and HTTP-referrer restrictions for the deployed TrackMeNow domain.');
     }
   }
 
