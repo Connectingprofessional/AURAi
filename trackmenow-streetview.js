@@ -177,19 +177,24 @@
       }
 
       var service = new StreetViewService();
-      var result = await service.getPanorama({
+      var request = {
         location: { lat: Number(lat), lng: Number(lon) },
         radius: 100,
         source: window.google.maps.StreetViewSource ? window.google.maps.StreetViewSource.DEFAULT : undefined
-      }).catch(function () {
-        return service.getPanorama({ location: { lat: Number(lat), lng: Number(lon) }, radius: 1000 });
-      });
+      };
+      var result = await service.getPanorama(request);
+      var resultStatus = result && result.status;
+      if (resultStatus && resultStatus !== 'OK' && (!StreetViewStatus || resultStatus !== StreetViewStatus.OK)) {
+        // A map click may be a little away from a road. Retry a wider search before declaring no coverage.
+        request.radius = 1000;
+        result = await service.getPanorama(request);
+      }
 
       if (token !== requestToken) return;
       var data = result && result.data ? result.data : result;
       var status = result && result.status;
       if (status && StreetViewStatus && status !== StreetViewStatus.OK && status !== 'OK') {
-        throw new Error('No Street View panorama is available close to this point. Try a nearby road or a different location.');
+        throw new Error('No Street View panorama is available within 1 km of this point. Try a nearby road or another location.');
       }
       var location = data && data.location;
       if (!location || !location.latLng) {
